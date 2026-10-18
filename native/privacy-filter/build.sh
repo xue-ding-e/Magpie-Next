@@ -71,8 +71,10 @@ fetch_vulkan() {
       tar -xJf "$sdk" -C "$vk" --strip-components 3 "$LUNARG_SDK/x86_64/bin/glslc"
     fi
   fi
+  # ggml-vulkan finds SPIRV-Headers but never adds its include path, so
+  # it took whatever spirv.hpp the system had: ours goes in by hand
   vkargs=(-DPF_VULKAN=ON -DVulkan_INCLUDE_DIR="$vk/include" -DSPIRV-Headers_DIR="$(dirname "$cfg")"
-    -DVulkan_GLSLC_EXECUTABLE="$glslc")
+    -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES="$vk/spirv/include" -DVulkan_GLSLC_EXECUTABLE="$glslc")
 }
 
 jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
