@@ -40,7 +40,13 @@ var (
 var (
 	serveTag  = "pf-v1"
 	serveBase = "https://github.com/yetone/magpie/releases/download/"
-	serveSHA  = map[string]string{}
+	serveSHA  = map[string]string{
+		"darwin-amd64":  "7d5512ed24ff865bb0e84009b0adecd3addf0444891990cbc78634d78390c607",
+		"darwin-arm64":  "07eb79dd1d74a6dc8e2e59eefed1094a4c1dafa27051343fac65d6c2172617f0",
+		"linux-amd64":   "b172f39b2b5446cb92ef14f996b65157f5e1c0e4e673ee9c61a0214cc67c78af",
+		"linux-arm64":   "7a344515e35676d0da21b448c6c4bc49de7cf34f8f28604c6889c092ae963961",
+		"windows-amd64": "dd06aa4e656cbebff348ad3fdfd66eca5f899b244dff65235d47a2c878b49c6c",
+	}
 )
 
 // target is this system's name in serveSHA.

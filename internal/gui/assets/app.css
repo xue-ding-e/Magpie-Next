@@ -3196,6 +3196,8 @@ body:not(.side-nav) #view-settings .set-head.stuck::before { box-shadow: 0 1px 0
 .feat-say { margin: 2px 4px 10px; font-size: 12px; line-height: 1.45; color: var(--muted); }
 .set-searching .feat-say { display: none; }
 .row.pref .sub.feat-why { color: var(--muted); font-size: 11px; }
+/* the local model's row says a download, a device or an error in full */
+#privacyModelRow .sub { white-space: normal; overflow-wrap: anywhere; }
 /* a plugin's settings, under its row (kernel.js ui.form) */
 .row.pref.feat-set { min-height: 44px; padding-left: 30px; }
 .row.pref.feat-set .name { font-size: 12.5px; }

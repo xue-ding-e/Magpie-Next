@@ -21511,6 +21511,8 @@ function renderRedact(s, keep) {
     r.append(who, val);
     box.append(r);
   }
+  // the local model finds more of what the switches above mask
+  if (s.redact || s.redactPersonal) privacyModelRow(box);
   // Routing's and Usage's Hide accounts, here too, where privacy is looked for
   if (window.hideAccounts) row(t("Hide accounts"), t("Email addresses and account names on Usage and Routing are blurred, for a screenshot to share"),
     onOff(window.hideAccounts.on(), (on) => { window.hideAccounts.set(on); renderSettings(); }));
@@ -21531,6 +21533,61 @@ function renderRedact(s, keep) {
   // rides on that event: nothing goes without it
   if (!s.noStats) row(t("Share the agents, providers and models I use"), t("Sent with that event, by magpie's own ids, with how many of each, and how often each partner was shown, opened and added; a provider you added yourself is only “custom”. No names, addresses, accounts, keys or usage"),
     onOff(!s.noUsageStats, (on) => savePrefs({ ...keep, noUsageStats: !on })));
+}
+
+// privacyModelRow: the local masking model (internal/pii), downloaded when
+// it is turned on and then asked beside the rules. Its state is its own
+// (privacy-model): read when the row is drawn, and each second while it
+// downloads or starts.
+let pmState = null, pmTimer = 0;
+function privacyModelRow(box) {
+  const r = el("div", "row pref");
+  r.id = "privacyModelRow";
+  box.append(r);
+  let tries = 0;
+  const draw = (m) => {
+    if (!r.isConnected) return;
+    const who = el("div", "who"), val = el("div", "val");
+    who.append(el("div", "name", t("Find with a local model")), el("div", "sub", pmSub(m)));
+    if (m?.supported || m?.installed) {
+      if (m.downloading) {
+        const c = el("button", "text", t("Cancel"));
+        c.onclick = () => act("cancel");
+        val.append(c);
+      } else if (m.installed && !m.on) {
+        const x = el("button", "text", t("Delete model"));
+        x.onclick = async () => {
+          if (await confirmAction(t("Delete the model?"), t("Turning it on again downloads {size} again.", { size: fmtBytes(m.size) }), t("Delete"))) act("remove");
+        };
+        val.append(x);
+      }
+      val.append(segs([["off", t("Off")], ["on", t("On")]], m.on || m.downloading ? "on" : "off", (v) => act(v)));
+    }
+    r.replaceChildren(who, val);
+    clearTimeout(pmTimer);
+    // a download's progress, and where pf-serve runs once it has started
+    const starting = m?.on && m.installed && !m.running && !m.failed && tries++ < 30;
+    if (m?.downloading || starting) pmTimer = setTimeout(load, 1000);
+  };
+  const load = () => api("privacy-model").then((m) => { pmState = m; draw(m); }).catch(() => {});
+  const act = (doing) => { tries = 0; api("privacy-model", { do: doing }).then((m) => { pmState = m; draw(m); }).catch((e) => { status(t(e.message), "err"); load(); }); };
+  draw(pmState);
+  load();
+}
+function pmSub(m) {
+  const about = t("Names, addresses and passwords no rule can find, found by a model that runs on this computer");
+  if (!m) return about;
+  if (!m.supported && !m.installed) return t("Not available on this system yet");
+  if (m.downloading) return t("Downloading the model: {done} of {total}", { done: fmtBytes(m.done), total: fmtBytes(m.total) });
+  if (m.error) return t("The download stopped: {error}", { error: m.error });
+  if (m.on && m.failed) return t("The model didn't answer, so requests are held back: {error}", { error: m.failed });
+  if (m.on && m.running) {
+    if (m.gpu) return t("On, on the GPU ({device})", { device: m.device });
+    return m.gpuError ? t("On, on the CPU: the GPU failed ({error})", { error: m.gpuError }) : t("On, on the CPU");
+  }
+  if (m.on) return t("On: the model starts with the next request");
+  if (m.installed) return t("Off. The model is downloaded ({size})", { size: fmtBytes(m.size) });
+  return t("Names, addresses and passwords no rule can find, found by a model that runs on this computer. Turning it on downloads {size} once", { size: fmtBytes(m.size) });
 }
 
 function renderOTel(s, keep) {
