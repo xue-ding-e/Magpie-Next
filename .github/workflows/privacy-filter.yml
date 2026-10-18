@@ -35,8 +35,9 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
       - name: tools (Linux)
+        # no glslc in Ubuntu 22.04: build.sh takes LunarG's
         if: startsWith(matrix.target, 'linux')
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libvulkan-dev glslc zip
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libvulkan-dev xz-utils zip
       - name: tools (Windows, cross)
         if: matrix.target == 'windows-amd64'
         run: sudo apt-get update && sudo apt-get install -y ninja-build mingw-w64 glslc zip
