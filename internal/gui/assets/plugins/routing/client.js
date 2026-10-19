@@ -1116,6 +1116,21 @@ function routingPage(part) {
     for (const [dot, row] of holds) pose({ dot, legs: wiresTo(row).map((p) => ({ p })) }, 1);
   }
   let capQ = [], capAt = -1e9, capLo = false, flipUntil = 0;
+  // the frame loop's own state; see frame below
+  let seen = false, lastFrame = 0, ticking = 0;
+  // busy: something on the stage still moves — a flight, a caption waiting
+  // its turn, rows sliding to their new places. Only then does the loop
+  // ask for frames; an idle stage asks for none (#2827: a frame every
+  // vsync, nothing drawn, cost a renderer without a GPU a core and more)
+  const busy = () => trips.length > 0 || capQ.length > 0 || performance.now() < flipUntil;
+  // kick wakes the loop for new motion. Waking from idle is not a gap in
+  // the frames — the page was in sight and still — so the gap resume()
+  // looks for counts from now
+  function kick() {
+    if (ticking || !shown()) return;
+    if (seen) lastFrame = performance.now();
+    ticking = requestAnimationFrame(frame);
+  }
 
   // fly carries a dot along paths one after another, as one flight — and
   // the magpie holding it in its beak, if there is one
@@ -1124,6 +1139,7 @@ function routingPage(part) {
     const tr = { dot, bird, legs, t0: performance.now(), ms: still() ? 0 : ms, res, g: gen };
     pose(tr, 0);
     trips.push(tr);
+    kick();
   }).finally(() => { for (const l of legs) if (l.j) l.p.remove(); });
 
   // measured is a path's length, and the tips of it flights met, for the d
@@ -1211,6 +1227,7 @@ function routingPage(part) {
     if (!lo) capQ = capQ.filter((c) => !c.lo);
     capQ.push({ s, lo });
     if (capQ.length > 3) capQ.shift();
+    kick();
   }
   function show(c) { capLo = !!c.lo; cap.textContent = c.s; cap.classList.remove("in"); void cap.offsetWidth; cap.classList.add("in"); capAt = performance.now(); }
 
@@ -1649,6 +1666,7 @@ function routingPage(part) {
       void list.offsetWidth;
       for (const [, li] of placed) { li.style.transition = ""; li.style.transform = ""; }
       flipUntil = performance.now() + 520;
+      kick();
     }
     header(cur, ags.length);
     layout();
@@ -3343,13 +3361,13 @@ function routingPage(part) {
     for (const r of underWay()) play(r.id);
     renderAll();
   }
-  let seen = false, lastFrame = 0, ticking = 0;
   // the loop runs only while the page is the one in sight: out of sight it
   // is not scheduled at all, so a hidden Routing page — the window hidden,
   // another view picked, another tab open — asks for no frames forever
   // (#302's other half). Shown again, start() resumes it, and resume()
   // draws the page as it is now. The requests that came meanwhile are
-  // listed by the poll, which never stops.
+  // listed by the poll, which never stops. In sight, it runs only while
+  // the stage is busy, and kick() wakes it (#2827).
   function frame(ts) {
     ticking = 0;
     const vis = shown();
@@ -3369,7 +3387,7 @@ function routingPage(part) {
       if (ts < flipUntil) layout();
       if (capQ.length && ts - capAt > (capLo && !capQ[0].lo ? 500 : 1700)) show(capQ.shift());
     } else pause();
-    if (vis) ticking = requestAnimationFrame(frame);
+    if (vis && busy() && !ticking) ticking = requestAnimationFrame(frame);
   }
   function pause() {
     if (ticking) cancelAnimationFrame(ticking);
@@ -3385,7 +3403,7 @@ function routingPage(part) {
   // finish hidden work here too. The first visible frame alone owns resume.
   function start() {
     if (!shown()) { pause(); return; }
-    if (!ticking) ticking = requestAnimationFrame(frame);
+    kick();
   }
   // in sight again: the view picked, the window shown, another tab left,
   // the window covered and drawing frames once more
@@ -3429,6 +3447,15 @@ function routingPage(part) {
     layout();
   }
 
+  // the live dots beside "Routing" pulse while a request is under way,
+  // and rest when none is: an endless pulse repainted the head every
+  // frame, which without a GPU is a renderer's whole core (#2827)
+  const anyLive = () => loaded && mine && [...routes.values()].some((r) => !r.done);
+  function liveDots() {
+    const on = anyLive();
+    for (const d of document.querySelectorAll(".rt-livedot")) d.classList.toggle("on", on);
+  }
+
   async function poll() {
     for (;;) {
       try {
@@ -3453,6 +3480,7 @@ function routingPage(part) {
           offline(pinned ? "" : t(offMsg));
           loaded = false;
           renderPanel();
+          liveDots();
           await new Promise((r) => setTimeout(r, 5000));
           continue;
         }
@@ -3468,6 +3496,7 @@ function routingPage(part) {
         loaded = true;
         offMsg = "";
         renderPanel(first || d.routes.some((r) => r.done));
+        liveDots();
         // a request done is a day's count grown: heard of now and then
         if (first || (d.routes.some((r) => r.done) && performance.now() - daysAt > 15e3)) { daysAt = performance.now(); loadDays(); }
         if (first) {
@@ -5877,7 +5906,7 @@ function routingPage(part) {
     const open = el("button", "text", t("Open Routing"));
     open.type = "button";
     open.onclick = (e) => { api("window/main?view=routing", {}); e.currentTarget.blur(); };
-    head.append(el("span", "rt-livedot"), sum, el("span", "grow"), open);
+    head.append(el("span", anyLive() ? "rt-livedot on" : "rt-livedot"), sum, el("span", "grow"), open);
     const out = [head];
     if (picks) out.push(picks);
     if (!offMsg && loaded && rs.length) out.push(pStage);
