@@ -2704,7 +2704,10 @@ function routingPage(part) {
   let clockFmt = null, clockLang = "";
   const rowClock = (time) => {
     if (clockLang !== intlLang()) { clockLang = intlLang(); clockFmt = new Intl.DateTimeFormat(clockLang, { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
-    return clockFmt.format(new Date(time));
+    // a time not known (none yet, or not a date) reads as none: format
+    // throws on it, where toLocaleTimeString said "Invalid Date"
+    const d = new Date(time);
+    return isNaN(d) ? "" : clockFmt.format(d);
   };
   // what decides a row's width in each column sized by its content: its
   // time, what was asked for, its numbers
