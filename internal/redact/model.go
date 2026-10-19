@@ -44,15 +44,15 @@ func modelCat(kind string) string {
 }
 
 // modelSpans are o.found's spans for s that o covers, trimmed of the
-// spaces the model takes in with a word, and with what it gets wrong
-// often left out (modelTakes).
+// spaces the model takes in with a word (and a Chinese name of what it
+// ran on into, zhTrim), and with what it gets wrong often left out
+// (modelTakes); and the Chinese names it missed (zhNameSpans).
 func modelSpans(s string, o Options) []span {
-	fs := o.found[s]
-	if len(fs) == 0 {
+	if o.Model == nil || !o.covers(catPersonal) && len(o.found[s]) == 0 {
 		return nil
 	}
 	var out []span
-	for _, f := range fs {
+	for _, f := range o.found[s] {
 		kind := modelKinds[f.Label]
 		if kind == "" || !o.covers(modelCat(kind)) || f.Start < 0 || f.End > len(s) || f.Start >= f.End {
 			continue
@@ -64,9 +64,21 @@ func modelSpans(s string, o Options) []span {
 		for b > a && isSpace(s[b-1]) {
 			b--
 		}
+		if kind == "PERSON" {
+			a, b = zhTrim(s, a, b)
+		}
 		if a < b && utf8.ValidString(s[a:b]) && modelTakes(kind, s[a:b]) {
 			out = append(out, span{a, b, kind})
 		}
+	}
+	if o.covers(catPersonal) {
+		var person []span
+		for _, f := range out {
+			if f.kind == "PERSON" {
+				person = append(person, f)
+			}
+		}
+		out = append(out, zhNameSpans(s, person)...)
 	}
 	return out
 }
