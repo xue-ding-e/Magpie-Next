@@ -283,7 +283,7 @@ function routingPage(part) {
   const metaFit = () => { if (!metaFitting) metaFitting = requestAnimationFrame(() => {
     metaFitting = 0;
     if (colA.classList.contains("max760") || !reqs.offsetParent) return;
-    const kept = [];
+    const kept = [], under = colA.classList.contains("meta-under");
     for (let p = reqs; p; p = p.parentElement) if (p.scrollTop) kept.push([p, p.scrollTop]);
     colA.classList.remove("meta-under");
     const wraps = [...reqs.querySelectorAll(".rt-req .meta:not([hidden])")].some((m) => {
@@ -292,8 +292,13 @@ function routingPage(part) {
     });
     colA.classList.toggle("meta-under", wraps);
     for (const [p, top] of kept) if (p.scrollTop !== top) p.scrollTop = top;
+    if (colA.classList.contains("meta-under") !== under) redrawList(); // the rows' heights changed
   }); };
-  new ResizeObserver(metaFit).observe(colA);
+  // only a new width can make the numbers wrap or fit: measured on its
+  // height too, the mark it sets made the rows taller and measured them
+  // again, flipping back and forth (#2524: 8 times in 8s, ~200ms each)
+  let metaW = -1;
+  new ResizeObserver(() => { const w = colA.clientWidth; if (w !== metaW) { metaW = w; metaFit(); } }).observe(colA);
 
   const path = () => { const p = document.createElementNS(NS, "path"); wires.appendChild(p); return p; };
   const setText = (e, s) => { if (e.textContent !== s) e.textContent = s; };
@@ -2625,58 +2630,202 @@ function routingPage(part) {
         t("Each request an agent sends through magpie shows up here: who answered it, why, and each try."));
       if (!day && days.length) p.append(" " + t("Earlier ones are kept by day, in the bar above."));
       reqs.replaceChildren(p);
+      reqs.classList.remove("win");
+      listItems = [];
+      probes.clear();
       reqRows.clear();
       sessionRows.clear();
       closedSessions.clear();
       renderActs(rs);
       return;
     }
-    const lang = document.documentElement.lang, ids = new Set();
-    let redrawn = false; // a row made anew, or the rows moved: metaFit measures them again
-    const rowEls = rs.map((r) => {
-      const [said, how, tr] = outcome(r);
-      const sel = String(pinned ? pinned.id === r.id : cur?.id === r.id);
-      const ag = agentOf(r.agent);
-      const meta = [];
-      if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
-      const metrics = requestMetrics(r, how);
-      // all the row says, and its titles
-      const title = reqTitle(r, how, tr);
-      const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, tagKind(r), r.effort,
-        tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, meta, metrics, routeCost(r)]);
-      ids.add(r.id);
-      let x = reqRows.get(r.id);
-      if (!x || x.sig !== sig) {
-        const row = x = { sig, b: reqRow(r, said, how, tr, ag, meta, metrics, title) };
-        row.b.onclick = () => pick(row.r); // the request as it is when clicked
-        reqRows.set(r.id, x);
-        redrawn = true;
-      }
-      x.r = r;
-      if (x.b.getAttribute("aria-pressed") !== sel) x.b.setAttribute("aria-pressed", sel);
-      return x.b;
-    });
+    const ids = new Set(rs.map((r) => r.id));
     for (const id of reqRows.keys()) if (!ids.has(id)) reqRows.delete(id);
-    const els = bySession && rs.some((r) => r.session) ? groupedRows(rs, rowEls) : rowEls;
-    // the rows moved only where they changed; the list scrolls on its own,
-    // and WebKit, a row taken out for a moment, would send it back to its
-    // top from under the row just picked
-    const kids = reqs.children;
-    if (kids.length !== els.length || els.some((e, i) => kids[i] !== e)) {
-      const listTop = reqs.scrollTop;
-      els.forEach((e, i) => { if (kids[i] !== e) reqs.insertBefore(e, kids[i] || null); });
-      while (kids.length > els.length) reqs.lastElementChild.remove();
-      if (reqs.scrollTop !== listTop) reqs.scrollTop = listTop;
-      redrawn = true;
-    }
-    // measuring every row's line forces a layout: only when one changed
-    // (a resize measures them through the ResizeObserver)
-    if (redrawn) metaFit();
+    // the requests, with their sessions' heads between them when grouped:
+    // a request's row is made only when it is drawn
+    listItems = bySession && rs.some((r) => r.session) ? groupedRows(rs, rs) : rs;
+    rowsMoved = false;
+    drawList();
+    // measuring the rows' lines forces a layout: only when a row was made
+    // anew or the rows moved (a resize measures them through the
+    // ResizeObserver)
+    if (rowsMoved) metaFit();
     renderActs(rs);
   }
+  // rowOf: a request's row, kept while what it says is the same
+  function rowOf(r) {
+    const lang = document.documentElement.lang;
+    const [said, how, tr] = outcome(r);
+    const sel = String(pinned ? pinned.id === r.id : cur?.id === r.id);
+    const ag = agentOf(r.agent);
+    const meta = [];
+    if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
+    const metrics = requestMetrics(r, how);
+    // all the row says, and its titles
+    const title = reqTitle(r, how, tr);
+    const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, tagKind(r), r.effort,
+      tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, meta, metrics, routeCost(r)]);
+    let x = reqRows.get(r.id);
+    if (!x || x.sig !== sig) {
+      const row = x = { sig, b: reqRow(r, said, how, tr, ag, meta, metrics, title) };
+      row.b.onclick = () => pick(row.r); // the request as it is when clicked
+      reqRows.set(r.id, x);
+      rowsMoved = true;
+    }
+    x.r = r;
+    if (x.b.getAttribute("aria-pressed") !== sel) x.b.setAttribute("aria-pressed", sel);
+    return x.b;
+  }
+  // A day of history is up to 2,000 requests, and a row is ~20 elements:
+  // all of them in the list, a day picked took the page 0.4–0.7s here and
+  // seconds on Windows, and the old rows stayed in while the new ones went
+  // in among them, twice the rows at once (#2524, UNscientific-9). A list
+  // that long draws only the rows in and near its sight, between two gaps
+  // as tall as the rows above and below; scrolled, it draws the next ones.
+  // A row's height is measured once it was drawn, and one not yet drawn is
+  // taken as tall as the average drawn.
+  //
+  // The columns are as wide as the widest of all the requests, drawn or
+  // not, as before: a row unlike any drawn — another time's shape, model,
+  // kind or numbers — is in the list too, with no height and unseen (a
+  // probe), so the grid sizes its columns by it. Digits are as wide as
+  // each other there (tabular-nums), so a probe stands for every row of
+  // its shape.
+  const WIN_MIN = 300;
+  let listItems = [], winKey = "", winAvg = 0, winSoon = 0, rowsMoved = false;
+  const heights = new Map(); // a request's id, or a session's head → its height
+  const gapAbove = el("div", "rt-gap"), gapBelow = el("div", "rt-gap");
+  for (const g of [gapAbove, gapBelow]) g.setAttribute("aria-hidden", "true");
+  const probes = new Map(), probeShapes = new WeakMap();
+  const isHead = (x) => x instanceof Element;
+  const itemKey = (x) => isHead(x) ? x : x.id;
+  const itemEl = (x) => isHead(x) ? x : rowOf(x);
+  const digits = (s) => String(s).replace(/\d/g, "0");
+  let clockFmt = null, clockLang = "";
+  const rowClock = (time) => {
+    if (clockLang !== intlLang()) { clockLang = intlLang(); clockFmt = new Intl.DateTimeFormat(clockLang, { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+    return clockFmt.format(new Date(time));
+  };
+  // what decides a row's width in each column sized by its content: its
+  // time, what was asked for, its numbers
+  function shapes(r, key) {
+    const was = probeShapes.get(r);
+    if (was && was.key === key) return was.s;
+    const how = outcome(r)[1], meta = r.tries.length > 1 ? t("{n} tries", { n: r.tries.length }) : "";
+    const s = ["t" + digits(rowClock(r.time)), "a" + JSON.stringify([r.model, tagKind(r) ? kindName(tagKind(r)) : ""]),
+      "m" + digits(JSON.stringify([meta, requestMetrics(r, how).map((m) => [m[0], m[2]])]))];
+    probeShapes.set(r, { key, s });
+    return s;
+  }
+  function probesFor(rs) {
+    const key = document.documentElement.lang + "|" + visibleMetrics.join(), seen = new Set(), want = new Map();
+    for (const r of rs) {
+      const s = shapes(r, key);
+      if (s.every((x) => seen.has(x))) continue;
+      s.forEach((x) => seen.add(x));
+      const id = key + JSON.stringify(s);
+      if (!want.has(id)) want.set(id, r);
+    }
+    for (const id of probes.keys()) if (!want.has(id)) probes.delete(id);
+    return [...want].map(([id, r]) => {
+      let b = probes.get(id);
+      if (!b) {
+        const [said, how, tr] = outcome(r), meta = r.tries.length > 1 ? [t("{n} tries", { n: r.tries.length })] : [];
+        b = reqRow(r, said, how, tr, agentOf(r.agent), meta, requestMetrics(r, how), "");
+        b.classList.add("probe");
+        b.removeAttribute("title");
+        b.tabIndex = -1;
+        b.inert = true;
+        b.setAttribute("aria-hidden", "true");
+        probes.set(id, b);
+      }
+      return b;
+    });
+  }
+  // placeRows puts the list's children in order, moving only those out of
+  // place: the list scrolls on its own, and WebKit, a row taken out for a
+  // moment, would send it back to its top from under the row just picked.
+  // A list made mostly anew (another day) is put in at once, not row by
+  // row among the old ones.
+  function placeRows(els) {
+    const kids = reqs.children;
+    if (kids.length === els.length && els.every((e, i) => kids[i] === e)) return;
+    rowsMoved = true;
+    const listTop = reqs.scrollTop;
+    let kept = 0;
+    for (const e of els) if (e.parentNode === reqs) kept++;
+    if (kept * 2 < els.length) reqs.replaceChildren(...els);
+    else {
+      let at = reqs.firstElementChild;
+      for (const e of els) {
+        if (e === at) { at = at.nextElementSibling; continue; }
+        reqs.insertBefore(e, at);
+      }
+      while (at) { const n = at.nextElementSibling; at.remove(); at = n; }
+    }
+    if (reqs.scrollTop !== listTop) reqs.scrollTop = listTop;
+  }
+  function drawList() {
+    const n = listItems.length;
+    if (n < WIN_MIN) {
+      reqs.classList.remove("win");
+      probes.clear();
+      return placeRows(listItems.map(itemEl));
+    }
+    reqs.classList.add("win");
+    // out of sight (another view, the window hidden) nothing has a height:
+    // drawn as last measured, and measured once in sight again
+    const live = !!reqs.offsetParent;
+    const listKey = [colA.className, reqs.clientWidth, document.documentElement.lang, visibleMetrics.join()].join("|");
+    if (live && listKey !== winKey) { winKey = listKey; heights.clear(); winAvg = 0; }
+    const pad = parseFloat(getComputedStyle(reqs).paddingTop) || 0;
+    // the first row in sight, and where: it stays there
+    const box = reqs.getBoundingClientRect();
+    let anchor = null, anchorAt = 0;
+    for (const e of reqs.children) {
+      if (e.classList.contains("rt-gap") || e.classList.contains("probe")) continue;
+      const r = e.getBoundingClientRect();
+      if (r.bottom > box.top) { anchor = e; anchorAt = r.top - box.top; break; }
+    }
+    const est = winAvg || 31, off = new Float64Array(n + 1);
+    const sum = () => { for (let i = 0; i < n; i++) off[i + 1] = off[i] + (heights.get(itemKey(listItems[i])) ?? est); };
+    sum();
+    const view = reqs.clientHeight, over = Math.max(view, 300), y = reqs.scrollTop - pad;
+    let i0 = 0, i1 = n;
+    while (i0 < n - 1 && off[i0 + 1] <= y - over) i0++;
+    for (let i = i0; i < n; i++) if (off[i] >= y + view + over) { i1 = i; break; }
+    const drawn = listItems.slice(i0, i1).map(itemEl);
+    gapAbove.style.height = off[i0] + "px";
+    gapBelow.style.height = off[n] - off[i1] + "px";
+    placeRows([gapAbove, ...drawn, gapBelow, ...probesFor(listItems.filter((x) => !isHead(x)))]);
+    if (!live) return;
+    // measured as drawn: each one's slot in the grid, its margins with it
+    drawn.forEach((e, i) => {
+      const s = getComputedStyle(e);
+      heights.set(itemKey(listItems[i0 + i]), e.getBoundingClientRect().height + parseFloat(s.marginTop) + parseFloat(s.marginBottom));
+    });
+    let total = 0;
+    for (const h of heights.values()) total += h;
+    winAvg = heights.size ? total / heights.size : 0;
+    sum();
+    const above = off[i0] + "px", below = off[n] - off[i1] + "px";
+    if (gapAbove.style.height !== above) gapAbove.style.height = above;
+    if (gapBelow.style.height !== below) gapBelow.style.height = below;
+    if (anchor?.parentNode === reqs) {
+      const moved = anchor.getBoundingClientRect().top - reqs.getBoundingClientRect().top - anchorAt;
+      if (Math.abs(moved) >= 0.5) reqs.scrollTop += moved;
+    }
+  }
+  // scrolled or resized: the rows now in sight drawn, once a frame
+  const redrawList = () => {
+    if (winSoon || !reqs.classList.contains("win")) return;
+    winSoon = requestAnimationFrame(() => { winSoon = 0; if (reqs.classList.contains("win")) drawList(); });
+  };
+  reqs.addEventListener("scroll", redrawList, { passive: true });
+  new ResizeObserver(redrawList).observe(reqs);
   function reqRow(r, said, how, tr, ag, meta, metrics, title) {
     const b = el("button", "rt-req " + how);
-    const when = el("span", "at", new Date(r.time).toLocaleTimeString(intlLang(), { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    const when = el("span", "at", rowClock(r.time));
     const asked = el("span", "asked");
     const sw = el("i", "ag");
     sw.style.setProperty("--agent", hueOf(r.agent));
