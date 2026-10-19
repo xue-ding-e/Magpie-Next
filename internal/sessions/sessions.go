@@ -1383,6 +1383,15 @@ func scanAt(path string, off int64, head func([]byte) bool, fn func(b []byte, st
 				seen = true
 				skip = skip || !head(chunk)
 			}
+			if pf, ok := f.(*os.File); ok && !skip && len(long) == 0 {
+				// gathered in one buffer of the line's own size, not grown a
+				// chunk at a time (~5 times the line allocated, #2515)
+				if l := lineLen(pf, off, maxLine+r.Size()); l > maxLine+r.Size() {
+					skip = true
+				} else if l > cap(long) {
+					long = make([]byte, 0, l)
+				}
+			}
 			if !skip && len(long)+len(chunk) <= maxLine {
 				long = append(long, chunk...)
 			} else {
@@ -1411,6 +1420,25 @@ func scanAt(path string, off int64, head func([]byte) bool, fn func(b []byte, st
 		off += n
 		n, skip, seen, long = 0, false, false, long[:0]
 	}
+}
+
+// lineLen is the length, its newline included, of the line at off in f,
+// read ahead without moving f: 0 when it has no end yet, and past most
+// (but no further) for a longer one.
+func lineLen(f *os.File, off int64, most int) int {
+	buf := make([]byte, 64<<10)
+	n := 0
+	for n <= most {
+		k, err := f.ReadAt(buf, off+int64(n))
+		if i := bytes.IndexByte(buf[:k], '\n'); i >= 0 {
+			return n + i + 1
+		}
+		n += k
+		if err != nil {
+			return 0
+		}
+	}
+	return n
 }
 
 // scanBuffer is the read buffer a reader of f needs for what is left of it
