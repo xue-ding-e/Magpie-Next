@@ -5618,6 +5618,8 @@ function routingPage(part) {
   const P_ROWS = 6;
   let today = null, todayAt = 0;
   const pShown = () => pBox && document.body.dataset.ptab === "routing";
+  let pStale = false; // a draw skipped while the panel was hidden
+  if (pBox) document.addEventListener("visibilitychange", () => { if (pStale && !document.hidden) renderPanel(); });
   async function loadToday() {
     todayAt = performance.now();
     try { today = await api("usage?period=today"); } catch { return; }
@@ -5672,6 +5674,7 @@ function routingPage(part) {
   }
   function pDraw() {
     if (!pBox || !pStage.isConnected) return;
+    if (document.hidden) { pStale = true; return; }
     const recent = [...routes.values()].sort((a, b) => b.id - a.id);
     const flying = recent.filter((r) => pPlays.has(r.id));
     const ags = [], dst = new Map(); // seat key → { name, sub, how }
@@ -5785,7 +5788,7 @@ function routingPage(part) {
   }
   const pRest = (ms) => new Promise((res) => setTimeout(res, pShown() && !still() ? ms : 0));
   async function pPlay(id) {
-    if (!pBox || !pShown() || still() || pPlays.has(id) || pPlays.size >= 4) return;
+    if (!pBox || !pShown() || document.hidden || still() || pPlays.has(id) || pPlays.size >= 4) return;
     let r = routes.get(id);
     if (!r) return;
     pPlays.add(id);
@@ -5843,10 +5846,26 @@ function routingPage(part) {
     }
   }
   // renderPanel draws the tab; counted is a request just done, for today's
-  // totals to be read again (now and then)
+  // totals to be read again (now and then).
+  // While the panel is hidden, which is most of the time, it is drawn
+  // again only when its shape changes (what the panel's height is fitted
+  // to, every tab measured), and in full once it shows (#2515). A hidden
+  // page draws no frames, so the infinite CSS animations on what a draw
+  // replaces (the live dot, a waiting row's arrow, a waiting provider's
+  // mark) stay on the document's timeline, each holding its old tab, rows
+  // and all. On Windows, where a hidden WebView2 says so, the panel grew
+  // ~20 MB a minute under 1 request a second, 265k nodes in 11 minutes,
+  // and GBs over a day.
+  let pShape = "";
   function renderPanel(counted) {
     if (!pBox) return;
     if (counted && (!todayAt || performance.now() - todayAt > 5e3)) loadToday();
+    const picks = panelPicks();
+    const rs = [...routes.values()].sort((a, b) => b.id - a.id).slice(0, P_ROWS);
+    const shape = [offMsg, loaded, rs.length, picks?.childElementCount || 0, !!today].join("|");
+    if (document.hidden && shape === pShape) { pStale = true; return; }
+    pStale = false;
+    pShape = shape;
     const v = $("#view-agents"), keep = v.scrollTop;
     const head = el("div", "pr-head");
     const sum = el("span", "pr-today");
@@ -5860,9 +5879,7 @@ function routingPage(part) {
     open.onclick = (e) => { api("window/main?view=routing", {}); e.currentTarget.blur(); };
     head.append(el("span", "rt-livedot"), sum, el("span", "grow"), open);
     const out = [head];
-    const picks = panelPicks();
     if (picks) out.push(picks);
-    const rs = [...routes.values()].sort((a, b) => b.id - a.id).slice(0, P_ROWS);
     if (!offMsg && loaded && rs.length) out.push(pStage);
     if (offMsg) out.push(el("p", "pr-none", t(offMsg)));
     else if (!loaded) for (let i = 0; i < 3; i++) out.push(el("span", "skeleton pr-sk-row"));
