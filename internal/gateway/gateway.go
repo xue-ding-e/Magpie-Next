@@ -3131,7 +3131,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// rests — it answers as soon as the switch is off. Another member,
 		// its other models among them, is asked
 		zdr := !hw.passing && !hw.refused && hw.code() >= 400 && hw.header.Get(zdrHeader) != ""
-		if protected || zdr {
+		// no room on this computer for another Claude Code process
+		// (#2956): no account's fault, and each Claude account would wait
+		// for the same room, so none rests, none is asked next, nor this
+		// one again after a moment. Another provider left is asked
+		noRoom := hw.failed() && claudeNoRoom(hw.code(), hw.errBody())
+		if protected || zdr || noRoom {
 			if other == nil {
 				other = &Try{Status: call.Status, Error: call.Error}
 			}
@@ -3141,7 +3146,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 				left = notMates(cands[i+1:], c)
 			}
 			if len(left) > 0 {
-				try.Fail = failShape
+				if !noRoom {
+					try.Fail = failShape
+				}
 				s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
 				skipped = append(skipped, c.label()+": "+call.Error)
 				cands = append(cands[:i+1:i+1], left...)
@@ -3151,7 +3158,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			last = true
 		}
 		// nor is it asked again after a moment
-		protected = protected || zdr
+		protected = protected || zdr || noRoom
 		if wait, ok := passing(hw.code(), hw.header, hw.errBody(), again); ok && !protected && !last && hw.failed() && spentAfter(cands[i+1:]) {
 			// the others left are out of their allowance (Discord, waroy: a
 			// Codex account run out, Grok busy a moment): this one is the
