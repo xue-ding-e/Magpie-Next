@@ -1533,7 +1533,13 @@ function routingPage(part) {
   // the accounts they weighed, each route's in the order it weighed them —
   // a new order of the same accounts moves them to their places, so it
   // shows. Accounts and agents stay where they are while they stay.
+  // Out of sight none of the stage is drawn: resume() draws it as it is
+  // when the page comes back. Built while hidden, every trace update put
+  // new agents, rows and wires in, and their entrance and live animations,
+  // held by a timeline that doesn't run while the window is hidden, kept
+  // each replaced node alive (#2515, #2513)
   function sync(force) {
+    if (!shown()) return;
     const rs = staged();
     if (!rs.length) return;
     if (force) return steady(() => rebuild(rs, true));
@@ -2580,6 +2586,7 @@ function routingPage(part) {
     return els;
   }
   function renderHist() {
+    if (!shown()) return; // drawn by resume()'s renderAll, as the stage
     const rs = listed();
     renderStats(rs);
     const all = allListed();
@@ -3596,6 +3603,7 @@ function routingPage(part) {
   }
 
   function empty() {
+    if (!shown()) return; // resume() empties it in sight, as sync
     offline("");
     what.replaceChildren(el("b", "", t(purpose.length || day ? "No requests match these filters." : "Waiting for a request")));
     mode.textContent = t("Send one from any agent routed through magpie and it plays here as it happens: who routing put first and why, each try, and what each answered.");
