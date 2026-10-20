@@ -387,7 +387,7 @@ function renderAgentsLoading() {
 
 let agentArranging = false, agentRenderPending = false;
 function renderAgents() {
-  renderCodexMemories(); // Settings' row is the same field
+  renderCodexMemories(); // the Codex sheet's row is the same field
   if (agentArranging) { agentRenderPending = true; return; }
   if (unhideCleared()) return; // it renders again with the hiding dropped
   const page = $("#view-agents");
@@ -467,6 +467,10 @@ function renderAgents() {
     // command as its one control, in words
     const launchOnly = !!a.launch && !a.fields.length && !a.import;
     if (a.launch && !launchOnly) extras.append(launchButton(a));
+    // the panel's opened row has no room for the settings: a line of its
+    // own opens them in a sheet; the window's opened row holds them
+    // (connectPanel)
+    if (mode === "panel" && agentPrefsOf(a)) fields.append(agentPrefsButton(a));
     if (extras.childNodes.length) fields.append(extras);
     // an app that takes magpie by a link of its own (Cindy) has nothing to
     // pick: its row opens the link, and the app asks to add magpie
@@ -1973,6 +1977,19 @@ function connectPanel(a, { fields, fieldBtn }) {
     if (detail.detail) { const f = a.fields.find((x) => x.key === key); kv(t(f?.label || key), line(t(detail.detail))); }
   }
   if (CONNECT_COST[a.id]) kv(t("Once connected"), line(t(CONNECT_COST[a.id])));
+  // its own settings, the rows Settings had (agentPrefRows), here where
+  // the agent is; shown once they are read, so none opens on a default
+  const own = agentPrefsOf(a);
+  if (own) {
+    const list = el("div", "list prefs ag-prefs");
+    homeAgentPrefRows();
+    list.append(...own.map((id) => $("#" + id)));
+    kv(t("Settings"), list);
+    if (!prefs) {
+      list.hidden = true;
+      loadSettings().then(() => { list.hidden = false; }, (e) => status(e.message, "err"));
+    }
+  }
   if (a.launch) {
     const cp = el("button", "ag-quiet", t("Copy"));
     cp.type = "button";
@@ -3564,6 +3581,8 @@ function openAgentMenu(anchor, a, inFold) {
     : [
         { name: "Move up", icon: MOVE_UP, key: ALT + "↑", off: i <= 0, run: () => moveAgent(a.id, i - 1) },
         { name: "Move down", icon: MOVE_DOWN, key: ALT + "↓", off: i < 0 || i >= shown.length - 1, run: () => moveAgent(a.id, i + 1) },
+        // its own settings, as the square on its row opens them
+        ...(agentPrefsOf(a) ? [{ name: t("{agent} settings", { agent: a.name }), literal: true, icon: PREFS_GLYPH, sep: true, run: () => openAgentPrefs(a) }] : []),
         // for a config rewritten in a way magpie can't see: set it again anyway
         ...(reapply ? [{ name: "Apply again", icon: REAPPLY, sep: true, run: () => reapplyAgent(a) }] : []),
         ...(a.drift?.kind === "replaced" ? [{ name: "Keep current settings", icon: CHECK, run: () => keepAgent(a) }] : []),
@@ -3733,6 +3752,24 @@ function menuTitle(f) {
 function subEffortTitle(a, f, opt) {
   return t("{label}: {value}", { label: t(f.label), value: effortName(opt || { value: f.value }) }) +
     (f.value ? "" : "\n" + t(a.id === "claude" || a.id.split("@wsl:")[0] === "claude-desktop" ? "the effort Claude Code asks for" : "the session's effort, or the subagent model's own default"));
+}
+
+// agentPrefsButton: the panel's line that opens the agent's own settings
+// (openAgentPrefs), named as its other lines are
+function agentPrefsButton(a) {
+  const b = el("button", "field side agent-prefs-open");
+  b.type = "button";
+  const c = el("span", "chev");
+  c.append(svg(CHEV_R, 10, 1.6));
+  // what is in it, by the rows' own names
+  homeAgentPrefRows();
+  const names = agentPrefsOf(a).map((id) => $("#" + id)).filter((r) => !r.hidden).map((r) => r.querySelector(".name").textContent);
+  b.append(el("span", "k", t("Settings")), el("span", "v", names.join(" · ")), c);
+  b.title = t("{agent} settings", { agent: a.name });
+  b.setAttribute("aria-label", b.title);
+  b.setAttribute("aria-haspopup", "dialog");
+  b.onclick = (ev) => { ev.stopPropagation(); openAgentPrefs(a); };
+  return b;
 }
 
 // launchButton copies the command that starts an agent on magpie, for one
@@ -19495,8 +19532,7 @@ function renderSettings() {
   row(t("Community"), t("questions, ideas and feedback, on Discord or GitHub"), "", join, repo);
   // gateway mode leaves out what is written into this computer's agents'
   // files, and the alerts its desktop would show
-  for (const r of [$("#plainNamesSegs").parentElement, $("#codexAgentsV1Segs").parentElement, $("#fullContextSegs").parentElement, $("#codexAsyncRow"),
-    $("#codexTitlesRow"), $("#codexDescriptionsRow"), $("#codexPredictionsRow"), $("#codexAutoReviewRow"), $("#usageAlertRow"), $("#balanceAlertRow"), $("#resetReminderRow"), $("#turnDoneRow")]) r.hidden = gatewayMode;
+  for (const r of [$("#plainNamesSegs").parentElement, $("#usageAlertRow"), $("#balanceAlertRow"), $("#resetReminderRow"), $("#turnDoneRow")]) r.hidden = gatewayMode;
   // the parts' tabs, one gone whose rows are all hidden here
   setSetTab(setTab);
 }
@@ -20137,59 +20173,8 @@ function renderTrayUsage(s, keep) {
   renderAlerts(s, keep);
   $("#plainNamesSegs").replaceChildren(suffixSegs());
   sayNoNamesInSettings();
-  // Codex's own models in multi-agent V1 (their subagents' tasks go as text),
-  // so a GPT lead can run a subagent on magpie's other models (#141). Where
-  // Codex's own multi_agent_v2 is on in the config magpie routes it wins, and
-  // magpie writes nothing: the row says so and the user turns it off.
-  const v1Warn = $("#codexAgentsV1Warn");
-  v1Warn.hidden = !s.notice;
-  v1Warn.textContent = s.notice ? tNotice(s.notice) : "";
-  $("#codexAgentsV1Segs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.codexAgentsV1 ? "on" : "off", (v) =>
-    writingPrefs(api("settings/codex-agents-v1", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); if (ns.notice) status(tNotice(ns.notice), "warn", 9000); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
-  // a 1M model's whole window, or compacting at the working one (X: Chen,
-  // 70–90s to a first token at 550K)
-  // at a size the user types too, not 272K alone (#876); a provider's own
-  // Compact at comes before either
-  const setCompact = (body) => writingPrefs(api("settings/full-context", body)).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); });
-  const at = contextsText({ "*": s.compactAt || 272000 });
-  const compactSegs = segs([["off", t("Compact at {n}", { n: at.toUpperCase() })], ["on", t("Full window")]], s.fullContext ? "on" : "off", (v) => setCompact({ on: v === "on" }));
-  const compactNum = input(s.compactAt ? at : "", "272k");
-  compactNum.className = "words compact-num";
-  compactNum.hidden = !!s.fullContext;
-  compactNum.title = t("Compact at");
-  compactNum.setAttribute("aria-label", t("Compact at"));
-  compactNum.onchange = () => {
-    const r = parseContexts(compactNum.value);
-    const n = r.map?.["*"] || 0;
-    if (r.error || Object.keys(r.map).some((k) => k !== "*")) return status(t("Compact at: {v} is not a number of tokens like 272k", { v: compactNum.value.trim() }), "err");
-    setCompact({ on: false, at: n });
-  };
-  const compactRow = el("div", "compact-at");
-  compactRow.append(compactSegs, compactNum);
-  $("#fullContextSegs").replaceChildren(compactRow);
-  // Codex's background compaction (#2490): [features.async_compaction] and
-  // its threshold, written where magpie routes Codex (codex_async.go)
-  const setAsync = (body) => writingPrefs(api("settings/codex-async-compact", body)).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); });
-  const asyncSegs = segs([["off", t("Off")], ["on", t("On")]], s.codexAsyncCompact ? "on" : "off", (v) => setAsync({ on: v === "on" }));
-  const asyncNum = input(s.codexAsyncCompactPercent ? s.codexAsyncCompactPercent + "%" : "", "65%");
-  asyncNum.className = "words compact-num";
-  asyncNum.hidden = !s.codexAsyncCompact;
-  asyncNum.title = t("Background compaction at");
-  asyncNum.setAttribute("aria-label", t("Background compaction at"));
-  asyncNum.onchange = () => {
-    const v = asyncNum.value.trim().replace(/\s*%$/, "");
-    const n = v === "" ? 0 : Number(v);
-    if (!Number.isInteger(n) || n < 0 || n > 100) return status(t("Background compaction at: {v} is not a percent from 1 to 100", { v: asyncNum.value.trim() }), "err");
-    setAsync({ on: true, percent: n });
-  };
-  const asyncRow = el("div", "compact-at");
-  asyncRow.append(asyncSegs, asyncNum);
-  $("#codexAsyncSegs").replaceChildren(asyncRow);
-  renderCodexTitles(s);
-  renderCodexDescriptions(s);
-  renderCodexPredictions(s);
-  renderCodexAutoReview(s);
-  renderCodexMemories();
+  renderAgentPrefs();
+  renderAgentPrefLinks();
   const rate = s.fx?.rate;
   const currencySub = $("#currencySub");
   currencySub.textContent = t("What a cost — the Usage page's, the tray panel's, the TUI's and the CLI's — is shown as; a vendor's own balance, already in its own currency, is never converted");
@@ -20733,6 +20718,149 @@ function renderAlerts(s, keep) {
   $("#turnDoneSegs").replaceChildren(segs(turnOpts, String(d), (v) => savePrefs({ ...keep, turnDoneAlert: Number(v) })));
 }
 
+// AGENT_PREFS: an agent's own settings, by its id, each a row kept in
+// #agentPrefRows and shown in the agent's sheet (openAgentPrefs). They sat
+// in Settings, apart from the agents they set (the owner, 10-20); Long
+// conversations is Codex's and Claude Code's both, in each one's sheet.
+const AGENT_PREFS = {
+  codex: ["codexAgentsV1Row", "fullContextRow", "codexAsyncRow", "codexTitlesRow", "codexDescriptionsRow", "codexPredictionsRow", "codexAutoReviewRow", "codexMemoriesRow"],
+  claude: ["fullContextRow"],
+};
+const agentPrefsOf = (a) => gatewayMode ? null : AGENT_PREFS[a.id.split("@wsl:")[0]];
+const PREFS_GLYPH = "M2.75 4.75h10.5M2.75 11.25h10.5M5.75 3.25v3M10.25 9.75v3";
+let agentPrefRowEls = null;
+// homeAgentPrefRows puts back the rows a sheet took with it when another
+// dialog replaced it, so every row is in the page to be drawn
+function homeAgentPrefRows() {
+  const box = $("#agentPrefRows");
+  agentPrefRowEls ||= [...box.children];
+  for (const r of agentPrefRowEls) if (!r.isConnected) box.append(r);
+}
+
+// openAgentPrefs: the agent's own settings in a sheet, as the Manage
+// agents one opens; the settings read first, so it opens on what is set
+async function openAgentPrefs(a) {
+  const ids = agentPrefsOf(a);
+  if (!ids) return;
+  try { await loadSettings(); } catch (e) { return status(e.message, "err"); }
+  homeAgentPrefRows();
+  const ed = el("div", "editor agent-prefs");
+  const head = el("div", "ehead");
+  head.append(el("b", "", t("{agent} settings", { agent: a.name })));
+  const list = el("div", "list prefs");
+  for (const id of ids) list.append($("#" + id));
+  const bar = el("div", "bar");
+  const done = el("button", "primary", t("Done"));
+  done.type = "button";
+  done.onclick = () => closeConfirmAsk();
+  bar.append(el("span", "grow"), done);
+  ed.append(head, list, bar);
+  confirmAsk = ed;
+  openModal(ed);
+  // an opened row it took them from has them back once the sheet is shut
+  const m = $("#modal"), back = new MutationObserver(() => {
+    if (!m.hidden && m.firstElementChild.contains(ed)) return;
+    back.disconnect();
+    homeAgentPrefRows();
+    if (agentExpanded) renderAgents();
+  });
+  back.observe(m, { attributes: true, attributeFilter: ["hidden"], childList: true, subtree: true });
+}
+
+// renderAgentPrefs draws those rows, wherever they are: the sheet's
+// controls are the ones Settings had, written the same way
+function renderAgentPrefs() {
+  const s = prefs;
+  if (!s) return;
+  homeAgentPrefRows();
+  // Codex's own models in multi-agent V1 (their subagents' tasks go as text),
+  // so a GPT lead can run a subagent on magpie's other models (#141). Where
+  // Codex's own multi_agent_v2 is on in the config magpie routes it wins, and
+  // magpie writes nothing: the row says so and the user turns it off.
+  const v1Warn = $("#codexAgentsV1Warn");
+  v1Warn.hidden = !s.notice;
+  v1Warn.textContent = s.notice ? tNotice(s.notice) : "";
+  $("#codexAgentsV1Segs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.codexAgentsV1 ? "on" : "off", (v) =>
+    writingPrefs(api("settings/codex-agents-v1", { on: v === "on" })).then((ns) => { prefs = ns; renderSettings(); if (ns.notice) status(tNotice(ns.notice), "warn", 9000); }).catch((e) => { status(t(e.message), "err"); renderSettings(); })));
+  // a 1M model's whole window, or compacting at the working one (X: Chen,
+  // 70–90s to a first token at 550K)
+  // at a size the user types too, not 272K alone (#876); a provider's own
+  // Compact at comes before either
+  const setCompact = (body) => writingPrefs(api("settings/full-context", body)).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); });
+  const at = contextsText({ "*": s.compactAt || 272000 });
+  const compactSegs = segs([["off", t("Compact at {n}", { n: at.toUpperCase() })], ["on", t("Full window")]], s.fullContext ? "on" : "off", (v) => setCompact({ on: v === "on" }));
+  const compactNum = input(s.compactAt ? at : "", "272k");
+  compactNum.className = "words compact-num";
+  compactNum.hidden = !!s.fullContext;
+  compactNum.title = t("Compact at");
+  compactNum.setAttribute("aria-label", t("Compact at"));
+  compactNum.onchange = () => {
+    const r = parseContexts(compactNum.value);
+    const n = r.map?.["*"] || 0;
+    if (r.error || Object.keys(r.map).some((k) => k !== "*")) return status(t("Compact at: {v} is not a number of tokens like 272k", { v: compactNum.value.trim() }), "err");
+    setCompact({ on: false, at: n });
+  };
+  const compactRow = el("div", "compact-at");
+  compactRow.append(compactSegs, compactNum);
+  $("#fullContextSegs").replaceChildren(compactRow);
+  // Codex's background compaction (#2490): [features.async_compaction] and
+  // its threshold, written where magpie routes Codex (codex_async.go)
+  const setAsync = (body) => writingPrefs(api("settings/codex-async-compact", body)).then((ns) => { prefs = ns; renderSettings(); }).catch((e) => { status(t(e.message), "err"); renderSettings(); });
+  const asyncSegs = segs([["off", t("Off")], ["on", t("On")]], s.codexAsyncCompact ? "on" : "off", (v) => setAsync({ on: v === "on" }));
+  const asyncNum = input(s.codexAsyncCompactPercent ? s.codexAsyncCompactPercent + "%" : "", "65%");
+  asyncNum.className = "words compact-num";
+  asyncNum.hidden = !s.codexAsyncCompact;
+  asyncNum.title = t("Background compaction at");
+  asyncNum.setAttribute("aria-label", t("Background compaction at"));
+  asyncNum.onchange = () => {
+    const v = asyncNum.value.trim().replace(/\s*%$/, "");
+    const n = v === "" ? 0 : Number(v);
+    if (!Number.isInteger(n) || n < 0 || n > 100) return status(t("Background compaction at: {v} is not a percent from 1 to 100", { v: asyncNum.value.trim() }), "err");
+    setAsync({ on: true, percent: n });
+  };
+  const asyncRow = el("div", "compact-at");
+  asyncRow.append(asyncSegs, asyncNum);
+  $("#codexAsyncSegs").replaceChildren(asyncRow);
+  renderCodexTitles(s);
+  renderCodexDescriptions(s);
+  renderCodexPredictions(s);
+  renderCodexAutoReview(s);
+  renderCodexMemories();
+}
+
+// renderAgentPrefLinks: Settings' search still finds the settings an agent's
+// sheet holds, each a row saying where it is that opens the sheet; shown
+// only while searching (app.css)
+function renderAgentPrefLinks() {
+  const box = $("#agentPrefLinks");
+  box.replaceChildren();
+  homeAgentPrefRows();
+  for (const r of agentPrefRowEls) {
+    const agents = state.agents.filter((a) => agentPrefsOf(a)?.includes(r.id) && !a.id.includes("@wsl:"));
+    if (!agents.length || (r.id === "codexMemoriesRow" && r.hidden)) continue;
+    const row = el("div", "row pref agent-pref-link");
+    const who = el("div", "who");
+    const name = r.querySelector(".name");
+    const n = el("div", "name", name.textContent);
+    n.dataset.en = name.dataset.en || name.textContent;
+    who.append(n);
+    who.append(el("div", "sub", t("In {agent}'s settings, on the Agents page", { agent: agents.map((a) => a.name).join(", ") })));
+    // the row's own line, unshown, is searched as well
+    const sub = r.querySelector(".sub:not(.err)");
+    if (sub) {
+      const says = el("span", "", sub.textContent);
+      says.hidden = true;
+      says.dataset.en = sub.dataset.en || sub.textContent;
+      who.append(says);
+    }
+    const go = el("button", "text", t("Open"));
+    go.type = "button";
+    go.onclick = async () => { if (await show("agents") !== false) openAgentPrefs(agents[0]); };
+    row.append(who, go);
+    box.append(row);
+  }
+}
+
 // renderCodexDescriptions picks the model for descriptions independently
 // of titles; an empty setting preserves Codex's requested model.
 function renderCodexDescriptions(s) {
@@ -20844,8 +20972,10 @@ function renderCodexAutoReview(s) {
 // subagent squares, and wasn't found). It is the card's own field, picked
 // in the same picker and written the same way, so the row and the square
 // show one setting; renderAgents draws the row again after every pick.
+// The row is in Codex's sheet now (openAgentPrefs), not Settings.
 // No Codex with a memories field to pick: no row.
 function renderCodexMemories() {
+  homeAgentPrefRows();
   const row = $("#codexMemoriesRow");
   if (!row) return;
   const a = state.agents.find((x) => x.id === "codex");
