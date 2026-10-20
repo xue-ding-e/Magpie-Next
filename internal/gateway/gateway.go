@@ -722,8 +722,15 @@ func responsesOverHTTP(w http.ResponseWriter, r *http.Request) {
 	writeError(w, provider.Responses, http.StatusMethodNotAllowed, "POST /v1/responses")
 }
 
+// catalogSize is how many models the catalog has, as info says, kept by
+// provider.StampNow: every magpie on this computer asks another which
+// it is (ServedBy, a window's every 15s, each look at its state while it
+// doesn't serve), and each question built the whole catalog to count it,
+// 5.4 GB of a day's 36 GB of allocations.
+var catalogSize stamped[struct{}, int]
+
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"name": "magpie", "version": Version, "models": len(provider.Catalog()), "window": Window,
+	out := map[string]any{"name": "magpie", "version": Version, "models": catalogSize.get(struct{}{}, func() int { return len(provider.Catalog()) }), "window": Window,
 		"apis": []string{"/v1/chat/completions", "/v1/responses", "/v1/messages", "/v1/systemone", "/v1beta/models/{model}:generateContent", "/v1/images/generations", "/v1/images/edits", "/v1/videos", "/v1/embeddings", "/v1/rerank", "/v1/audio/transcriptions", "/v1/audio/translations", "/v1/magpie/quotas", "/v1/magpie/quotas/history", "/v1/magpie/usage", "/v1/magpie/usage/requests", "/v1/magpie/route", "/v1/magpie/trace", SearchMCPPath, VisionMCPPath, ToolsMCPPath}}
 	// which process serves, for another magpie on this computer to name it
 	// on its Routing page (#2606); not told to another machine
