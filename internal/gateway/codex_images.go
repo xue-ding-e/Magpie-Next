@@ -321,28 +321,22 @@ func imageHolds(cfg image.Config, format string) (int, bool) {
 	return int(pixels) * bytesPerPixel, true
 }
 
-// fitsHead is how much of an image's base64 fitHolds reads to tell its
-// header: enough for a PNG's chunks and a JPEG's segments, and little
-// enough that asking costs nothing.
-const fitsHead = 4 << 10
-
 // fitHolds is what making an image of url will hold, from its header
-// alone, so that nothing is decoded to find out. An image it can't read
-// holds nothing and isn't made.
+// alone, so that nothing is decoded to find out: its pixels and the bytes
+// they came in, as codexImageRefit counts them. The header is read from
+// the base64 as a stream, as far as the format needs, so a JPEG whose
+// frame header sits behind a large EXIF segment is still counted; an
+// image whose header can't be read at all isn't made either.
 func fitHolds(url string) int {
 	comma := strings.IndexByte(url, ',')
 	if comma < 0 || !strings.HasSuffix(url[:comma], ";base64") {
 		return 0
 	}
 	b64 := url[comma+1:]
-	if len(b64) > fitsHead {
-		b64 = b64[:fitsHead&^3] // whole groups of four, as base64 reads them
+	if len(b64) > codexImageMaxBytes {
+		return 0 // codexImageRefit turns it away before decoding
 	}
-	head, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return 0
-	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(head))
+	cfg, format, err := image.DecodeConfig(base64.NewDecoder(base64.StdEncoding, strings.NewReader(b64)))
 	if err != nil {
 		return 0
 	}
@@ -350,7 +344,7 @@ func fitHolds(url string) int {
 	if !ok {
 		return 0
 	}
-	return holds
+	return min(base64.StdEncoding.DecodedLen(len(b64))+holds, holdsMost)
 }
 
 // fitEntry is what an image is sent as: data in mime, or, with no data,
