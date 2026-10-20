@@ -2652,19 +2652,37 @@ function routingPage(part) {
     if (rowsMoved) metaFit();
     renderActs(rs);
   }
-  // rowOf: a request's row, kept while what it says is the same
-  function rowOf(r) {
-    const lang = document.documentElement.lang;
+  // rowSays: what a request's row says, worked out once for each route the
+  // trace sends. A trace update replaces only the routes that changed
+  // (poll's routes.set), yet every update worked out again every row in
+  // sight: its outcome, metrics, token breakdown, title and a JSON
+  // signature, ~150 MB of garbage a minute at a request a second, which
+  // WebKit let pile up to a gigabyte while the window sat on Routing
+  // (#1481). Kept by the route object, it is worked out again only for a
+  // new route, or when the language, the metrics shown, the agent's name
+  // or icon, or the cost's wording changes.
+  const rowSaid = new WeakMap(); // route → { lang, shows, name, icon, cost, said, how, tr, ag, meta, metrics, title, sig }
+  function rowSays(r) {
+    const lang = document.documentElement.lang, shows = visibleMetrics.join();
+    const ag = agentOf(r.agent), name = agentName(r.agent), icon = ag?.icon, cost = routeCost(r);
+    let s = rowSaid.get(r);
+    if (s && s.lang === lang && s.shows === shows && s.name === name && s.icon === icon && s.cost === cost) { s.ag = ag; return s; }
     const [said, how, tr] = outcome(r);
-    const sel = String(pinned ? pinned.id === r.id : cur?.id === r.id);
-    const ag = agentOf(r.agent);
     const meta = [];
     if (r.tries.length > 1) meta.push(t("{n} tries", { n: r.tries.length }));
     const metrics = requestMetrics(r, how);
     // all the row says, and its titles
     const title = reqTitle(r, how, tr);
-    const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, agentName(r.agent), ag?.icon, r.model, r.provider, tagKind(r), r.effort,
-      tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, meta, metrics, routeCost(r)]);
+    const sig = JSON.stringify([lang, said, how, title, r.time, r.agent, name, ag?.icon, r.model, r.provider, tagKind(r), r.effort,
+      tr?.effort, tr?.picked, tr?.fixed, tr?.fast, tr?.swapped && tr.done && tryOk(tr) ? [tr.model, tr.served] : 0, tr?.routed && tr.done && tryOk(tr) ? tr.served : 0, tr?.done && tryOk(tr) ? tr.upstream : 0, meta, metrics, cost]);
+    s = { lang, shows, name, icon, cost, said, how, tr, ag, meta, metrics, title, sig };
+    rowSaid.set(r, s);
+    return s;
+  }
+  // rowOf: a request's row, kept while what it says is the same
+  function rowOf(r) {
+    const sel = String(pinned ? pinned.id === r.id : cur?.id === r.id);
+    const { said, how, tr, ag, meta, metrics, title, sig } = rowSays(r);
     let x = reqRows.get(r.id);
     if (!x || x.sig !== sig) {
       const row = x = { sig, b: reqRow(r, said, how, tr, ag, meta, metrics, title) };
