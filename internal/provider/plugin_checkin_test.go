@@ -306,7 +306,7 @@ func TestPluginCheckinTellsSignInsOfOneNameApart(t *testing.T) {
 	if rs := loop.checkinNow(ctx, false); len(rs) != 4 || len(pressed(t, presses)) != 4 {
 		t.Fatalf("a minute on: %+v, pressed %q", rs, pressed(t, presses))
 	}
-	st := readCheckins(pluginCheckinPath())
+	st := shownCheckins(pluginCheckinPath())
 	for who, k := range keys {
 		if r, ok := st[pluginCheckinKey("fakeco", k)]; !ok || r.Day != "2026-10-06" || r.Outcome != CheckinInactive {
 			t.Errorf("%s (%s) kept as %+v, ok %v; file %+v", who, k, r, ok, st)
@@ -408,7 +408,7 @@ func TestPluginCheckinCarriesOverDisplayNameEntries(t *testing.T) {
 	if heir == "" || namesake == "" {
 		t.Fatalf("A's sign-ins: %+v", ps[0].accounts)
 	}
-	st := readCheckins(pluginCheckinPath())
+	st := shownCheckins(pluginCheckinPath())
 	if r, ok := st[heir]; !ok || r.Outcome != CheckinClaimed || r.Credit != 400 || r.Day != "2026-10-06" {
 		t.Fatalf("A's check-in went to %s as %+v (ok %v): %+v", heir, r, ok, st)
 	}
@@ -473,7 +473,7 @@ func TestPluginCheckinCarriesNothingOverAnUnreadableFile(t *testing.T) {
 	if !adoptLegacyCheckinFile(path, order, heirs) {
 		t.Fatal("not carried once the file reads")
 	}
-	st := readCheckins(path)
+	st := shownCheckins(path)
 	if _, ok := st["fakeco|fakeco"]; !ok || len(st) != 1 {
 		t.Fatalf("carried as %+v", st)
 	}
