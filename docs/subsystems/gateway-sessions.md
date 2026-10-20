@@ -475,13 +475,17 @@ for the session) and `start`/`last`; its file is never sent.
   other system triggers, and any in `agents/main`, stay folded.
 
 These are read beside the parsed-session cache, not in it, so its version
-is unchanged. `GET /api/sessions/transcript` takes `sub=<id>` for a
+is unchanged. Only the Sessions list and a session's own lookups build
+them (`assemble`); the stats, the native-session keys, `Titles` and the
+id lookups use `assembleListed`, which stops before resume, transcript and
+subagents, so a stats poll reads no subagent's file.
+`GET /api/sessions/transcript` takes `sub=<id>` for a
 subagent's conversation; the id is looked up among the session's own
 `subagents` (`sessions.SubagentTranscript`), never used as a path, and one
 not listed is an error. See `TestClaudeSubagents`, `TestQoderSubagents`,
 `TestOpenCodeSubagents`, `TestOpenCodeV2SubagentKind`, `TestKimiSubagents`,
 `TestKimiSubagentTask`, `TestSubagentTaskReadOnlyWhenTheFileChanges`,
-`TestSubagentWithMetaTaskIsNotReadForIt` and
+`TestSubagentWithMetaTaskIsNotReadForIt`, `TestStatsReadNoSubagentFile` and
 `TestSessionSubagentTranscript`.
 
 The Sessions page draws only main sessions on top. A session's subagents are
