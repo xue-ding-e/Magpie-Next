@@ -137,4 +137,17 @@ async function openPart(page, id) {
   await page.locator(`:is(#setTab-${id}, .nav-s[data-of=setTab-${id}]):visible`).press("Enter");
 }
 
-module.exports = { inView, reach, wheelTo, click, openPart, watchSettingsReads, settingsDrawn };
+// agentRow is a connected agent as /api/state lists it, opened by its
+// Details; openAgentSettings opens it on the Agents page, where its own
+// settings are (Settings had them till the owner, 10-20), and waits till
+// they are read and drawn. Watch the settings reads first.
+const agentRow = (id, name) => ({ id, name, icon: id, wired: true, fields: [{ key: "model", label: "model", value: "relay/m1", options: [{ value: "relay/m1", label: "m1", ref: "relay/m1" }] }] });
+async function openAgentSettings(page, id = "codex") {
+  const link = page.locator(`.row.agent[data-id="${id}"] .ag-link`);
+  await reach(page, link);
+  await link.click();
+  await page.locator(`.row.agent[data-id="${id}"] .ag-prefs`).waitFor();
+  await page.waitForFunction(() => __settingsReads.asked > 0 && __settingsReads.asked === __settingsReads.drawn);
+}
+
+module.exports = { inView, reach, wheelTo, click, openPart, watchSettingsReads, settingsDrawn, agentRow, openAgentSettings };
