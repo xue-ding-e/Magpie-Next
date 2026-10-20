@@ -3237,6 +3237,12 @@ function routingPage(part) {
     if (aside) say(aside, true);
     renderAll();
     const A = agents.get(r.agent);
+    // an agent past the stage's four (staged) isn't drawn: its request is
+    // listed, not flown
+    if (!A) {
+      if (playing.get(id) === g) playing.delete(id);
+      return;
+    }
     const dot = packet();
     dot.style.setProperty("--agent", hueOf(r.agent));
     // from: where in magpie the dot is, once it is — the way it came in
