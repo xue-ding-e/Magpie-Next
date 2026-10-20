@@ -44,7 +44,10 @@ const row = '.row.agent[data-id="codex"]';
 // name's and the switch's offsets, and the opened part's top
 const where = (page) => page.evaluate((r) => {
   const el = document.querySelector(r), top = el.getBoundingClientRect().top;
-  const at = (s) => Math.round(el.querySelector(s)?.getBoundingClientRect().top - top);
+  // to a quarter pixel: a switch centred at 18.5px came out 18.4999 or 18.5
+  // between two layouts that drew it in the same place, and rounding that to
+  // a whole pixel read 18 or 19 (#1583)
+  const at = (s) => Math.round((el.querySelector(s)?.getBoundingClientRect().top - top) * 4) / 4;
   return { height: Math.round(el.getBoundingClientRect().height), line: parseFloat(getComputedStyle(el).borderBottomWidth), who: at(":scope > .who"), sw: at(":scope > .ag-conn"), exp: el.querySelector(".ag-exp") ? at(":scope > .ag-exp") : null };
 }, row);
 // the row's height every frame for a while, from a click on its link
