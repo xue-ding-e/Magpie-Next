@@ -2380,9 +2380,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// while another candidate could answer instead: the last one's
 		// refusal isn't asked again, so holding it only kept a lone relay's
 		// thinking from Claude Code and Codex until the text began, all at
-		// once (iTianbao on X). Gemini's stays held on the last one too,
-		// for a reply that only reasoned to be asked again (#667).
-		hw.thinkingShown = !refusesAfterThinking(c.model) || last && modelFamily(c.model) != ""
+		// once (iTianbao on X). Gemini's goes as it comes there too: a
+		// reply that only reasoned is asked again in place, its reasoning
+		// kept and the next try's after it (streamTranslated, #667), so
+		// holding it kept Codex on a Gemini model with nothing at all,
+		// not even response.created, for the whole of its thinking
+		// (LuckymanJC on Discord).
+		hw.thinkingShown = !refusesAfterThinking(c.model) || last
 		hw.ctx, hw.alive, hw.streams = r.Context(), kept, streams
 		report := cacheReport
 		if c.p.Account == nil || c.p.Account.Agent != "claude" {
