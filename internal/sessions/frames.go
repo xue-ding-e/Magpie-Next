@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -19,6 +20,17 @@ import (
 // last frame not yet written whole waits for the next read.
 
 var errFrame = errors.New("not a zstd frame")
+
+// frameDecoders holds the decoders frames are decoded whole with, kept
+// between reads as openLines keeps its own (streams): one that has read a
+// stream holds its block decoder, which DecodeAll waits for.
+var frameDecoders = sync.Pool{New: func() any {
+	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true))
+	if err != nil {
+		panic(err)
+	}
+	return d
+}}
 
 // readFrame reads the frame at r into buf: a zstd frame whole, nil for a
 // skippable one. io.ErrUnexpectedEOF when the file ends inside it, io.EOF
@@ -131,12 +143,10 @@ func scanFrames(path string, off, skip int64, fn func([]byte) bool) (next, nextS
 	if _, err = f.Seek(off, io.SeekStart); err != nil {
 		return
 	}
-	dec, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true))
-	if err != nil {
-		return
-	}
-	defer dec.Close()
-	r := bufio.NewReaderSize(f, scanBuffer(f, off))
+	dec := frameDecoders.Get().(*zstd.Decoder)
+	defer frameDecoders.Put(dec)
+	r, release := lineReader(f, scanBuffer(f, off))
+	defer release()
 	var frame, out, pending []byte
 	at := off
 	first := true
