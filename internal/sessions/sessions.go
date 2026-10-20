@@ -852,12 +852,15 @@ func refresh(want, all []file) {
 		go func() {
 			for i := range ch {
 				j := &jobs[i]
+				// its file's calls lock is taken before a read slot, as
+				// readCalls takes them
+				calls := callsAlong(j.f)
 				release := readSlot()
 				end := readBegin()
 				if parseHook != nil {
 					parseHook()
 				}
-				j.parsed = parse(j.f, j.old)
+				j.parsed = parseWith(j.f, j.old, calls)
 				end()
 				release()
 				if (j.parsed.Claude != nil && !windows[j.f.path]) || (j.parsed.Claude == nil && !recentRevision(j.parsed.Mod, j.parsed.revisionWeight(), time.Now())) {
@@ -1293,7 +1296,14 @@ func parserFor(agent string) sessionParser {
 }
 
 // parse reads a file on from where old left it, or from the start.
-func parse(f file, old *state) *state {
+func parse(f file, old *state) *state { return parseWith(f, old, nil) }
+
+// parseWith is parse with calls, when not nil, reading the file's calls on
+// the same pass.
+func parseWith(f file, old *state, calls *callsRide) *state {
+	if calls != nil {
+		defer calls.release()
+	}
 	// Summary caches contain aggregates only. After a restart, a changed
 	// Codex file rebuilds its transient response index from the source.
 	if f.agent == "codex" && old != nil && old.Codex == nil {
@@ -1325,12 +1335,19 @@ func parse(f file, old *state) *state {
 	if f.agent == "codex" {
 		head = func(b []byte) bool { return codexHead(s, b, f.main) }
 	}
-	off, err := scanAt(f.path, s.Off, head, func(b []byte, _, _ int64) bool {
+	line := func(b []byte, _, _ int64) bool {
 		parser.line(s, b, f.main)
 		return true
-	})
+	}
+	if calls != nil {
+		head, line = calls.ride(head, line)
+	}
+	off, err := scanAt(f.path, s.Off, head, line)
 	if err == nil {
 		s.Off = off
+	}
+	if calls != nil {
+		calls.finish(off, err)
 	}
 	if isBuddy(f.agent) && s.Cwd == "" {
 		workbuddyMeta(s, f.path)
