@@ -15669,8 +15669,9 @@ function usageAcctFold(q, open) {
 
 // The Usage page's cards in the order they were dragged to (settings
 // usageOrder, by provider id), as the Agents page's rows are; one it doesn't
-// name keeps magpie's own order after them. The tray panel's Usage tab
-// follows it too.
+// name keeps the order magpie sends them in after them, the Providers
+// page's (provider.InProviderOrder). The tray panel's Usage tab follows it
+// too.
 function byUsageOrder(list) {
   const order = state.settings?.usageOrder || [];
   const rank = (q) => { const i = order.indexOf(q.provider); return i < 0 ? order.length : i; };
