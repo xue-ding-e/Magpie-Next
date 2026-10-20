@@ -1144,6 +1144,26 @@ func sessionID(fs []file) string {
 
 // assemble puts a session together from its files' parses.
 func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
+	s, ok := assembleListed(fs, price)
+	if !ok {
+		return s, false
+	}
+	if !s.ReadOnly {
+		s.Resume = resumeCommand(s.WSL, s.Agent, s.ID, s.Cwd, s.Path)
+	}
+	s.Carry, s.Transcript = carries(s), HasTranscript(s.Agent)
+	if s.Transcript {
+		s.Subagents = subagentsOf(s, fs)
+	}
+	return s, true
+}
+
+// assembleListed is assemble without what only a listed session's row shows (how
+// to resume it, its subagents): whether List lists the session, and its
+// agent, id, title and usage. The stats ask it of every session on each
+// poll, and building every session's subagents there read each Claude Code
+// subagent's file again (3.5 GB of a live magpie's 6.3 GB of scans).
+func assembleListed(fs []file, price func(string) *catalog.Price) (Session, bool) {
 	sortSessionFiles(fs)
 	s := Session{Agent: fs[0].agent, Path: fs[0].path, Models: []Model{}, WSL: fs[0].wsl}
 	for _, f := range fs {
@@ -1226,13 +1246,6 @@ func assemble(fs []file, price func(string) *catalog.Price) (Session, bool) {
 	}
 	if s.Title == "" && s.Tokens.zero() {
 		return s, false // nothing was said in it
-	}
-	if !s.ReadOnly {
-		s.Resume = resumeCommand(s.WSL, s.Agent, s.ID, s.Cwd, s.Path)
-	}
-	s.Carry, s.Transcript = carries(s), HasTranscript(s.Agent)
-	if s.Transcript {
-		s.Subagents = subagentsOf(s, fs)
 	}
 	return s, true
 }
@@ -1750,7 +1763,7 @@ func Titles(keys []string) map[string]string {
 	identities := codexIdentitySnapshot(fs)
 	price := pricer()
 	for k, g := range groups {
-		if s, ok := assemble(g, price); ok {
+		if s, ok := assembleListed(g, price); ok {
 			setSessionCodexIdentity(&s, identities)
 			setSessionCodexTaskTitle(&s, taskTitles)
 			if s.Title == "" {
