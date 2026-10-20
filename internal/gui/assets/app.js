@@ -22730,11 +22730,12 @@ function editRedactRule(r, n, row) {
   if (d.err) head.querySelector(".sub").classList.add("err");
 }
 
-// renderPort: the gateway's port on this computer (Magic_zero on Discord:
-// 3425 taken by another program, or one easier to tell apart). Any port
-// from 1024 up can be typed; magpie moves its gateway there and every
+// renderPort: the gateway's address on this computer (Magic_zero on Discord:
+// 3425 taken by another program, or one easier to tell apart). Only its
+// port, 1024 up, is typed here; magpie moves its gateway there and every
 // agent it connected with it, or says why it can't (another program has
-// it). MAGPIE_ADDR, set, comes first and the field says so.
+// it). MAGPIE_ADDR, a whole host:port, comes first and the field shows it,
+// off (Chicring on Discord: the row was titled a port while it showed one).
 let portDraft = { value: null, err: "" };
 // portSays is the gateway's word on a port it couldn't take, in the page's
 // language: it says the port, so it is matched rather than looked up
@@ -22749,23 +22750,23 @@ function renderPort(s) {
   const box = $("#portList");
   const r = el("div", "row pref port-row");
   const who = el("div", "who");
-  who.append(el("div", "name", t("Gateway port")));
+  who.append(el("div", "name", t("Gateway address")));
   const sub = el("div", "sub");
   const d = portDraft;
   const now = s.addrEnv ? "" : String(s.port || 3425);
   const field = input(d.value ?? now, "3425");
   field.className = "words gateway-port";
   field.inputMode = "numeric";
-  field.setAttribute("aria-label", t("Gateway port"));
+  field.setAttribute("aria-label", t("Gateway address"));
   const save = el("button", "text", t("Apply"));
   if (s.addrEnv) {
     field.value = s.addrEnv;
     field.disabled = save.disabled = true;
-    sub.textContent = t("MAGPIE_ADDR={addr} sets the gateway’s address: unset it to set the port here", { addr: s.addrEnv });
+    sub.textContent = t("MAGPIE_ADDR={addr} sets the gateway’s whole address, host:port: unset it to set the port here", { addr: s.addrEnv });
   } else if (d.err) {
     sub.textContent = d.err;
     sub.classList.add("err");
-  } else sub.textContent = t("Agents magpie connected move with it. Now {url}", { url: s.gateway || "" });
+  } else sub.textContent = t("Only the port is set here, 1024 to 65535; MAGPIE_ADDR=host:port sets the whole address instead. Agents magpie connected move with it. Now {url}", { url: s.gateway || "" });
   who.append(sub);
   save.onclick = () => {
     const p = Number(field.value.trim());
