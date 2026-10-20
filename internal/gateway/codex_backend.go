@@ -162,6 +162,13 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 		// the ChatGPT backend checks every item id as OpenAI does
 		body = plainItemIDs(boundCallIDs(callItemIDs(body)))
 		if rest == "/responses/compact" {
+			// Codex compacts a thread before its first turn back on one of
+			// its own models; the thread's reasoning from another vendor
+			// goes, as it does from a turn: with its text in it, the
+			// backend refuses the whole compaction over "input[n].content:
+			// array too long", and Codex shows it as the turn's error
+			// (jue on Discord). A summary magpie made goes as its text.
+			body, _ = codexInput(body, false)
 			// a key held to some accounts (#905) may not spend the sign-in
 			// compaction still relays on: refused as its turns are (#967),
 			// with nothing asked of OpenAI — and refused when the sign-in
