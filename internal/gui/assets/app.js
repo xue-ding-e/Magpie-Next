@@ -8460,6 +8460,26 @@ function fromRect(from, to) {
   const dx = from.left + from.width / 2 - (to.left + to.width / 2), dy = from.top + from.height / 2 - (to.top + to.height / 2);
   return `translate(${dx}px, ${dy}px) scale(${s})`;
 }
+// morphFrom: the dialog drawn as the rect it grows out of — moved over it,
+// scaled, and clipped to its shape. A provider row is wider than the
+// dialog, so scale alone left it a full-size dialog sliding in from the
+// row's middle (the owner: "从右上角弹出"); clipped, it opens as a strip
+// the row's height that grows into the dialog, and closes back into it.
+// At rest the clip stands clear of the dialog so its shadow shows all the
+// way (inset can go negative in both engines).
+const MORPH_REST = "inset(-100px round 14px)";
+function morphFrom(from, to) {
+  const s = Math.max(.3, Math.min(1, from.width / to.width));
+  const w = Math.min(to.width, from.width / s), h = Math.min(to.height, from.height / s);
+  const r = Math.min(10, from.height / 2) / s;
+  return { transform: fromRect(from, to), clipPath: `inset(${(to.height - h) / 2}px ${(to.width - w) / 2}px round ${r}px)` };
+}
+// VEIL_OFF: the backdrop gone. It is the modal's own background and blur, so
+// fading the modal's opacity faded the dialog in it too, and a dialog
+// folding back into its row was all but gone halfway there; the backdrop
+// fades by itself instead.
+const VEIL_OFF = { backgroundColor: "rgba(0, 0, 0, 0)", backdropFilter: "blur(0px) saturate(1)", webkitBackdropFilter: "blur(0px) saturate(1)" };
+const unveil = (m) => { for (const p of ["opacity", "background-color", "backdrop-filter", "-webkit-backdrop-filter"]) m.style.removeProperty(p); };
 let modalReturnFocus = null, modalFormBase = "";
 function formValues(box) {
   return JSON.stringify([
@@ -8634,15 +8654,28 @@ function openModal(content) {
   holdModal();
   if (!fresh) return;
   for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
-  d.style.opacity = d.style.transform = m.style.opacity = "";
+  d.style.opacity = d.style.transform = d.style.clipPath = "";
+  unveil(m);
   modalDone = null;
   modalOrigin = pressed && performance.now() - pressed.time < 1000 ? pressed : null;
   pressed = null;
-  m.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, easing: "ease-out" });
+  m.animate([{ ...VEIL_OFF, offset: 0 }], { duration: 280, easing: "ease-out" });
   if (calm()) { d.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 }); return; }
   const to = d.getBoundingClientRect(), from = originRect(modalOrigin);
-  d.animate([{ transform: from ? fromRect(from, to) : "translateY(24px) scale(.94)" }, { transform: "none" }], { duration: 570, easing: SPRING });
-  d.animate([{ opacity: 0 }, { opacity: 1 }], { duration: from ? 200 : 240, easing: "ease-out" });
+  const grow = d.animate(from ? [morphFrom(from, to), { transform: "none", clipPath: MORPH_REST }] : [{ transform: "translateY(24px) scale(.94)" }, { transform: "none" }], { duration: 570, easing: SPRING });
+  d.animate([{ opacity: 0 }, { opacity: 1 }], { duration: from ? 140 : 240, easing: "ease-out" });
+  if (!from) return;
+  // an editor can settle its size after it was measured (a provider's grew
+  // 30px shorter as it filled in), which left the strip off the row; while
+  // it grows, the start follows the size it has now
+  const x0 = d.offsetLeft, y0 = d.offsetTop;
+  const follow = new ResizeObserver(() => {
+    const now = { left: to.left + d.offsetLeft - x0, top: to.top + d.offsetTop - y0, width: d.offsetWidth, height: d.offsetHeight };
+    grow.effect.setKeyframes([morphFrom(from, now), { transform: "none", clipPath: MORPH_REST }]);
+  });
+  follow.observe(d);
+  const stop = () => follow.disconnect();
+  grow.finished.then(stop, stop);
 }
 // frame holds an editor's head and its buttons still while the fields
 // between them scroll.
@@ -8666,14 +8699,17 @@ function closeModal() {
   d.style.transform = "none";
   const to = d.getBoundingClientRect(), from = calm() ? null : originRect(modalOrigin);
   d.style.transform = was;
+  const clip = d.style.clipPath || MORPH_REST;
   const shape = { duration: from ? 380 : 260, easing: IOS_EASE, fill: "forwards" };
   const moves = [
-    m.animate([{ opacity: 0 }], { ...shape, easing: "ease-out" }),
+    m.animate([VEIL_OFF], { ...shape, easing: "ease-out" }),
     calm() ? d.animate([{ opacity: 0 }], { duration: 140, fill: "forwards" })
-      : d.animate([{ transform: from ? fromRect(from, to) : "translateY(14px) scale(.95)" }], shape),
+      : d.animate(from ? [{ transform: was || "none", clipPath: clip }, morphFrom(from, to)] : [{ transform: "translateY(14px) scale(.95)" }], shape),
   ];
-  // it fades as it lands, the last part of the way
-  if (!calm()) moves.push(d.animate([{ offset: from ? .45 : .2, opacity: getComputedStyle(d).opacity }, { opacity: 0 }], shape));
+  // it fades as it lands, the last part of the time: on the shape's own
+  // easing an offset is of the way, and IOS_EASE has gone ~90% of it by half
+  // the time, so a dialog folding back was all but gone halfway there
+  if (!calm()) moves.push(d.animate([{ offset: from ? .6 : .2, opacity: getComputedStyle(d).opacity, easing: "ease-in" }, { opacity: 0 }], { ...shape, easing: "linear" }));
   const done = modalDone = Promise.all(moves.map((a) => a.finished)).then(() => {
     if (modalDone !== done) return;
     modalDone = null;
@@ -8687,7 +8723,8 @@ function closeModal() {
     else if (!$("#view-" + view).hidden) $("#view-" + view).focus({ preventScroll: true });
     modalReturnFocus = null;
     for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
-    d.style.opacity = d.style.transform = m.style.opacity = "";
+    d.style.opacity = d.style.transform = d.style.clipPath = "";
+    unveil(m);
     // an editor opened from the add sheet gives the focus back to its option
     const sheet = $("#addSheet");
     if (adding && !sheet.hidden && !$("#view-providers").hidden) {
