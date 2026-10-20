@@ -24733,17 +24733,19 @@ window.noteAccounts = noteAccounts;
   // Discord: another computer with it on still showed the addresses)
   let masked = false, chosen = null;
   try { chosen = localStorage.getItem("magpie.maskEmails"); masked = chosen === "1"; } catch {}
-  // the pages it hides on: Routing's and Usage's, each with its button; in
-  // the tray panel, the whole of it, as the window's setting says: its
-  // model picker, menus and dialogs too, which sit outside its view (PaulT
-  // on Discord: a Codex account's address in the picker stayed in sight)
-  const targets = mode === "panel" ? [["body", null]] : [["#view-routing", "#rtMask"], ["#view-usage", "#usageMask"]];
-  const pages = targets.map(([v, b]) => {
-    const view = $(v), btn = b && $(b);
+  // where it hides: the whole window, every page, its model pickers, menus
+  // and dialogs, which sit outside a page (PaulT on Discord: a Codex
+  // account's address in the tray's picker stayed in sight; Zhenbao TONG:
+  // the window's Providers page showed every account while the tray hid
+  // them). Routing and Usage each have a button for it; the tray panel
+  // follows the window's setting.
+  const targets = [["body", mode === "panel" ? [] : ["#rtMask", "#usageMask"]]];
+  const pages = targets.map(([v, bs]) => {
+    const view = $(v);
     if (!view) return () => {};
-    function mask() {
+    function mask(root = view) {
       const all = finder(), reOf = (e) => e?.closest(NAMELESS) ? EMAIL : all;
-      const walk = document.createTreeWalker(view, NodeFilter.SHOW_TEXT), found = [];
+      const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), found = [];
       for (let n; (n = walk.nextNode());) {
         if (n.data.length < 2 || SKIP.has(n.parentElement?.tagName) || n.parentElement?.closest(".pii")) continue;
         const re = reOf(n.parentElement);
@@ -24767,9 +24769,9 @@ window.noteAccounts = noteAccounts;
         if (bits.length > 1) { const run = el("span", "pii-run"); run.append(...bits); n.replaceWith(run); }
         else n.replaceWith(...bits);
       }
-      for (const e of view.querySelectorAll("[title]")) {
+      for (const e of [root, ...root.querySelectorAll("[title]")]) {
         // one masked already reads as an account too, its stars and all
-        if ("piiTitle" in e.dataset || !e.title) continue;
+        if (!e.dataset || "piiTitle" in e.dataset || !e.title) continue;
         let out = "", last = 0;
         for (const m of hits(e.title, reOf(e))) {
           out += e.title.slice(last, m.index) + m[0].replace(m[0].includes("@") ? /[^@.]/g : /./gu, "•"); // a tooltip can't blur
@@ -24786,13 +24788,21 @@ window.noteAccounts = noteAccounts;
       view.normalize();
       for (const e of view.querySelectorAll("[data-pii-title]")) { e.title = e.dataset.piiTitle; delete e.dataset.piiTitle; }
     }
-    const watch = new MutationObserver(() => {
+    // only what changed is looked through again, not the whole window on
+    // each tick of Routing's live view
+    const watch = new MutationObserver((recs) => {
       if (!masked) return;
       watch.disconnect();
-      mask();
+      const roots = new Set();
+      for (const r of recs) {
+        const e = r.target.nodeType === Node.TEXT_NODE ? r.target.parentElement : r.target;
+        if (e?.isConnected) roots.add(e);
+      }
+      for (const e of roots) if (![...roots].some((o) => o !== e && o.contains(e))) mask(e);
       watch.observe(view, OBS);
     });
-    if (btn) btn.onclick = () => {
+    const btns = bs.map((b) => $(b)).filter(Boolean);
+    for (const btn of btns) btn.onclick = () => {
       setMasked(!masked);
       // pixelated in when asked for, not again each time the page redraws
       view.classList.add("masking");
@@ -24800,7 +24810,7 @@ window.noteAccounts = noteAccounts;
       btn._t = setTimeout(() => view.classList.remove("masking"), 450);
     };
     return (on) => {
-      if (btn) {
+      for (const btn of btns) {
         btn.setAttribute("aria-pressed", String(on));
         // what it is now, in its icon and its words: an open eye while the
         // accounts show, struck through once they're hidden
