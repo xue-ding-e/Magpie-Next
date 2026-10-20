@@ -1602,7 +1602,7 @@ func (p Provider) Efforts(model string) []string {
 	if all := p.Known(model); len(all) > 0 {
 		return all
 	}
-	return effortsKept(nil, settings.Load().ModelEfforts[p.ID+"/"+model])
+	return effortsKept(nil, settings.Shared().ModelEfforts[p.ID+"/"+model])
 }
 
 // Thinks reports whether the model reasons: it has levels, its list says
