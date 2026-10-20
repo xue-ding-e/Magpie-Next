@@ -1201,9 +1201,14 @@ function routingPage(part) {
     const p = document.createElementNS(NS, "path");
     p.setAttribute("class", "via");
     sky.appendChild(p);
+    // j runs each frame a flight is on it: the arc is laid again only when
+    // a wire's end moved, not made anew sixty times a second (#1481)
+    let ax = NaN, ay = NaN, atx = NaN, aty = NaN, bx = NaN, by = NaN, btx = NaN, bty = NaN;
     const j = () => {
       const a = from(), b = to();
-      if (!a || !b) { p.removeAttribute("d"); return; }
+      if (!a || !b) { p.removeAttribute("d"); ax = NaN; return; }
+      if (a.x === ax && a.y === ay && a.tx === atx && a.ty === aty && b.x === bx && b.y === by && b.tx === btx && b.ty === bty) return;
+      ax = a.x; ay = a.y; atx = a.tx; aty = a.ty; bx = b.x; by = b.y; btx = b.tx; bty = b.ty;
       const dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy);
       let c1, c2;
       if (dist < 4) {
