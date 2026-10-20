@@ -16,7 +16,6 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -169,17 +168,8 @@ func adoptLegacyPluginCheckins(ps []pluginCheckinProvider) {
 // path to its first heir that has none of its own, and drops it; it says
 // whether the file is as it should be now.
 func adoptLegacyCheckinFile(path string, order []string, heirs map[string][]string) bool {
-	b, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return true
-	}
+	st, err := readCheckins(path)
 	if err != nil {
-		log.Printf("plugin check-in: %v", err)
-		return false
-	}
-	st := map[string]WorkBuddyCheckin{}
-	if err := json.Unmarshal(b, &st); err != nil {
-		log.Printf("plugin check-in: %s: %v", path, err)
 		return false
 	}
 	changed := false
@@ -200,6 +190,9 @@ func adoptLegacyCheckinFile(path string, order []string, heirs map[string][]stri
 	out, err := json.MarshalIndent(st, "", "  ")
 	if err == nil {
 		err = writePrivate(path, append(out, '\n'))
+	}
+	if err == nil {
+		wroteCheckins(path, st)
 	}
 	if err != nil {
 		log.Printf("plugin check-in: %v", err)
@@ -331,7 +324,7 @@ type PluginCheckin struct {
 // PluginCheckins are the plugins' providers that check in, each with its
 // accounts' last check-ins as kept; asks nothing.
 func PluginCheckins() []PluginCheckin {
-	st := readCheckins(pluginCheckinPath())
+	st := shownCheckins(pluginCheckinPath())
 	s := settings.Load()
 	var out []PluginCheckin
 	for _, p := range pluginCheckinProviders() {
@@ -360,7 +353,7 @@ func pluginCheckinMarks(qs []SubscriptionQuota) []SubscriptionQuota {
 	if len(ps) == 0 {
 		return qs
 	}
-	st := readCheckins(pluginCheckinPath())
+	st := shownCheckins(pluginCheckinPath())
 	for _, p := range ps {
 		var on []checkinCard
 		for _, a := range p.accounts {
