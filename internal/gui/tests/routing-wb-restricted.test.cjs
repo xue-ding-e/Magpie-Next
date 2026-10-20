@@ -118,7 +118,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // a reader scrolls down to it with the wheel
         await reach(page, go);
         await go.click();
-        await page.waitForTimeout(300);
+        // the lift once it is posted: a fixed pause read it before the
+        // post reached the fake on a busy machine
+        for (let i = 0; i < 100 && !lifted.length; i++) await new Promise((r) => setTimeout(r, 50));
         assert.deepEqual(lifted, [{ key: rest.key }]);
         assert.deepEqual(errors, []);
       });
