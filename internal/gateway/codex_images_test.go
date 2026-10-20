@@ -610,3 +610,30 @@ func TestCodexFittedImagesLetGoWhenIdle(t *testing.T) {
 		t.Errorf("%d bytes held, want %d", held, want)
 	}
 }
+
+// A JPEG's frame header can sit behind an EXIF segment of up to 64 KB, and
+// a phone photo's often does. fitHolds read only the first 4 KB of base64
+// for it, counted such an image as holding nothing, and put it in a batch
+// with three others each holding up to codexImageMaxBytes. It is counted
+// now for what it holds, wherever its header is.
+func TestCodexAHeaderBehindExifIsCounted(t *testing.T) {
+	var shot bytes.Buffer
+	if err := jpeg.Encode(&shot, shotImage(3456, 2234), &jpeg.Options{Quality: 85}); err != nil {
+		t.Fatal(err)
+	}
+	raw := shot.Bytes()
+	// SOI, then an APP1 of the most a segment holds, then the rest
+	exif := make([]byte, 0xffff-2)
+	copy(exif, "Exif\x00\x00")
+	withExif := append([]byte{0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff}, exif...)
+	withExif = append(withExif, raw[2:]...)
+	url := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(withExif)
+	if _, _, err := image.DecodeConfig(bytes.NewReader(withExif)); err != nil {
+		t.Fatalf("the photo isn't a JPEG: %v", err)
+	}
+	cfg := image.Config{ColorModel: color.YCbCrModel, Width: 3456, Height: 2234}
+	pixels, _ := imageHolds(cfg, "jpeg")
+	if got, want := fitHolds(url), len(withExif)+pixels; got != want {
+		t.Errorf("a JPEG with its header behind %d KB of EXIF holds %d MB, want %d MB", len(exif)>>10, got>>20, want>>20)
+	}
+}
