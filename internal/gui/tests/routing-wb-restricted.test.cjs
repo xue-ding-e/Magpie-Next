@@ -10,6 +10,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
+const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const now = new Date();
@@ -115,10 +116,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // scrolled to where a reader sees it, it is the button under the
         // pointer, not the footer
         // a reader scrolls down to it with the wheel
-        await page.mouse.move(200, 400);
-        for (let i = 0; i < 20 && !(await go.evaluate((e) => e.getBoundingClientRect().bottom < innerHeight - 80)); i++) await page.mouse.wheel(0, 200);
-        await page.waitForTimeout(200);
-        assert(await go.evaluate((e) => { const r = e.getBoundingClientRect(); return e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }), "the button can't be reached");
+        await reach(page, go);
         await go.click();
         await page.waitForTimeout(300);
         assert.deepEqual(lifted, [{ key: rest.key }]);
