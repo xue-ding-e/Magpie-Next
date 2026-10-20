@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +20,7 @@ import (
 	"github.com/yetone/magpie/internal/access"
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/codexcat"
+	"github.com/yetone/magpie/internal/codexsummary"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/usage"
@@ -40,8 +40,8 @@ const CodexPath = "/backend-api/codex"
 var codexAPIBase = "https://api.openai.com/v1"
 
 // magpieCompaction marks a compaction item magpie made: its summary, which
-// only magpie reads back.
-const magpieCompaction = "magpie1:"
+// only magpie reads back (codexsummary).
+const magpieCompaction = codexsummary.Mark
 
 var nativeSealedAgentPayload = regexp.MustCompile(`^gAAAAA[A-Za-z0-9_-]+={0,2}$`)
 
@@ -57,7 +57,7 @@ Include:
 
 Be concise, structured, and focused on helping the next LLM seamlessly continue the work.`
 
-const codexSummaryPrefix = `Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:`
+const codexSummaryPrefix = codexsummary.Prefix
 
 func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 	// Responses over a WebSocket: 426 sends Codex to plain HTTP at once
@@ -1823,14 +1823,14 @@ func codexInputAs(body []byte, magpieModel, native bool) (_ []byte, compact bool
 		switch it["type"] {
 		case "compaction", "compaction_summary":
 			enc, _ := it["encrypted_content"].(string)
-			sum, ok := strings.CutPrefix(enc, magpieCompaction)
-			if !ok {
+			msg, ours := codexsummary.Message(enc)
+			if !ours {
 				out = append(out, it) // OpenAI's own, for OpenAI
 				continue
 			}
 			changed = true
-			if b, err := base64.StdEncoding.DecodeString(sum); err == nil {
-				out = append(out, userMessage(codexSummaryPrefix+"\n"+string(b)))
+			if msg != nil {
+				out = append(out, msg)
 			}
 		case "compaction_trigger":
 			if !magpieModel || native {
@@ -2499,10 +2499,7 @@ func forVendorChanges(body []byte) bool {
 	})
 }
 
-func userMessage(text string) map[string]any {
-	return map[string]any{"type": "message", "role": "user",
-		"content": []map[string]any{{"type": "input_text", "text": text}}}
-}
+func userMessage(text string) map[string]any { return codexsummary.UserMessage(text) }
 
 // codexCompact compacts a conversation held by a magpie model: the model
 // summarises it, and the summary goes back to Codex as the compaction item
@@ -2627,7 +2624,7 @@ func (s *Server) codexCompact(w http.ResponseWriter, r *http.Request, body []byt
 		id = fmt.Sprintf("resp_magpie_%d", time.Now().UnixNano())
 	}
 	item := map[string]any{"type": "compaction", "id": "cmp_" + strings.TrimPrefix(id, "resp_"),
-		"encrypted_content": magpieCompaction + base64.StdEncoding.EncodeToString([]byte(sum.String()))}
+		"encrypted_content": codexsummary.Encrypted(sum.String())}
 	done := map[string]any{"id": id, "object": "response", "status": "completed", "output": []any{item}}
 	if len(res.Usage) > 0 {
 		done["usage"] = res.Usage
