@@ -1378,14 +1378,19 @@ func scanAt(path string, off int64, head func([]byte) bool, fn func(b []byte, st
 		if _, err := s.Seek(off, io.SeekStart); err != nil {
 			return off, err
 		}
-	} else if _, err := io.CopyN(io.Discard, f, off); err != nil {
-		if errors.Is(err, io.EOF) {
-			return off, nil
-		}
-		return off, err
 	}
 	r, release := lineReader(f, scanBuffer(f, off))
 	defer release()
+	if _, ok := f.(io.Seeker); !ok && off > 0 {
+		// passed over through the reader the lines are read with, not a
+		// copy's buffer of its own
+		if _, err := r.Discard(int(off)); err != nil {
+			if errors.Is(err, io.EOF) {
+				return off, nil
+			}
+			return off, err
+		}
+	}
 	var long []byte
 	var n int64 // bytes of the line so far
 	skip, seen := false, false
@@ -1530,22 +1535,48 @@ func openLines(path string) (io.ReadCloser, error) {
 	if err != nil || !packed(path) {
 		return f, err
 	}
-	d, err := zstd.NewReader(f, zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true))
-	if err != nil {
+	d := streams.Get().(*zstd.Decoder)
+	if err := d.Reset(f); err != nil {
 		f.Close()
 		return nil, err
 	}
-	return zstdFile{d.IOReadCloser(), f}, nil
+	return &zstdFile{d: d, f: f}, nil
 }
 
-// zstdFile is a packed file's lines, closed with the file.
+// streams holds decoders between packed reads. A decoder made for each
+// read allocated its window (a packed rollout's is 2 MiB, held in 3 MiB at
+// low memory) and its block buffers every time: 75 GB of a live magpie's
+// first read of 11,591 rollouts. One kept here keeps them, and is let go
+// with the pool's other idle ones by the garbage collector.
+var streams = sync.Pool{New: func() any {
+	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true))
+	if err != nil {
+		panic(err) // only for options it doesn't know
+	}
+	return d
+}}
+
+// zstdFile is a packed file's lines, closed with the file. Its decoder goes
+// back to the pool at Close, which a read after can't reach.
 type zstdFile struct {
-	io.ReadCloser
+	d *zstd.Decoder
 	f *os.File
 }
 
-func (z zstdFile) Close() error {
-	z.ReadCloser.Close()
+func (z *zstdFile) Read(p []byte) (int, error) {
+	if z.d == nil {
+		return 0, os.ErrClosed
+	}
+	return z.d.Read(p)
+}
+
+func (z *zstdFile) Close() error {
+	if z.d == nil {
+		return os.ErrClosed
+	}
+	z.d.Reset(nil)
+	streams.Put(z.d)
+	z.d = nil
 	return z.f.Close()
 }
 
