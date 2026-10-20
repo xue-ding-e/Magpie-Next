@@ -221,7 +221,10 @@ type Settings struct {
 	// CheckinOff are the accounts left out of their vendor's daily
 	// check-in while it is on (#1902), each by its entry in the vendor's
 	// check-in file: "<site or provider>|<account id>" ("workbuddy|<uid>",
-	// "trae-cn|<uid>", a plugin's "<provider>|<account>").
+	// "trae-cn|<uid>", a plugin's "<provider>|<sign-in key>", e.g.
+	// "autoclaw|autoclaw#x1y2z3"; before plugins#254 a plugin's was
+	// "<provider>|<display name>", which provider.adoptLegacyPluginCheckins
+	// carries over).
 	CheckinOff []string `json:"checkinOff,omitempty"`
 	// MemberModel has a reply's model name the routing group's member
 	// that answered, as magpie's provider/model id (workbuddy/glm-5.3-flash),
@@ -1220,6 +1223,24 @@ func SetGatewayConversations(on bool) error {
 	s := load()
 	s.GatewayConversations = on
 	return save(s, true)
+}
+
+// EditCheckinOff changes CheckinOff alone, as edit returns it from what the
+// file holds now, so a save elsewhere from an older snapshot isn't undone.
+// A settings file that can't be read is left as it is, with the error.
+func EditCheckinOff(edit func([]string) []string) error {
+	fileMu.Lock()
+	defer fileMu.Unlock()
+	s, err := loadChecked()
+	if err != nil {
+		return err
+	}
+	off := edit(slices.Clone(s.CheckinOff))
+	if len(off) == 0 {
+		off = nil
+	}
+	s.CheckinOff = off
+	return save(s, false)
 }
 
 // SetRedactModel turns the local masking model on or off, on its own, as
