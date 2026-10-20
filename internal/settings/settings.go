@@ -1096,6 +1096,46 @@ func LoadChecked() (Settings, error) {
 	return loadChecked()
 }
 
+// Shared is Load without a copy of its own: the settings every caller of
+// Shared is given for the same settings.json, for a look made on each
+// gateway request (redaction, wires, efforts, images). Only for reading:
+// a caller never writes into its maps or slices (append reallocates, as
+// each slice is held at its length), and one that changes anything takes
+// Load's copy instead. Unreadable, it is Load's defaults as they are.
+func Shared() Settings {
+	fileMu.RLock()
+	defer fileMu.RUnlock()
+	b, err := filememo.Read("settings", Path(), func(b []byte) ([]byte, error) { return b, nil })
+	if err != nil {
+		return load()
+	}
+	if s, ok := sharedFor(b); ok {
+		return s
+	}
+	s, err := parse(b)
+	if err != nil {
+		return s
+	}
+	if s, ok := sharedFor(b); ok {
+		return s
+	}
+	return s
+}
+
+// sharedFor is the shared Settings parse keeps for contents b, when it
+// keeps them.
+func sharedFor(b []byte) (Settings, bool) {
+	parsed.Lock()
+	defer parsed.Unlock()
+	if parsed.raw == nil || !bytes.Equal(parsed.raw, b) {
+		return Settings{}, false
+	}
+	if !parsed.normed {
+		parsed.norm, parsed.normed = parsed.s.clone().normal().clone(), true
+	}
+	return parsed.norm, true
+}
+
 // load is called with fileMu held for reading or writing.
 func load() Settings {
 	s, _ := loadChecked()
@@ -1115,26 +1155,52 @@ func loadChecked() (Settings, error) {
 		}
 		return s.normal(), fmt.Errorf("could not read settings at %s: %w", Path(), err)
 	}
-	// parsed on every call: a caller that asks many times in one look holds
-	// what it read (provider.Hold's heldSettings) rather than asking again
 	return parse(b)
 }
 
+// parsed is the last settings.json that parsed whole and what it read as,
+// before normal (s), and after it for Shared (norm, once asked): a
+// gateway request asks for the settings a dozen times over, and parsing
+// the file each time was most of what a request allocated. Keyed on the
+// bytes themselves, so only the same contents read as the same settings.
+var parsed struct {
+	sync.Mutex
+	raw    []byte
+	s      Settings
+	norm   Settings
+	normed bool
+}
+
 // parse is settings.json's contents b read as Settings, from its last good
-// generation when b doesn't parse.
+// generation when b doesn't parse. Each call has a Settings of its own to
+// change: the one kept for the same bytes is cloned, never handed out.
 func parse(b []byte) (Settings, error) {
+	parsed.Lock()
+	if parsed.raw != nil && bytes.Equal(parsed.raw, b) {
+		s := parsed.s
+		parsed.Unlock()
+		return s.clone().normal(), nil
+	}
+	parsed.Unlock()
 	var s Settings
 	var err error
 	parses.Add(1)
-	if perr := json.Unmarshal(bytes.TrimPrefix(b, []byte("\xef\xbb\xbf")), &s); perr != nil {
-		// one left all zero by a crash (#1505) is its last good generation
-		bak, ferr := lastgood.Fallback(Path(), b, validSettings)
-		if ferr == nil {
-			s = Settings{}
-			_ = json.Unmarshal(bytes.TrimPrefix(bak, []byte("\xef\xbb\xbf")), &s)
-		} else if len(bytes.TrimSpace(bytes.TrimPrefix(b, []byte("\xef\xbb\xbf")))) != 0 {
-			err = fmt.Errorf("could not read settings at %s: %w", Path(), perr)
-		}
+	perr := json.Unmarshal(bytes.TrimPrefix(b, []byte("\xef\xbb\xbf")), &s)
+	if perr == nil {
+		// only what parsed whole is kept: a last good generation read in
+		// its place is read again, as is a file that can't be read at all
+		parsed.Lock()
+		parsed.raw, parsed.s, parsed.norm, parsed.normed = bytes.Clone(b), s, Settings{}, false
+		parsed.Unlock()
+		return s.clone().normal(), nil
+	}
+	// one left all zero by a crash (#1505) is its last good generation
+	bak, ferr := lastgood.Fallback(Path(), b, validSettings)
+	if ferr == nil {
+		s = Settings{}
+		_ = json.Unmarshal(bytes.TrimPrefix(bak, []byte("\xef\xbb\xbf")), &s)
+	} else if len(bytes.TrimSpace(bytes.TrimPrefix(b, []byte("\xef\xbb\xbf")))) != 0 {
+		err = fmt.Errorf("could not read settings at %s: %w", Path(), perr)
 	}
 	return s.normal(), err
 }
