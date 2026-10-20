@@ -449,9 +449,13 @@ for the session) and `start`/`last`; its file is never sent.
 - Claude Code, Qoder and Qoder CN: each `subagents/agent-<id>.jsonl` (and
   under `workflows/<run>/`), with `agentType`, `description` and
   `parentAgentId` from the meta file beside it (`ccMeta`). With no meta file
-  (Qoder), the title is the file's first user line (`ccTask`, at most 16
-  lines read). `agent-acompact-<id>.jsonl` is a compaction's own run and is
-  left out.
+  (Qoder), or one naming no `description`, the title is the file's first
+  user line (`ccTask`, at most 16 lines read). The file is read for it only
+  then, and what was read, a task or none, is kept until the file's size or
+  time changes; a read that fails keeps the last one. The size and time are
+  taken before the read, so a line written during it is read on the next
+  ask. `agent-acompact-<id>.jsonl` is a compaction's own run and is left
+  out.
 - OpenCode: a child session (`parent_id`, from the JSON store or
   `opencode.db`) is a subagent of its root, not a session of its own;
   `ocRoots` records its parent. Its title splits 1.x's
@@ -476,7 +480,8 @@ subagent's conversation; the id is looked up among the session's own
 `subagents` (`sessions.SubagentTranscript`), never used as a path, and one
 not listed is an error. See `TestClaudeSubagents`, `TestQoderSubagents`,
 `TestOpenCodeSubagents`, `TestOpenCodeV2SubagentKind`, `TestKimiSubagents`,
-`TestKimiSubagentTask` and
+`TestKimiSubagentTask`, `TestSubagentTaskReadOnlyWhenTheFileChanges`,
+`TestSubagentWithMetaTaskIsNotReadForIt` and
 `TestSessionSubagentTranscript`.
 
 The Sessions page draws only main sessions on top. A session's subagents are
