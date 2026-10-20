@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -164,5 +165,52 @@ func TestScanStepsOverATooLongLineUngathered(t *testing.T) {
 	// it was ~150 MiB
 	if alloc > 8<<20 {
 		t.Fatalf("a scan stepping over a %d-byte line allocated %d bytes", len(long), alloc)
+	}
+}
+
+// Scans of big files share their read buffers: each took a new one of up
+// to 1 MiB, and a live magpie's scans allocated 3.8 GB of them in 48
+// minutes while ~157 MB was live.
+func TestScansShareTheirBuffers(t *testing.T) {
+	if raceOn {
+		t.Skip("-race drops pooled buffers at random")
+	}
+	p := filepath.Join(t.TempDir(), "big.jsonl")
+	line := `{"type":"assistant","text":"` + strings.Repeat("x", 4000) + `"}` + "\n"
+	writeFile(t, p, strings.Repeat(line, 600)) // ~2.4 MB
+	const scans = 50
+	lines := 0
+	scan := func() {
+		if _, err := scanAt(p, 0, nil, func([]byte, int64, int64) bool { lines++; return true }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scan()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range scans {
+		scan()
+	}
+	runtime.ReadMemStats(&after)
+	if lines != 600*(scans+1) {
+		t.Fatalf("read %d lines", lines)
+	}
+	// a GC between scans may let a pooled buffer go: room for a few
+	if per := (after.TotalAlloc - before.TotalAlloc) / scans; per > 128<<10 {
+		t.Fatalf("a scan of a 2.4 MB file allocated %d bytes", per)
+	}
+}
+
+// The tests run with a buffer given back filled with garbage: what makes
+// a line kept past its scan fail in them.
+func TestALineKeptPastItsScanIsGarbageInTests(t *testing.T) {
+	r, release := lineReader(bytes.NewReader([]byte("{\"a\":1}\n")), 16<<10)
+	b, err := r.ReadSlice('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if !bytes.Equal(b, bytes.Repeat([]byte{0xFF}, len(b))) {
+		t.Fatalf("a line kept past its scan reads %q", b)
 	}
 }

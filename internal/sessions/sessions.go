@@ -1384,7 +1384,8 @@ func scanAt(path string, off int64, head func([]byte) bool, fn func(b []byte, st
 		}
 		return off, err
 	}
-	r := bufio.NewReaderSize(f, scanBuffer(f, off))
+	r, release := lineReader(f, scanBuffer(f, off))
+	defer release()
 	var long []byte
 	var n int64 // bytes of the line so far
 	skip, seen := false, false
@@ -1469,6 +1470,51 @@ func scanBuffer(f io.Reader, off int64) int {
 		}
 	}
 	return most
+}
+
+// lineReaders keep scanAt's read buffers between scans, one pool per
+// power-of-two size from scanBuffer's 16 KiB to its 1 MiB. Every scan
+// allocated its own: a live magpie's start read ~3,200 Claude Code subagent
+// files for their first lines (ccTask), most over 1 MiB, and with the
+// session and call reads scanAt allocated 6.3 GB in 48 minutes, 3.8 GB of
+// it these buffers, while ~157 MB was live. A pool keeps about one buffer
+// per reader running at once, and lets idle ones go at the next GCs.
+var lineReaders [7]sync.Pool
+
+// poisonReleased, set by the tests, fills a buffer given back with 0xFF, so
+// a reader that kept a line past its scan reads garbage and fails.
+var poisonReleased = false
+
+// lineReader is a reader of f with a buffer of at least size bytes (at
+// most 1 MiB); release gives the buffer back. A line handed out from it is
+// only good until release: one kept longer is copied.
+func lineReader(f io.Reader, size int) (*bufio.Reader, func()) {
+	class := 0
+	for class < len(lineReaders)-1 && 16<<10<<class < size {
+		class++
+	}
+	r, _ := lineReaders[class].Get().(*bufio.Reader)
+	if r == nil {
+		r = bufio.NewReaderSize(nil, 16<<10<<class)
+	}
+	r.Reset(f)
+	return r, func() {
+		if poisonReleased {
+			r.Reset(poison{})
+			r.Peek(r.Size())
+		}
+		r.Reset(nil)
+		lineReaders[class].Put(r)
+	}
+}
+
+type poison struct{}
+
+func (poison) Read(b []byte) (int, error) {
+	for i := range b {
+		b[i] = 0xFF
+	}
+	return len(b), nil
 }
 
 // packed says whether a session file is compressed: a Codex rollout the
