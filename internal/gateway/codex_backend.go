@@ -847,10 +847,11 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	start := time.Now()
 	usage.Saw(agentOf(r))
 	w0, body0 := w, body // as they came, for the fallbacks (codexFallBack)
+	var maskedHits maskHits
 	if r.Method == http.MethodPost {
 		var unmask func()
 		var err error
-		w, body, unmask, err = redacted(w, body)
+		w, body, unmask, maskedHits, err = redactedHits(w, body)
 		defer unmask()
 		if err != nil {
 			writeError(w, provider.Responses, http.StatusServiceUnavailable, err.Error())
@@ -895,6 +896,10 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	effort := "" // the reasoning Codex asked for, which goes on as it is
 	end := func(status int, msg string, tokens, out int) {}
 	var tools *toolScan // whether the reply calls a tool, for a turn's end
+	if rest != "/responses" {
+		// no route of its own (a compaction, a memory): recorded alone
+		noteMasked(r, "chat", maskedHits, string(body), 0, "openai", modelOf(body))
+	}
 	if rest == "/responses" {
 		imageProvider := ""
 		if !apiKey(r.Header) {
@@ -913,6 +918,9 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		tools = scan
 		tr = s.trace.beginFor(r, Route{turn: turn, dirOf: dirOf(provider.Responses, body), tools: tools, imageTurn: drawingTurnID(metadata.Turn), imageCaller: codexTurnKey(r, callerOf(r).agent), imageProvider: imageProvider, TitleLink: link, Time: start, Agent: agentOf(r), Session: sessionOf(r.Header), Conv: convOf(r.Header, body), ParentSession: titleParentSession(r.Header, metadata, kind), Kind: kind, Model: model, Effort: effort, Tier: bodyTier(provider.Responses, body), Provider: "openai", Subagent: subagentPickOf(r),
 			Order: []Weighed{seat}, Tries: []Try{{ID: seat.ID, Model: model, Effort: effort, Start: start}}})
+		if m := noteMasked(r, "chat", maskedHits, string(body), tr.ID, "openai", model); m != nil {
+			s.trace.update(tr, func(t *Route) { t.Masked = m })
+		}
 		promptRead := s.inspectPrompt(tr, provider.Responses, body, body)
 		end = func(status int, msg string, tokens, out int) {
 			ms := time.Since(start).Milliseconds()
@@ -1294,6 +1302,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	}
 	end(call.Status, call.Error, uu.Input+uu.Output+uu.CacheRead+uu.CacheWrite, uu.Output)
 	call.Route = tr.ID
+	call.Masked = s.trace.maskedOf(tr)
 	s.record(call)
 	servedProvider, servedAccount := codexServed(base, r.Header, on)
 	rec := usage.Record{RouteID: tr.ID, Time: start, Agent: call.Agent,
