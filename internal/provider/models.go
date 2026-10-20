@@ -2431,7 +2431,9 @@ func entriesOff(off func(pid, model string) bool) []Entry {
 // plugin not signed in, finds no group.
 func heldOffEntries() []Entry {
 	return heldOf("off entries", func() []Entry {
-		return slices.Clip(entriesOf(func(p Provider) bool { return p.Ready() && p.Off }, disabledNow()))
+		return keptOf("off entries", func() []Entry {
+			return slices.Clip(entriesOf(func(p Provider) bool { return p.Ready() && p.Off }, disabledNow()))
+		})
 	})
 }
 
