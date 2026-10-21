@@ -88,15 +88,33 @@ func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\
 // modelTakes says v is masked as the model's kind: a secret as long as the
 // rules ask of one, never an id a vendor or a tool made (req_…, toolu_…,
 // call_…), which the agent and the vendor match against another; a name
-// of two letters at least.
+// of two letters at least, and never a snake_case word. The model took
+// Codex's sequential_cutoff for a name, and a value the vendor checks
+// against its own list went as a placeholder: 400 on every request until
+// the local model was turned off (#3144). Such a word is a protocol's or a
+// program's, wherever it is: a setting, a tool's argument, code.
 func modelTakes(kind, v string) bool {
 	switch kind {
 	case "SECRET":
 		return len(v) >= 8 && !madeID(v)
 	case "PERSON":
-		return utf8.RuneCountInString(v) >= 2 && strings.IndexFunc(v, unicode.IsLetter) >= 0
+		return utf8.RuneCountInString(v) >= 2 && strings.IndexFunc(v, unicode.IsLetter) >= 0 && !snakeWord(v)
 	case "ACCOUNT":
 		return !madeID(v)
+	}
+	return true
+}
+
+// snakeWord says v is ASCII letters and digits joined by underscores
+// (sequential_cutoff, list_threads, mcp__codex_app).
+func snakeWord(v string) bool {
+	if !strings.Contains(v, "_") || strings.Trim(v, "_") == "" {
+		return false
+	}
+	for _, c := range v {
+		if !(c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return false
+		}
 	}
 	return true
 }
