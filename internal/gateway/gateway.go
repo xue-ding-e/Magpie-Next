@@ -5176,12 +5176,13 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		if to == provider.Chat && (p.IsBedrock() || p.IsAzure()) {
 			body = asCompletionTokens(body)
 		}
-		if to == provider.Responses && (!p.IsPlugin() || refusesLoneToolChoice(p)) {
+		if to == provider.Responses && !keepsLoneNone(p) {
 			// the "none" buildResponses keeps for a request that turned
-			// tools off with none declared goes to a plugin alone, which
-			// reads it before adding a tool of its own (#3110), and knows
-			// whether its vendor takes it. A vendor was never sent it, and
-			// xAI turns it away (#378)
+			// tools off with none declared goes to the Grok plugin alone,
+			// which reads it before adding x_search and drops it before
+			// Grok (0.1.18, #3110). Any other upstream was never sent it:
+			// xAI turns it away (#378), and no other plugin's vendor has
+			// been tried with it
 			body = withoutLoneToolChoice(body)
 		}
 		if to == provider.Chat && req.WebSearch && p.IsRemoteMagpie() {
@@ -6739,6 +6740,13 @@ func withoutFields(body []byte, fields ...string) []byte {
 		return body
 	}
 	return out
+}
+
+// keepsLoneNone is whether p is sent the lone tool_choice "none" a
+// request that turned tools off with none declared keeps (#3110): only the
+// Grok plugin, which reads it and leaves it out before Grok itself.
+func keepsLoneNone(p provider.Provider) bool {
+	return p.PluginProvider() == "grok" && !refusesLoneToolChoice(p)
 }
 
 // refusesLoneToolChoice is whether p's Responses API turns away a

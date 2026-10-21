@@ -30,7 +30,7 @@ var noneReply = sse(
 // #3110: a Chat, Anthropic or Gemini request that turned tools off, with
 // no tools, reaches a provider plugin on Responses still saying "none",
 // so a plugin adding a server-side tool (Grok's x_search) can tell it
-// from no choice. The plugin knows whether its vendor takes it.
+// from no choice. The plugin drops it before Grok (0.1.18).
 func TestToolsOffWithoutToolsReachesPlugin(t *testing.T) {
 	var mu sync.Mutex
 	var sent []map[string]any
@@ -66,6 +66,37 @@ func TestToolsOffWithoutToolsReachesPlugin(t *testing.T) {
 			}
 			if tools, _ := sent[0]["tools"].([]any); len(tools) > 0 {
 				t.Errorf("tools added: %v", sent[0])
+			}
+		})
+	}
+}
+
+// Any other provider plugin on Responses is sent no lone tool_choice: its
+// vendor hasn't been tried with one, and a 400 there would be a regression.
+func TestToolsOffWithoutToolsNotSentToOtherPlugins(t *testing.T) {
+	var mu sync.Mutex
+	var sent [][]byte
+	pid := besideFake(t, "factory", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		sent = append(sent, b)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, noneReply)
+	}))
+	for _, c := range toolsOffNoTools {
+		t.Run(c.name, func(t *testing.T) {
+			mu.Lock()
+			sent = nil
+			mu.Unlock()
+			path := strings.Replace(c.path, "fake/m1", pid+"/fake-resp", 1)
+			body := strings.Replace(c.body, "fake/m1", pid+"/fake-resp", 1)
+			rec := httptest.NewRecorder()
+			New().Handler().ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+			mu.Lock()
+			defer mu.Unlock()
+			if rec.Code != 200 || len(sent) != 1 || strings.Contains(string(sent[0]), `"tool_choice"`) {
+				t.Errorf("%d %s\nplugin got %q", rec.Code, rec.Body, sent)
 			}
 		})
 	}
