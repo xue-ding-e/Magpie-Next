@@ -101,6 +101,9 @@ func modelTakes(kind, v string) bool {
 		return utf8.RuneCountInString(v) >= 2 && strings.IndexFunc(v, unicode.IsLetter) >= 0 && !snakeWord(v)
 	case "ACCOUNT":
 		return !madeID(v)
+	case "EMAIL":
+		// as the rule's: a file's name (icon@2x.png) or an example's is no address
+		return !strings.Contains(v, "@") || realEmail(v)
 	}
 	return true
 }
