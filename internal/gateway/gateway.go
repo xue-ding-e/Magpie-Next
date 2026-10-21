@@ -4229,7 +4229,7 @@ func (s *Server) passthrough(w http.ResponseWriter, r *http.Request, p provider.
 		// 400: Codex's compaction summary goes without its tools (#378).
 		// Anywhere else it goes as asked, which a relay checking Codex's
 		// shape wants (#292).
-		if p.Host() == "api.x.ai" || p.Account != nil && p.Account.Agent == "copilot" {
+		if refusesLoneToolChoice(p) {
 			body = withoutLoneToolChoice(body)
 		}
 	case provider.Chat:
@@ -5175,6 +5175,14 @@ func (s *Server) forwardTranslated(ctx context.Context, p provider.Provider, to 
 		noteWireEffort(ctx, to, sent)
 		if to == provider.Chat && (p.IsBedrock() || p.IsAzure()) {
 			body = asCompletionTokens(body)
+		}
+		if to == provider.Responses && (!p.IsPlugin() || refusesLoneToolChoice(p)) {
+			// the "none" buildResponses keeps for a request that turned
+			// tools off with none declared goes to a plugin alone, which
+			// reads it before adding a tool of its own (#3110), and knows
+			// whether its vendor takes it. A vendor was never sent it, and
+			// xAI turns it away (#378)
+			body = withoutLoneToolChoice(body)
 		}
 		if to == provider.Chat && req.WebSearch && p.IsRemoteMagpie() {
 			// the other magpie searches for it (search_remote.go)
@@ -6731,6 +6739,13 @@ func withoutFields(body []byte, fields ...string) []byte {
 		return body
 	}
 	return out
+}
+
+// refusesLoneToolChoice is whether p's Responses API turns away a
+// tool_choice with no tools beside it: xAI's, and Copilot's /responses in
+// front of it for Grok (#378).
+func refusesLoneToolChoice(p provider.Provider) bool {
+	return p.Host() == "api.x.ai" || p.Account != nil && p.Account.Agent == "copilot"
 }
 
 // withoutLoneToolChoice leaves out a tool_choice sent with no tools; with
