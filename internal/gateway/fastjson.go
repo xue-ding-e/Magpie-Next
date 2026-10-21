@@ -80,6 +80,8 @@ func decodeJSON(data []byte, dst any) error {
 var heldBodies struct {
 	sync.Mutex
 	list atomic.Pointer[[][]byte]
+	// facts: a held body's bodyFacts, by the body's first byte (factsOf)
+	facts map[*byte]heldFacts
 }
 
 // heldBodiesMost bounds heldBodies: a body past it is decoded with copies, as
@@ -121,6 +123,7 @@ func holdBody(ctx context.Context, body []byte) {
 		if i < 0 {
 			return
 		}
+		delete(heldBodies.facts, unsafe.SliceData(body))
 		next := slices.Delete(slices.Clone(cur), i, i+1)
 		heldBodies.list.Store(&next)
 	})
