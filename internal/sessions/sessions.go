@@ -1487,6 +1487,9 @@ var longLines sync.Pool
 // takeLong is an empty buffer of at least l bytes, from the pool when it
 // has one that large (the one a scan had, too small, is let go).
 func takeLong(l int) (*[]byte, []byte) {
+	if p, ok := longShelf.take(func(p *[]byte) bool { return cap(*p) >= l }); ok {
+		return p, (*p)[:0]
+	}
 	if p, _ := longLines.Get().(*[]byte); p != nil {
 		if cap(*p) >= l {
 			return p, (*p)[:0]
@@ -1509,8 +1512,24 @@ func giveLong(p *[]byte, long []byte) {
 		}
 	}
 	*p = (*p)[:0]
+	if cap(*p) <= longShelved {
+		// kept in place of a smaller one when the shelf is full
+		out, kept, swapped := longShelf.give(p, func(h, p *[]byte) bool { return cap(*h) < cap(*p) })
+		if !kept {
+			longLines.Put(p)
+		} else if swapped {
+			longLines.Put(out)
+		}
+		return
+	}
 	longLines.Put(p)
 }
+
+// longShelf keeps long-line buffers up to longShelved bytes across garbage
+// collections; a longer one, rare, is left to longLines.
+var longShelf shelf[*[]byte]
+
+const longShelved = 4 << 20
 
 // blocks hold a long line read from a packed file until its end is found:
 // copied into 1 MiB blocks kept between scans, so the line is allocated
@@ -1595,6 +1614,9 @@ func scanBuffer(f io.Reader, off int64) int {
 // per reader running at once, and lets idle ones go at the next GCs.
 var lineReaders [7]sync.Pool
 
+// lineShelves keep a few of each first, across garbage collections.
+var lineShelves [7]shelf[*bufio.Reader]
+
 // poisonReleased, set by the tests, fills a buffer given back with 0xFF, so
 // a reader that kept a line past its scan reads garbage and fails.
 var poisonReleased = false
@@ -1607,7 +1629,10 @@ func lineReader(f io.Reader, size int) (*bufio.Reader, func()) {
 	for class < len(lineReaders)-1 && 16<<10<<class < size {
 		class++
 	}
-	r, _ := lineReaders[class].Get().(*bufio.Reader)
+	r, _ := lineShelves[class].take(nil)
+	if r == nil {
+		r, _ = lineReaders[class].Get().(*bufio.Reader)
+	}
 	if r == nil {
 		r = bufio.NewReaderSize(nil, 16<<10<<class)
 	}
@@ -1618,7 +1643,9 @@ func lineReader(f io.Reader, size int) (*bufio.Reader, func()) {
 			r.Peek(r.Size())
 		}
 		r.Reset(nil)
-		lineReaders[class].Put(r)
+		if _, kept, _ := lineShelves[class].give(r, nil); !kept {
+			lineReaders[class].Put(r)
+		}
 	}
 }
 
@@ -1644,7 +1671,10 @@ func openLines(path string) (io.ReadCloser, error) {
 	if err != nil || !packed(path) {
 		return f, err
 	}
-	d := streams.Get().(*zstd.Decoder)
+	d, ok := streamShelf.take(nil)
+	if !ok {
+		d = streams.Get().(*zstd.Decoder)
+	}
 	if err := d.Reset(f); err != nil {
 		f.Close()
 		return nil, err
@@ -1656,7 +1686,10 @@ func openLines(path string) (io.ReadCloser, error) {
 // read allocated its window (a packed rollout's is 2 MiB, held in 3 MiB at
 // low memory) and its block buffers every time: 75 GB of a live magpie's
 // first read of 11,591 rollouts. One kept here keeps them, and is let go
-// with the pool's other idle ones by the garbage collector.
+// with the pool's other idle ones by the garbage collector. streamShelf
+// keeps a few first, across collections.
+var streamShelf shelf[*zstd.Decoder]
+
 var streams = sync.Pool{New: func() any {
 	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true))
 	if err != nil {
@@ -1684,7 +1717,9 @@ func (z *zstdFile) Close() error {
 		return os.ErrClosed
 	}
 	z.d.Reset(nil)
-	streams.Put(z.d)
+	if _, kept, _ := streamShelf.give(z.d, nil); !kept {
+		streams.Put(z.d)
+	}
 	z.d = nil
 	return z.f.Close()
 }
