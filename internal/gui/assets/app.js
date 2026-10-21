@@ -19360,7 +19360,7 @@ function renderSettings() {
     s.dock ? "on" : s.dockWindow ? "window" : "off", (v) => savePrefs({ ...keep, dock: v === "on", dockWindow: v === "window" })));
   // a closed window's webview let go (#580): the app's windows alone
   $("#lightweightRow").hidden = web;
-  $("#lightweightSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.lightweight !== false ? "on" : "off",
+  $("#lightweightSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.lightweight === true ? "on" : "off",
     (v) => savePrefs({ ...keep, lightweight: v === "on" })));
   // the display kept on too (#975): an agent recording the screen found it locked
   $("#keepAwakeSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")], ["display", t("Screen on too")]],
