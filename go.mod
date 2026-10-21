@@ -1,6 +1,6 @@
 module github.com/yetone/magpie
 
-go 1.26.8
+go 1.26.10
 
 require (
 	github.com/Calcium-Ion/moejs v0.1.0-alpha.4
@@ -14,10 +14,10 @@ require (
 	github.com/tidwall/gjson v1.19.0
 	github.com/tidwall/jsonc v0.3.3
 	github.com/wailsapp/wails/v3 v3.0.0-beta.24
-	golang.org/x/net v0.56.0
-	golang.org/x/sys v0.46.0
-	golang.org/x/term v0.44.0
-	golang.org/x/text v0.39.0
+	golang.org/x/net v0.60.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
+	golang.org/x/text v0.42.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/libc v1.67.6
 	modernc.org/sqlite v1.44.3
