@@ -30,6 +30,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/yetone/magpie/internal/appdir"
@@ -1744,21 +1746,37 @@ func tsAt(b []byte, last bool) time.Time {
 	return t
 }
 
-var (
-	space = regexp.MustCompile(`\s+`)
-	tag   = regexp.MustCompile(`</?[A-Za-z][\w-]*[^<>]*>`)
-)
+var tag = regexp.MustCompile(`</?[A-Za-z][\w-]*[^<>]*>`)
 
 // untagged is a message the agent or a harness wrapped in tags, as words.
 func untagged(s string) string { return title(tag.ReplaceAllString(s, " ")) }
 
-// title is a prompt made one short line.
+// title is a prompt made one short line: each run of ASCII white space (as
+// regexp's \s) one space, trimmed, and cut at 160 characters. It reads only
+// as far as it keeps, and one past: a pasted file as a prompt went through
+// a regexp and into runes whole, 0.45 GB of a cold start's first 2 minutes.
 func title(s string) string {
-	s = strings.TrimSpace(space.ReplaceAllString(s, " "))
-	if r := []rune(s); len(r) > 160 {
-		s = strings.TrimSpace(string(r[:160])) + "…"
+	const most = 160
+	s = strings.TrimLeftFunc(s, unicode.IsSpace)
+	b := make([]byte, 0, min(len(s), 4*most))
+	n, in, i := 0, false, 0 // runes kept; in a run of \s
+	for ; i < len(s) && n < most; i++ {
+		switch c := s[i]; c {
+		case '\t', '\n', '\f', '\r', ' ':
+			if !in {
+				b, n, in = append(b, ' '), n+1, true
+			}
+		default:
+			_, w := utf8.DecodeRuneInString(s[i:])
+			b, n, in = append(b, s[i:i+w]...), n+1, false
+			i += w - 1
+		}
 	}
-	return s
+	if strings.IndexFunc(s[i:], func(r rune) bool { return !unicode.IsSpace(r) }) < 0 {
+		return strings.TrimRightFunc(string(b), unicode.IsSpace)
+	}
+	// as []rune made it: each byte not UTF-8 one U+FFFD
+	return strings.TrimSpace(string([]rune(string(b)))) + "…"
 }
 
 // ---- pricing ----------------------------------------------------------------
