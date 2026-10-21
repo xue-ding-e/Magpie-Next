@@ -1833,9 +1833,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 		// works in; one that says none is outside every folder
 		folder := ""
 		if provider.PausesByFolder(g, ms) {
-			if req, err := parse(from, body); err == nil {
-				folder = workDir(req)
-			}
+			folder = factsOf(from, body).dir
 		}
 		ms, paused = provider.PausedOut(g, ms, agent, folder, ruleClock())
 		if len(ms) == 0 && len(paused) > 0 {
