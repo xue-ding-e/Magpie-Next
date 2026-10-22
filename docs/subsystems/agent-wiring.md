@@ -117,6 +117,8 @@ something else shows up as drift.
 
 Codex portability leaves a paginated rollout unchanged when expanding magpie compaction would change its bytes. The result lists it in `Blocked`, logs the reason and keeps it pending. This protects byte indexes and fork cutoffs; it does not migrate them or make the conversation portable. See [`codex_portable.go`](../../internal/sessions/codex_portable.go) and [`codex_portable_paginated_test.go`](../../internal/sessions/codex_portable_paginated_test.go).
 
+A failed rollout read remains pending, including after the scan watermark advances, so a repaired file with its original mtime can be retried. A failed read is not successful migration. See [`codex_portable.go`](../../internal/sessions/codex_portable.go) and [`codex_portable_retry_test.go`](../../internal/sessions/codex_portable_retry_test.go).
+
 ## Verification
 
 ```sh

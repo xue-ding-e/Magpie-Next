@@ -156,6 +156,7 @@ func PortCodexRollouts(ctx context.Context, home string) (CodexPort, error) {
 				pending = append(pending, due[i:]...)
 				break
 			}
+			pending = append(pending, p)
 			log.Printf("codex rollout %s: %v", p, err)
 		case changed:
 			res.Rewritten = append(res.Rewritten, p)
