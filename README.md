@@ -1,3 +1,7 @@
+# Magpie-Next
+
+Unofficial independently maintained derivative of [yetone/magpie](https://github.com/yetone/magpie). Original authorship and the MIT license are preserved. The upstream downloads and update services described below are official Magpie services, not Magpie-Next builds. Magpie-Next has not published an installer or release.
+
 <div align="center">
 
 <a href="https://usemagpie.ai"><img src="site/public/img/icon-256.png" width="112" alt="magpie"></a>
