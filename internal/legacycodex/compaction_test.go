@@ -103,6 +103,7 @@ func TestOtherItemsKeepCiphertextCallIDsAndSummary(t *testing.T) {
 	for name, item := range map[string]map[string]any{
 		"opaque_reasoning":             {"type": "reasoning", "id": "rs_synthetic", "summary": []any{}, "encrypted_content": "SYNTHETIC_OPAQUE_NOT_REAL"},
 		"legacy_reasoning_with_cipher": {"type": "reasoning", "id": "reasoning_0", "summary": []any{map[string]any{"type": "summary_text", "text": "Synthetic context only"}}, "encrypted_content": "SYNTHETIC_OPAQUE_NOT_REAL"},
+		"reasoning_with_known_capsule": {"type": "reasoning", "id": "reasoning_0", "encrypted_content": valid},
 		"legacy_reasoning_unresolved":  {"type": "reasoning", "id": "reasoning_0", "summary": []any{map[string]any{"type": "summary_text", "text": "Synthetic context only"}}},
 		"native_compaction":            {"type": "compaction", "encrypted_content": "SYNTHETIC_OPAQUE_NOT_REAL"},
 		"unknown_capsule":              {"type": "compaction", "encrypted_content": "unknown:synthetic"},
