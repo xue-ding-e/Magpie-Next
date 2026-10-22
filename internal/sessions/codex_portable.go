@@ -69,6 +69,7 @@ func codexPortPath() string { return filepath.Join(settings.Dir(), "codex-portab
 type CodexPort struct {
 	Rewritten []string // rollouts written portable
 	Held      []string // rollouts with magpie's item a Codex holds, left for a later pass
+	Blocked   []string // paginated rollouts requiring a safe index-aware migration
 	Done      bool     // every rollout due was looked at
 }
 
@@ -145,6 +146,10 @@ func PortCodexRollouts(ctx context.Context, home string) (CodexPort, error) {
 		case errors.Is(err, errRolloutHeld):
 			res.Held = append(res.Held, p)
 			pending = append(pending, p)
+		case errors.Is(err, errRolloutIndexed):
+			res.Blocked = append(res.Blocked, p)
+			pending = append(pending, p)
+			log.Printf("codex rollout %s: %v", p, err)
 		case err != nil:
 			if ctx.Err() != nil {
 				res.Done = false
@@ -187,6 +192,10 @@ func uniq(list []string) []string {
 // errRolloutHeld is a rollout a Codex has open: its thread's writer lock
 // is held, or the file changed while it was read.
 var errRolloutHeld = errors.New("held by a Codex")
+
+// Codex's paginated history has absolute byte offsets in both SQLite and fork
+// references. Preserving lines and ordinals does not preserve those offsets.
+var errRolloutIndexed = errors.New("paginated history left unchanged: compaction portability requires index and fork-reference migration; this conversation may still need the gateway")
 
 // codexRolloutName is Codex's name for a rollout (rollout_file_name.rs):
 // its time, its thread and, for a later rollout of the thread, its own id.
@@ -242,12 +251,24 @@ func portRollout(ctx context.Context, home, path string) (bool, error) {
 	bw := bufio.NewWriterSize(w, 64<<10)
 	br := bufio.NewReaderSize(in, 64<<10)
 	changed := false
+	paginated := false
 	for n := 0; ; n++ {
 		if n%4096 == 0 && ctx.Err() != nil {
 			return false, ctx.Err()
 		}
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
+			if n == 0 {
+				var meta struct {
+					Type    string `json:"type"`
+					Payload struct {
+						HistoryMode string `json:"history_mode"`
+					} `json:"payload"`
+				}
+				if json.Unmarshal(line, &meta) == nil && meta.Type == "session_meta" {
+					paginated = meta.Payload.HistoryMode == "paginated"
+				}
+			}
 			out, ok := portLine(line)
 			changed = changed || ok
 			if _, werr := bw.Write(out); werr != nil {
@@ -263,6 +284,14 @@ func portRollout(ctx context.Context, home, path string) (bool, error) {
 	}
 	if !changed {
 		return false, nil
+	}
+	if paginated {
+		if z != nil {
+			// Stop compression workers even though this temporary output
+			// will never be published.
+			z.Close()
+		}
+		return false, errRolloutIndexed
 	}
 	if err := bw.Flush(); err != nil {
 		return false, err
