@@ -119,6 +119,8 @@ Codex portability leaves a paginated rollout unchanged when expanding magpie com
 
 A failed rollout read remains pending, including after the scan watermark advances, so a repaired file with its original mtime can be retried. A failed read is not successful migration. See [`codex_portable.go`](../../internal/sessions/codex_portable.go) and [`codex_portable_retry_test.go`](../../internal/sessions/codex_portable_retry_test.go).
 
+An incomplete directory walk keeps the prior watermark and pending paths while still processing files already discovered. Missing top-level session roots are normal. The walker parameter supports synthetic fault tests without a mutable production hook; those tests do not change OS permissions. See [`codex_portable.go`](../../internal/sessions/codex_portable.go) and [`codex_portable_scan_test.go`](../../internal/sessions/codex_portable_scan_test.go).
+
 ## Verification
 
 ```sh

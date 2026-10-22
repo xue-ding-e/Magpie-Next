@@ -78,6 +78,12 @@ type CodexPort struct {
 // ctx ends. The first pass reads every rollout written since magpie began
 // to compact; later ones only what changed since.
 func PortCodexRollouts(ctx context.Context, home string) (CodexPort, error) {
+	return portCodexRollouts(ctx, home, filepath.WalkDir)
+}
+
+// portCodexRollouts accepts a walker so tests can model an incomplete scan
+// without changing filesystem permissions or sharing a mutable hook.
+func portCodexRollouts(ctx context.Context, home string, walkDir func(string, fs.WalkDirFunc) error) (CodexPort, error) {
 	var res CodexPort
 	locks := filepath.Join(home, "thread-writer-locks")
 	if fi, err := os.Stat(locks); err != nil || !fi.IsDir() {
@@ -122,16 +128,37 @@ func PortCodexRollouts(ctx context.Context, home string) (CodexPort, error) {
 			}
 		}
 	}
+	scanComplete := true
 	for _, folder := range []string{"sessions", "archived_sessions"} {
-		filepath.WalkDir(filepath.Join(home, folder), func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || codexThreadOf(d.Name()) == "" {
+		root := filepath.Join(home, folder)
+		err := walkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				// A home need not have either root yet; an unreadable subtree
+				// is not an empty one, even if it vanished during the scan.
+				if p != root || !errors.Is(err, fs.ErrNotExist) {
+					scanComplete = false
+					log.Printf("codex rollout scan %s: %v", p, err)
+				}
 				return nil
 			}
-			if fi, err := d.Info(); err == nil && fi.Mode().IsRegular() && !fi.ModTime().Before(since) {
+			if d.IsDir() || codexThreadOf(d.Name()) == "" {
+				return nil
+			}
+			fi, err := d.Info()
+			if err != nil {
+				scanComplete = false
+				log.Printf("codex rollout scan %s: %v", p, err)
+				return nil
+			}
+			if fi.Mode().IsRegular() && !fi.ModTime().Before(since) {
 				add(p)
 			}
 			return nil
 		})
+		if err != nil {
+			scanComplete = false
+			log.Printf("codex rollout scan %s: %v", root, err)
+		}
 	}
 	res.Done = true
 	var pending []string
@@ -165,6 +192,7 @@ func PortCodexRollouts(ctx context.Context, home string) (CodexPort, error) {
 			break
 		}
 	}
+	res.Done = res.Done && scanComplete
 	now := codexPortHome{Since: was.Since, Pending: pending}
 	if res.Done {
 		now.Since = start
