@@ -1,3 +1,7 @@
+# Magpie-Next
+
+这是 [yetone/magpie](https://github.com/yetone/magpie) 的非官方独立维护版本，保留原作者归属和 MIT 许可证。下文的上游下载与更新服务属于官方 Magpie，不代表 Magpie-Next 产物。Magpie-Next 尚未发布安装包或发行版。
+
 <div align="center">
 
 <a href="https://usemagpie.ai/zh/"><img src="site/public/img/icon-256.png" width="112" alt="magpie"></a>
