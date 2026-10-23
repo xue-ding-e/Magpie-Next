@@ -36,7 +36,12 @@ def make_removable(path):
     if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
         return  # Never chmod or descend through a link/junction.
     if stat.S_ISDIR(info.st_mode):
-        if sys.platform != "win32":
+        if sys.platform == "win32":
+            # Windows rmdir also refuses a readonly directory. This changes
+            # only its readonly attribute, after the link/reparse guard above.
+            if not info.st_mode & stat.S_IWRITE:
+                os.chmod(path, stat.S_IMODE(info.st_mode) | stat.S_IWRITE)
+        else:
             os.chmod(path, stat.S_IMODE(info.st_mode) | stat.S_IRWXU, follow_symlinks=False)
         for child in path.iterdir():
             make_removable(child)
