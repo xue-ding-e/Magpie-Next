@@ -158,6 +158,36 @@ class HomeCleanupTests(unittest.TestCase):
         self.assertFalse(self.home.exists())
         self.assert_untouched()
 
+    def test_windows_readonly_directories_require_write_bit(self):
+        nested = self.home / "readonly-directory"
+        nested.mkdir()
+        (nested / "file").write_text("synthetic", encoding="utf-8")
+        (nested / "outside-link").symlink_to(self.outside, target_is_directory=True)
+        self.outside.chmod(0o500)
+        self.sentinel.chmod(0o400)
+        outside_mode = stat.S_IMODE(self.outside.stat().st_mode)
+        sentinel_mode = stat.S_IMODE(self.sentinel.stat().st_mode)
+        nested.chmod(0o500)
+        self.home.chmod(0o500)
+        rmtree = ci_home.shutil.rmtree
+
+        def windows_remove(path):
+            for directory in (path, path / "readonly-directory"):
+                self.assertTrue(directory.stat().st_mode & stat.S_IWRITE,
+                                "Windows requires clearing the readonly directory attribute")
+            self.assertEqual(stat.S_IMODE(self.outside.stat().st_mode), outside_mode)
+            self.assertEqual(stat.S_IMODE(self.sentinel.stat().st_mode), sentinel_mode)
+            rmtree(path)
+
+        # Exercise the Windows branch on POSIX too. The unmocked readonly
+        # directory regression remains the native Windows acceptance check.
+        with patch.object(ci_home.sys, "platform", "win32"), patch.object(ci_home.shutil, "rmtree", windows_remove):
+            ci_home.remove_home(self.root, self.record)
+        self.assertFalse(self.home.exists())
+        self.assertEqual(stat.S_IMODE(self.outside.stat().st_mode), outside_mode)
+        self.assertEqual(stat.S_IMODE(self.sentinel.stat().st_mode), sentinel_mode)
+        self.assert_untouched()
+
     def test_windows_readonly_file_requires_write_bit(self):
         readonly = self.home / "readonly-file"
         readonly.write_text("synthetic", encoding="utf-8")
