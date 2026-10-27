@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/go-ole/go-ole v1.3.0
 	github.com/godbus/dbus/v5 v5.2.2
-	github.com/klauspost/compress v1.18.3
+	github.com/klauspost/compress v1.18.7
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/tidwall/gjson v1.19.0
 	github.com/tidwall/jsonc v0.3.3

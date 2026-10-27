@@ -344,6 +344,8 @@ func webHandler(port, key string, keep time.Duration, page http.Handler) http.Ha
 // exactly what it holds (BREACH): the page carries keys.
 func webCompressed(next http.Handler) http.Handler {
 	wrap, err := gzhttp.NewWrapper(
+		// Keep the documented gzip representation and its validator contract.
+		gzhttp.EnableZstd(false),
 		gzhttp.ContentTypeFilter(compressible),
 		gzhttp.SuffixETag(gzipETag),
 		gzhttp.RandomJitter(32, 0, false),
