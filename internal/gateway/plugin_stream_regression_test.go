@@ -104,6 +104,11 @@ func pluginReplyComplete(t *testing.T, size int, stream bool, rate int64) time.D
 		}
 	})
 	url, model, client := pluginReplyGateway(t, up)
+	// Race instrumentation adds work to every streamed chunk. Keep the client
+	// budget bounded without changing the separate stalled-client deadline.
+	if raceOn {
+		client.Timeout = 3 * time.Minute
+	}
 	start := time.Now()
 	res, err := client.Post(url+"/v1/chat/completions", "application/json", strings.NewReader(pluginReplyRequest(model, stream)))
 	if err != nil {
