@@ -195,7 +195,10 @@ jobs:
       - name: Windows session moves
         timeout-minutes: 15
         if: runner.os == 'Windows'
-        run: go test -v -count=1 -timeout 10m ./internal/sessions -run '^Test(WindowsSession|Move|CopyAll|CodexArchived|CodexSameTick|CodexPlainTwin)'
+        run: |
+          # Exact synthetic names; preserve the existing native Windows selection.
+          synthetic='^(TestRolloutBoundaryPlanBytes|TestRolloutBoundaryPlanDescendant|TestRolloutBoundaryPlanCutoffPair|TestRolloutBoundaryPlanRejectsInvalidIdentity|TestRolloutBoundaryPlanRejects|TestRolloutGraphOrder|TestRolloutGraphRejects|TestRolloutGraphDeepChain|TestRolloutPlanOrdersBoundaryRewrites|TestReferenceRewriteConserves|TestReferenceRewriteRejectsChanges|TestReferenceRewriteRejectsConservedInvalidShape|TestReferenceRewriteResourceSubset|TestReferenceRewriteDoesNotConflateInvalidEscapes|TestStagedReferencePlanBindsImmutableRevisions|TestStagedReferencePlanRejectsWrongParentMap|TestStagedReferencePlanRejects|TestSyntheticSnapshotInventory|TestSyntheticSnapshotEmptyRoots|TestSyntheticSnapshotReadBounds|TestSyntheticSnapshotRejectsDotEntry|TestSyntheticSnapshotRejectsStaleChildMetadataOrdinal|TestSyntheticSnapshotRejectsConservedInvalidUTF8|TestSyntheticSnapshotResultDoesNotRetainInputs|TestSyntheticSnapshotInitialOrdinalBoundary)$'
+          go test -v -count=1 -timeout 10m ./internal/sessions -run "^Test(WindowsSession|Move|CopyAll|CodexArchived|CodexSameTick|CodexPlainTwin)|${synthetic}"
 
       # dsh's layered config is read and edited in temporary homes. Run
       # these checks on Windows too, including Desktop's home patch layer.
