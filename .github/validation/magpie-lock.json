@@ -1,0 +1,42 @@
+{
+  "repository": "xue-ding-e/Magpie-Next",
+  "base": "dc1528e5f490aad5363ea87c90d827940a10e55b",
+  "patch_sha256": "5ea01f150ee7d49c62021243d4432466c862fcdc58f8560a877096ae70be61a3",
+  "products": {
+    "internal/filelock/filelock.go": "ebee3bd7d747da2b98ab24ee4d15ab04e96d0610055251a09b7a84be9e8c8e4d",
+    "internal/filelock/context_test.go": "63cf4cf617e371c570aafa01b264cbdcedf059b597ca112e06119d989e060da2",
+    "internal/sessions/codex_portable.go": "1099eecd3e6c46641c94c4b9ec0966ab7c86bf07dd0ce4a4d6274fc58b07b555",
+    "internal/sessions/codex_portable_cancel_test.go": "be5f27e1e6985cad6dbbaf9793bf0f32f2de1aca03559e43d9d7bbbb98f8627a"
+  },
+  "unchanged": {
+    "go.mod": "97e7d1ac60c22cfdc06092ebf7bf233fc4980f46c9d73f36d746dea163bc6ca1",
+    "go.sum": "fd375f10853dad2f9f0ae980237d689ff78bd26dc1dab51de2f320aff931b0ed"
+  },
+  "tests": [
+    "TestLockContextCanceledBeforeOpen",
+    "TestLockContextDeadlineAndReuse",
+    "TestLockAcrossProcesses",
+    "TestLockMakesFolderOnlyWhenMissing",
+    "TestPortRolloutCanceledWhileCoordinationHeld",
+    "TestPortCodexRolloutsDefersPaginatedHistory",
+    "TestPortCodexRolloutsLeavesUnchangedPaginatedHistory",
+    "TestPortCodexRolloutsRetriesFailedRead",
+    "TestPortCodexRolloutsIncompleteScan",
+    "TestPortCodexRolloutsMissingArchiveCompletes",
+    "TestPortCodexRollouts",
+    "TestPortCodexRolloutsLeavesAnOpenThread"
+  ],
+  "subtests": [
+    "TestPortRolloutCanceledWhileCoordinationHeld/rollout/held-after-cancel",
+    "TestPortRolloutCanceledWhileCoordinationHeld/rollout/release-at-cancel",
+    "TestPortRolloutCanceledWhileCoordinationHeld/pass/held-after-cancel",
+    "TestPortRolloutCanceledWhileCoordinationHeld/pass/release-at-cancel",
+    "TestPortCodexRolloutsDefersPaginatedHistory/false",
+    "TestPortCodexRolloutsDefersPaginatedHistory/true",
+    "TestPortCodexRolloutsIncompleteScan/readdir",
+    "TestPortCodexRolloutsIncompleteScan/info",
+    "TestPortCodexRolloutsIncompleteScan/walk",
+    "TestPortCodexRollouts/plain",
+    "TestPortCodexRollouts/zst"
+  ]
+}
