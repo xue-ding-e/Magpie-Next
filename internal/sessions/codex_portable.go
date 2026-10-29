@@ -170,6 +170,9 @@ func portCodexRollouts(ctx context.Context, home string, walkDir func(string, fs
 		}
 		changed, err := portRollout(ctx, home, p)
 		switch {
+		case err != nil && ctx.Err() != nil:
+			res.Done = false
+			pending = append(pending, due[i:]...)
 		case errors.Is(err, errRolloutHeld):
 			res.Held = append(res.Held, p)
 			pending = append(pending, p)
@@ -178,11 +181,6 @@ func portCodexRollouts(ctx context.Context, home string, walkDir func(string, fs
 			pending = append(pending, p)
 			log.Printf("codex rollout %s: %v", p, err)
 		case err != nil:
-			if ctx.Err() != nil {
-				res.Done = false
-				pending = append(pending, due[i:]...)
-				break
-			}
 			pending = append(pending, p)
 			log.Printf("codex rollout %s: %v", p, err)
 		case changed:
@@ -346,11 +344,17 @@ func portRollout(ctx context.Context, home, path string) (bool, error) {
 	// coordination lock every Codex writer takes before its thread's
 	// lock, with that lock free (or never made)
 	locks := filepath.Join(home, "thread-writer-locks")
-	unlock, held := filelock.Lock(filepath.Join(locks, ".coordination.lock"), filelock.Wait)
+	unlock, held := filelock.LockContext(ctx, filepath.Join(locks, ".coordination.lock"), filelock.Wait)
 	if !held {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
 		return false, errRolloutHeld
 	}
 	defer unlock()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	if lf, err := os.OpenFile(filepath.Join(locks, thread+".lock"), os.O_RDWR, 0); err == nil {
 		got, err := filelock.TryLock(lf)
 		if err != nil || !got {
@@ -361,9 +365,15 @@ func portRollout(ctx context.Context, home, path string) (bool, error) {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return false, errRolloutHeld
 	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	// written to since it was read: a Codex had it after all
 	if now, err := os.Stat(path); err != nil || now.Size() != fi.Size() || !now.ModTime().Equal(fi.ModTime()) {
 		return false, errRolloutHeld
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
 	}
 	if err := steady.Rename(tmp.Name(), path); err != nil {
 		return false, err
