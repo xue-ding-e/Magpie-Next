@@ -1,6 +1,25 @@
 # Magpie-Next
 
-Unofficial independently maintained derivative of [yetone/magpie](https://github.com/yetone/magpie). Original authorship and the MIT license are preserved. The upstream downloads and update services described below are official Magpie services, not Magpie-Next builds. Magpie-Next has not published an installer or release.
+Unofficial independently maintained derivative of [yetone/magpie](https://github.com/yetone/magpie). Original authorship and the MIT license are preserved.
+
+<a id="next-installation"></a>
+## Install Magpie-Next
+
+`SHA12` denotes the first 12 characters of the source commit SHA.
+
+**Awaiting acceptance: no public Next package is available yet.** The candidate pipeline builds a **Windows x64 ZIP containing `Magpie-Next.exe` (GUI) and `magpie-next-cli.exe` (CLI)**, together with LICENSE and a source/checksum manifest. It does not provide Next MSI, ARM64, macOS, Linux, Docker or Termux packages. Check [Next Releases](https://github.com/xue-ding-e/Magpie-Next/releases); upstream downloads below are a separate option, not Next builds.
+
+After a validated release appears, download `Magpie-Next-<SHA12>-Windows-x64.zip` and SHA256SUMS, compare the ZIP SHA-256 with PowerShell `Get-FileHash`, extract into a dedicated folder and start `Magpie-Next.exe`. The CLI runs as `.\magpie-next-cli.exe --version`; substitute that executable for `magpie` in CLI examples below. The GUI requires WebView2. Binaries are unsigned and Windows may warn about an unknown publisher; do not disable system security protections.
+
+Back up your Magpie configuration and relevant agent configuration, and close upstream Magpie before use. **A ZIP distribution does not itself isolate your data.** Existing appdir rules are retained: default configuration is `~/.config/magpie` (or the configured XDG location); existing `.portable`/`data` mode remains supported, but agent configuration and sign-ins are still owned by their respective agents. No automatic migration or port changes are performed. Do not run upstream and Next simultaneously against shared data or ports, and do not overwrite the upstream executable.
+
+After this candidate configuration is integrated and accepted, main pushes will run the complete existing validation matrix, then build the GUI/CLI and run the Next updater guard plus CLI version smoke. Only success permits a source-pinned `next-<SHA12>` release; failures retain the last public release. The smoke does not validate GUI interaction. Next packages never use the upstream self-update feed or signing identity; update manually from this repository.
+
+## Upstream project reference (not Next installation)
+
+The following platform badges, official website, downloads and update-service descriptions refer to upstream Magpie, not these Next packages.
+
+---
 
 <div align="center">
 
@@ -20,7 +39,7 @@ and when a quota runs out, it quietly moves on to the next account.
 <sub>Sponsors</sub><br>
 <a href="https://usemagpie.ai/go/apinebula/readme"><picture><source media="(prefers-color-scheme: dark)" srcset="site/public/img/sponsor-apinebula-dark.svg"><img src="site/public/img/sponsor-apinebula.svg" height="36" alt="APINEBULA"></picture></a>&emsp;&emsp;<a href="https://usemagpie.ai/go/zerotoken/readme"><picture><source media="(prefers-color-scheme: dark)" srcset="site/public/img/sponsor-zerotoken-dark.svg"><img src="site/public/img/sponsor-zerotoken.svg" height="36" alt="零词元"></picture></a>
 
-**[Download](https://usemagpie.ai)** &nbsp;·&nbsp; **[Docs](https://usemagpie.ai/docs/start)** &nbsp;·&nbsp; **[Reference](docs/reference.md)** &nbsp;·&nbsp; **[Plugins](https://github.com/magpie-community/plugins)** &nbsp;·&nbsp; **[Discord](https://discord.gg/vGSnD3ZKQF)** &nbsp;·&nbsp; **English** · [简体中文](README.zh-CN.md)
+**[Install Next](#next-installation)** &nbsp;·&nbsp; **[Docs](https://usemagpie.ai/docs/start)** &nbsp;·&nbsp; **[Reference](docs/reference.md)** &nbsp;·&nbsp; **[Plugins](https://github.com/magpie-community/plugins)** &nbsp;·&nbsp; **[Discord](https://discord.gg/vGSnD3ZKQF)** &nbsp;·&nbsp; **English** · [简体中文](README.zh-CN.md)
 
 <br>
 
@@ -45,9 +64,9 @@ It's for you if you use more than one agent, more than one provider, or more tha
 
 Runs on macOS, Windows and Linux (menu bar app, window, TUI, web UI and CLI), in Docker, and on Termux.
 
-## Quick start
+## Upstream quick start (separate installation)
 
-**1 · Install.** Download the app from **[usemagpie.ai](https://usemagpie.ai)**, or run:
+**1 · Install upstream, not Next.** Download the upstream app from **[usemagpie.ai](https://usemagpie.ai)**, or run:
 
 ```sh
 curl -fsSL https://usemagpie.ai/install.sh | sh

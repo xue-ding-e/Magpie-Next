@@ -1,6 +1,25 @@
 # Magpie-Next
 
-这是 [yetone/magpie](https://github.com/yetone/magpie) 的非官方独立维护版本，保留原作者归属和 MIT 许可证。下文的上游下载与更新服务属于官方 Magpie，不代表 Magpie-Next 产物。Magpie-Next 尚未发布安装包或发行版。
+这是 [yetone/magpie](https://github.com/yetone/magpie) 的非官方独立维护版本，保留原作者归属和 MIT 许可证。
+
+<a id="next-installation"></a>
+## 安装 Magpie-Next
+
+`SHA12` 表示源码提交 SHA 的前 12 位。
+
+**当前待验收，尚无公开的 Next 安装包。** 候选流水线构建 **Windows x64 ZIP**，内含 `Magpie-Next.exe`（GUI）、`magpie-next-cli.exe`（CLI）、LICENSE 与源码/校验清单。目前不提供 Next MSI、ARM64、macOS、Linux、Docker 或 Termux 包。请查看 [Next Releases](https://github.com/xue-ding-e/Magpie-Next/releases)；下文上游下载是另一种选择，不是 Next 产物。
+
+验证通过并发布后，下载 `Magpie-Next-<SHA12>-Windows-x64.zip` 和 SHA256SUMS，用 PowerShell `Get-FileHash` 核对 ZIP 的 SHA256，解压到专用目录后运行 `Magpie-Next.exe`。CLI 可执行 `.\magpie-next-cli.exe --version`，下文 CLI 示例中的 `magpie` 应替换为该可执行文件。GUI 需要 WebView2。程序未签名，Windows 可能提示发布者未知；不要关闭系统安全保护。
+
+使用前备份 Magpie 配置及相关 agent 配置，并关闭上游 Magpie。**ZIP 分发不等于数据自动隔离。** 保留现有 appdir 规则：默认配置仍在 `~/.config/magpie`（或已配置的 XDG 路径）；现有 `.portable`/`data` 模式继续支持，但 agent 配置与登录仍由各 agent 持有。本改动不自动迁移数据或修改端口。不要同时运行上游与 Next 访问共享数据或端口，也不要覆盖上游可执行文件。
+
+这套候选配置整合并验收后，main 推送将自动执行现有完整验证矩阵，再构建 GUI/CLI，运行 Next 更新隔离回归和 CLI 版本冒烟；全部成功才发布绑定源码的 `next-<SHA12>` 发行版，失败保留上次公开版本。冒烟不等于 GUI 交互验证。Next 包不使用上游自更新服务或签名身份，请从本仓库手动获取更新。
+
+## 上游项目参考（不是 Next 安装方式）
+
+以下平台徽章、官网、下载和更新服务说明属于上游 Magpie，不代表本次 Next 产物。
+
+---
 
 <div align="center">
 
@@ -20,7 +39,7 @@
 <sub>赞助商</sub><br>
 <a href="https://usemagpie.ai/go/apinebula/readme"><picture><source media="(prefers-color-scheme: dark)" srcset="site/public/img/sponsor-apinebula-dark.svg"><img src="site/public/img/sponsor-apinebula.svg" height="36" alt="APINEBULA"></picture></a>&emsp;&emsp;<a href="https://usemagpie.ai/go/zerotoken/readme"><picture><source media="(prefers-color-scheme: dark)" srcset="site/public/img/sponsor-zerotoken-dark.svg"><img src="site/public/img/sponsor-zerotoken.svg" height="36" alt="零词元"></picture></a>
 
-**[下载](https://usemagpie.ai/zh/)** &nbsp;·&nbsp; **[文档](https://usemagpie.ai/docs/zh/start)** &nbsp;·&nbsp; **[完整参考（英文）](docs/reference.md)** &nbsp;·&nbsp; **[插件](https://github.com/magpie-community/plugins)** &nbsp;·&nbsp; **[Discord](https://discord.gg/vGSnD3ZKQF)** &nbsp;·&nbsp; [English](README.md) · **简体中文**
+**[安装 Next](#next-installation)** &nbsp;·&nbsp; **[文档](https://usemagpie.ai/docs/zh/start)** &nbsp;·&nbsp; **[完整参考（英文）](docs/reference.md)** &nbsp;·&nbsp; **[插件](https://github.com/magpie-community/plugins)** &nbsp;·&nbsp; **[Discord](https://discord.gg/vGSnD3ZKQF)** &nbsp;·&nbsp; [English](README.md) · **简体中文**
 
 <br>
 
@@ -45,9 +64,9 @@
 
 支持 macOS、Windows 和 Linux（菜单栏应用、窗口、TUI、Web 界面和 CLI），也能跑在 Docker 和 Termux 上。
 
-## 快速开始
+## 上游快速开始（独立安装）
 
-**1 · 安装**。从 **[usemagpie.ai](https://usemagpie.ai/zh/)** 下载应用，或者运行：
+**1 · 安装上游（不是 Next）**。从 **[usemagpie.ai](https://usemagpie.ai/zh/)** 下载应用，或者运行：
 
 ```sh
 curl -fsSL https://usemagpie.ai/install.sh | sh
