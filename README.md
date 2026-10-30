@@ -7,13 +7,13 @@ Unofficial independently maintained derivative of [yetone/magpie](https://github
 
 `SHA12` denotes the first 12 characters of the source commit SHA.
 
-**Awaiting acceptance: no public Next package is available yet.** The candidate pipeline builds a **Windows x64 ZIP containing `Magpie-Next.exe` (GUI) and `magpie-next-cli.exe` (CLI)**, together with LICENSE and a source/checksum manifest. It does not provide Next MSI, ARM64, macOS, Linux, Docker or Termux packages. Check [Next Releases](https://github.com/xue-ding-e/Magpie-Next/releases); upstream downloads below are a separate option, not Next builds.
+**Windows x64 portable packages are available in [Next Releases](https://github.com/xue-ding-e/Magpie-Next/releases).** The automatic pipeline builds a **Windows x64 ZIP containing `Magpie-Next.exe` (GUI) and `magpie-next-cli.exe` (CLI)**, together with LICENSE and a source/checksum manifest. It does not provide Next MSI, ARM64, macOS, Linux, Docker or Termux packages. Check [Next Releases](https://github.com/xue-ding-e/Magpie-Next/releases); upstream downloads below are a separate option, not Next builds.
 
 After a validated release appears, download `Magpie-Next-<SHA12>-Windows-x64.zip` and SHA256SUMS, compare the ZIP SHA-256 with PowerShell `Get-FileHash`, extract into a dedicated folder and start `Magpie-Next.exe`. The CLI runs as `.\magpie-next-cli.exe --version`; substitute that executable for `magpie` in CLI examples below. The GUI requires WebView2. Binaries are unsigned and Windows may warn about an unknown publisher; do not disable system security protections.
 
 Back up your Magpie configuration and relevant agent configuration, and close upstream Magpie before use. **A ZIP distribution does not itself isolate your data.** Existing appdir rules are retained: default configuration is `~/.config/magpie` (or the configured XDG location); existing `.portable`/`data` mode remains supported, but agent configuration and sign-ins are still owned by their respective agents. No automatic migration or port changes are performed. Do not run upstream and Next simultaneously against shared data or ports, and do not overwrite the upstream executable.
 
-After this candidate configuration is integrated and accepted, main pushes will run the complete existing validation matrix, then build the GUI/CLI and run the Next updater guard plus CLI version smoke. Only success permits a source-pinned `next-<SHA12>` release; failures retain the last public release. The smoke does not validate GUI interaction. Next packages never use the upstream self-update feed or signing identity; update manually from this repository.
+Main pushes automatically run the complete existing validation matrix, then build the GUI/CLI and run the Next updater guard plus CLI version smoke. Only success permits a source-pinned `next-<SHA12>` release; failures retain the last public release. The smoke does not validate GUI interaction. Next packages never use the upstream self-update feed or signing identity; update manually from this repository.
 
 ## Upstream project reference (not Next installation)
 

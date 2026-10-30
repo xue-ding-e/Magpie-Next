@@ -7,13 +7,13 @@
 
 `SHA12` 表示源码提交 SHA 的前 12 位。
 
-**当前待验收，尚无公开的 Next 安装包。** 候选流水线构建 **Windows x64 ZIP**，内含 `Magpie-Next.exe`（GUI）、`magpie-next-cli.exe`（CLI）、LICENSE 与源码/校验清单。目前不提供 Next MSI、ARM64、macOS、Linux、Docker 或 Termux 包。请查看 [Next Releases](https://github.com/xue-ding-e/Magpie-Next/releases)；下文上游下载是另一种选择，不是 Next 产物。
+**Windows x64 便携包已在 [Next Releases](https://github.com/xue-ding-e/Magpie-Next/releases) 公开提供。** 自动流水线构建 **Windows x64 ZIP**，内含 `Magpie-Next.exe`（GUI）、`magpie-next-cli.exe`（CLI）、LICENSE 与源码/校验清单。目前不提供 Next MSI、ARM64、macOS、Linux、Docker 或 Termux 包。请查看 [Next Releases](https://github.com/xue-ding-e/Magpie-Next/releases)；下文上游下载是另一种选择，不是 Next 产物。
 
 验证通过并发布后，下载 `Magpie-Next-<SHA12>-Windows-x64.zip` 和 SHA256SUMS，用 PowerShell `Get-FileHash` 核对 ZIP 的 SHA256，解压到专用目录后运行 `Magpie-Next.exe`。CLI 可执行 `.\magpie-next-cli.exe --version`，下文 CLI 示例中的 `magpie` 应替换为该可执行文件。GUI 需要 WebView2。程序未签名，Windows 可能提示发布者未知；不要关闭系统安全保护。
 
 使用前备份 Magpie 配置及相关 agent 配置，并关闭上游 Magpie。**ZIP 分发不等于数据自动隔离。** 保留现有 appdir 规则：默认配置仍在 `~/.config/magpie`（或已配置的 XDG 路径）；现有 `.portable`/`data` 模式继续支持，但 agent 配置与登录仍由各 agent 持有。本改动不自动迁移数据或修改端口。不要同时运行上游与 Next 访问共享数据或端口，也不要覆盖上游可执行文件。
 
-这套候选配置整合并验收后，main 推送将自动执行现有完整验证矩阵，再构建 GUI/CLI，运行 Next 更新隔离回归和 CLI 版本冒烟；全部成功才发布绑定源码的 `next-<SHA12>` 发行版，失败保留上次公开版本。冒烟不等于 GUI 交互验证。Next 包不使用上游自更新服务或签名身份，请从本仓库手动获取更新。
+main 推送会自动执行现有完整验证矩阵，再构建 GUI/CLI，运行 Next 更新隔离回归和 CLI 版本冒烟；全部成功才发布绑定源码的 `next-<SHA12>` 发行版，失败保留上次公开版本。冒烟不等于 GUI 交互验证。Next 包不使用上游自更新服务或签名身份，请从本仓库手动获取更新。
 
 ## 上游项目参考（不是 Next 安装方式）
 
