@@ -2,10 +2,10 @@ name: Test
 
 on:
   workflow_dispatch:
+  workflow_call:
 
-# Next tests run only by manual dispatch, one run across all refs at a time.
-# A newer dispatch does not cancel the active run.
-# No automatic push or pull-request test run is configured in this derivative.
+# Next release builds call this validation before packaging. Manual validation
+# remains available; one full matrix runs at a time without cancellation.
 concurrency:
   group: test-${{ github.repository }}
   cancel-in-progress: false
