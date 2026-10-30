@@ -81,6 +81,9 @@ func Latest(ctx context.Context) (*Release, error) { return LatestIn(ctx, "") }
 // LatestIn asks the feed for the newest release, its notes in lang (see
 // InLang): the app's language, which What's new follows.
 func LatestIn(ctx context.Context, lang string) (*Release, error) {
+	if nextDistribution {
+		return nil, fmt.Errorf("Magpie Next uses manual updates: https://github.com/xue-ding-e/Magpie-Next/releases")
+	}
 	req, err := http.NewRequestWithContext(ctx, "GET", withLang(Feed(), lang), nil)
 	if err != nil {
 		return nil, err
@@ -108,6 +111,9 @@ func LatestIn(ctx context.Context, lang string) (*Release, error) {
 // source ("dev", "0bcb2cc-dirty", git describe's "v0.1.0-3-g0bcb2cc");
 // only releases update themselves.
 func Released(v string) bool {
+	if nextDistribution {
+		return false
+	}
 	s := parse(v)
 	return s != nil && !describe.MatchString(s.pre) && !strings.Contains(s.pre, "dirty")
 }
