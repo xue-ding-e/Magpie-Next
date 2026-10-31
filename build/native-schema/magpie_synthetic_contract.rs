@@ -115,5 +115,102 @@ fn typed_fixture_and_real_parser_contract() {
             _ => panic!("not metadata"),
         }
     }
+    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(official_index_contract(output));
     println!("REAL_PARSER_PASS variants=2 revisions=4 phases=2 schema_negative=5 legacy_fallback=1");
+}
+
+// The official index OBSERVES references; it does not enforce Magpie's stricter
+// migration admission. Every scan below is confined to a new synthetic TempDir.
+fn copy_phase(source: &Path, destination: &Path) {
+    for directory in ["sessions", "archived_sessions"] {
+        let target = destination.join(directory);
+        fs::create_dir(&target).unwrap();
+        for entry in fs::read_dir(source.join(directory)).unwrap() {
+            let entry = entry.unwrap();
+            assert!(entry.file_type().unwrap().is_file());
+            fs::copy(entry.path(), target.join(entry.file_name())).unwrap();
+        }
+    }
+}
+fn observed_ids(index: &codex_rollout::RolloutReferenceIndex) -> Vec<String> {
+    let mut ids: Vec<String> = [THREAD, CHILD, GRAND].into_iter()
+        .flat_map(|thread| index.rollouts_for_thread(id(thread)).map(|(revision, _)| revision.to_string()))
+        .collect();
+    ids.sort();
+    ids
+}
+fn require_four(index: &codex_rollout::RolloutReferenceIndex) -> bool {
+    // Independent fixed-fixture completeness oracle, NOT official rejection.
+    observed_ids(index) == [A, B, CHILD, GRAND]
+}
+async fn official_index_contract(output: &Path) {
+    use codex_rollout::RolloutReferenceIndex;
+    for variant in ["shrink", "grow"] {
+        for phase in ["before", "after"] {
+            let source = output.join(variant).join(phase);
+            let home = tempfile::TempDir::new().unwrap();
+            copy_phase(&source, home.path());
+            let index = RolloutReferenceIndex::scan(home.path()).await.unwrap();
+            assert!(require_four(&index));
+            let mut roots: Vec<String> = index.rollouts_for_thread(id(THREAD)).map(|(r,_)| r.to_string()).collect();
+            roots.sort(); assert_eq!(roots, [A, B]);
+            assert_eq!(index.reference_count(id(A)), 0);
+            assert_eq!(index.reference_count(id(B)), 1);
+            assert_eq!(index.reference_count(id(CHILD)), 1);
+            assert_eq!(index.reference_count(id(GRAND)), 0);
+            assert!(index.attached_child(&[id(THREAD),id(CHILD)]).is_none());
+            for (child,parent,ordinal) in [(CHILD,B,5),(GRAND,CHILD,7)] {
+                let base = index.history_base(id(child)).unwrap();
+                assert_eq!(base.thread_id, id(parent));
+                assert_eq!(base.end_ordinal_exclusive, ordinal);
+                let parent_thread = if parent==B {THREAD} else {CHILD};
+                let directory = if parent==B {"sessions"} else {"archived_sessions"};
+                let bytes = fs::read(source.join(directory).join(filename(parent_thread,parent))).unwrap();
+                assert_eq!(base.end_byte_offset, bytes.len() as u64);
+                let child_bytes = fs::read_to_string(source.join("archived_sessions").join(filename(child,child))).unwrap();
+                match parse_rollout_line(child_bytes.lines().next().unwrap()).unwrap().item {
+                    RolloutItem::SessionMeta(m) => {
+                        assert_eq!(m.meta.forked_from_ordinal_exclusive, Some(ordinal));
+                        assert_eq!(m.meta.forked_from_id, Some(id(parent_thread)));
+                    }, _ => panic!("missing metadata"),
+                }
+            }
+            // Real scanner must not modify even the disposable copies.
+            for directory in ["sessions","archived_sessions"] {
+                for entry in fs::read_dir(source.join(directory)).unwrap() {
+                    let entry=entry.unwrap();
+                    assert_eq!(fs::read(entry.path()).unwrap(),fs::read(home.path().join(directory).join(entry.file_name())).unwrap());
+                }
+            }
+        }
+        let source=output.join(variant).join("after");
+        let home=tempfile::TempDir::new().unwrap(); copy_phase(&source,home.path());
+        // Duplicate immutable revision is retained once, not rejected by Codex.
+        let root_b=home.path().join("sessions").join(filename(THREAD,B));
+        fs::copy(&root_b,home.path().join("archived_sessions").join(filename(THREAD,B))).unwrap();
+        let index=RolloutReferenceIndex::scan(home.path()).await.unwrap();
+        assert!(require_four(&index)); assert_eq!(index.reference_count(id(B)),1);
+        // Attached metadata is observed by stable thread ID, not rejected.
+        let child_path=home.path().join("archived_sessions").join(filename(CHILD,CHILD));
+        let bytes=fs::read_to_string(&child_path).unwrap();
+        let (head,tail)=bytes.split_once('\n').unwrap();
+        let mut value:Value=serde_json::from_str(head).unwrap();
+        value["payload"]["attached_thread"]=json!(true);
+        fs::write(&child_path,value.to_string()+"\n"+tail).unwrap();
+        let index=RolloutReferenceIndex::scan(home.path()).await.unwrap();
+        assert_eq!(index.attached_child(&[id(THREAD)]),Some(id(CHILD)));
+        assert!(index.attached_child(&[id(B)]).is_none());
+        // A stale cutoff is indexed unchanged. Magpie admission must reject it.
+        let old_len=fs::metadata(output.join(variant).join("before/sessions").join(filename(THREAD,B))).unwrap().len();
+        value["payload"]["history_base"]["end_byte_offset"]=json!(old_len);
+        fs::write(&child_path,value.to_string()+"\n"+tail).unwrap();
+        let index=RolloutReferenceIndex::scan(home.path()).await.unwrap();
+        assert_eq!(index.history_base(id(CHILD)).unwrap().end_byte_offset,old_len);
+        // An omitted terminal descendant cannot be inferred by a scanner.
+        fs::remove_file(home.path().join("archived_sessions").join(filename(GRAND,GRAND))).unwrap();
+        let index=RolloutReferenceIndex::scan(home.path()).await.unwrap();
+        assert_eq!(observed_ids(&index).len(),3);
+        assert!(!require_four(&index)); // independent manifest expectation catches it
+    }
+    println!("REAL_INDEX_PASS phases=4 revisions=4 observation_only=duplicate,attached,stale,missing_leaf");
 }

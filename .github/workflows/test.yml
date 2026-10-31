@@ -29,7 +29,7 @@ defaults:
 
 jobs:
   native-schema-fixture:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/native-schema-fixture-20261031'
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/native-index-fixture-20261031'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
@@ -71,11 +71,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = d65e4026f0856215a35232fabc4cbb3f98fa52d7
+          test "$(git rev-parse HEAD^)" = 6e7d953159eff9483245b8a4800fa3b3cf7c3196
           test "$(git -C .native-codex rev-parse HEAD)" = 970111f6cb62cc02fe36a82ea7d71b37a2889c97
           python3 - <<'PYCODE'
           import subprocess
-          expected={'.github/workflows/test.yml','build/native-schema/audit.py','build/native-schema/capsules.json','build/native-schema/magpie_synthetic_contract.rs','build/native-schema/validate-offline.sh','internal/sessions/codex_native_schema_fixture_test.go'}
+          expected={'.github/workflows/test.yml','build/native-schema/reference-hashes.json','build/native-schema/magpie_synthetic_contract.rs','build/native-schema/validate-offline.sh','internal/sessions/codex_native_schema_fixture_test.go'}
           changed=set(subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines())
           assert changed==expected,(changed,expected)
           PYCODE
@@ -158,7 +158,7 @@ jobs:
           PYCODE
 
   test:
-    if: github.ref != 'refs/heads/validation/native-schema-fixture-20261031'
+    if: github.ref != 'refs/heads/validation/native-index-fixture-20261031'
     name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -375,7 +375,7 @@ jobs:
     name: cli (${{ matrix.goos }}/${{ matrix.goarch }}, nogui)
     needs: test
     # Preserve independent CLI/site evidence after test failures, not cancellation.
-    if: ${{ !cancelled() && github.ref != 'refs/heads/validation/native-schema-fixture-20261031' }}
+    if: ${{ !cancelled() && github.ref != 'refs/heads/validation/native-index-fixture-20261031' }}
     strategy:
       fail-fast: false
       max-parallel: 1

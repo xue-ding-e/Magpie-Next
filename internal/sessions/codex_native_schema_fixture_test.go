@@ -33,6 +33,20 @@ func matchNativeFixturePreview(before, after []byte) (legacycodex.RolloutPreview
 	return preview, nil
 }
 
+// requireNativeFixtureRevisions is the independent four-revision fixture
+// completeness contract. Neither the official scanner nor an arbitrary fs.FS
+// can infer a terminal descendant absent from its supplied snapshot.
+func requireNativeFixtureRevisions(plan readOnlyReferencePlan) error {
+	var ids []string
+	for _, entry := range plan.entries {
+		ids = append(ids, entry.rolloutID)
+	}
+	if !reflect.DeepEqual(ids, []string{stagedRootA, stagedRootB, stagedChild, stagedGrandchild}) {
+		return fmt.Errorf("synthetic four-revision inventory is incomplete")
+	}
+	return nil
+}
+
 // TestNativeSchemaSharedFixture consumes bytes emitted and admitted by the
 // independently pinned official Codex parser. It never invokes a real client,
 // opens a user session, or connects preview helpers to the production writer.
@@ -122,12 +136,55 @@ func TestNativeSchemaSharedFixture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(result.references.entries) != 4 || !reflect.DeepEqual(result.references.changedRootPayloads, []string{stagedRootB}) {
+			if requireNativeFixtureRevisions(result.references) != nil || !reflect.DeepEqual(result.references.changedRootPayloads, []string{stagedRootB}) {
 				t.Fatal("four-revision plan lost identity")
 			}
 			for _, entry := range result.references.entries {
 				if entry.beforeHash != sha256.Sum256(beforeByID[entry.rolloutID]) || entry.afterHash != sha256.Sum256(afterByID[entry.rolloutID]) {
 					t.Fatal("revision hash mismatch")
+				}
+			}
+			// Duplicate revision: native index keeps one; Magpie admission rejects it.
+			var duplicateSource = make(fstest.MapFS, len(source)+1)
+			for name, file := range source {
+				duplicateSource[name] = file
+			}
+			duplicatePath := path.Join("archived_sessions", path.Base(pathByID[stagedRootB]))
+			duplicateSource[duplicatePath] = source[pathByID[stagedRootB]]
+			duplicate := request
+			duplicate.candidates = append([]syntheticRolloutCandidate(nil), request.candidates...)
+			duplicate.candidates = append(duplicate.candidates, syntheticRolloutCandidate{duplicatePath, sha256.Sum256(beforeByID[stagedRootB]), afterByID[stagedRootB]})
+			if _, err := validateSyntheticSnapshotPlan(duplicateSource, duplicate); err == nil {
+				t.Fatal("admission accepted duplicate immutable revision")
+			}
+			for _, omitted := range []string{stagedChild, stagedGrandchild} {
+				var missingSource = make(fstest.MapFS, len(source)-1)
+				for name, file := range source {
+					if name != pathByID[omitted] {
+						missingSource[name] = file
+					}
+				}
+				missing := request
+				missing.candidates = nil
+				for _, candidate := range request.candidates {
+					if candidate.relativePath != pathByID[omitted] {
+						missing.candidates = append(missing.candidates, candidate)
+					}
+				}
+				partial, err := validateSyntheticSnapshotPlan(missingSource, missing)
+				if omitted == stagedChild {
+					if err == nil {
+						t.Fatal("admission accepted dangling grandchild")
+					}
+				} else {
+					// Missing terminal leaf is NOT claimed detectable by native scan
+					// or planner alone: our explicit expected-four contract rejects it.
+					if err != nil {
+						t.Fatal("unexpected orphan-free partial snapshot refusal: ", err)
+					}
+					if requireNativeFixtureRevisions(partial.references) == nil {
+						t.Fatal("fixture completeness gate missed omitted terminal descendant")
+					}
 				}
 			}
 			// Keep child/grandchild mutually consistent but tied to the OLD B cutoff.
