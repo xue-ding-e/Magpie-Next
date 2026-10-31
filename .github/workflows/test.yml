@@ -2,6 +2,11 @@ name: Test
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_control_sha:
+        description: Exact reviewed candidate SHA (required for legacy marker control)
+        required: true
+        type: string
   workflow_call:
 
 # Next release builds call this validation before packaging. Manual validation
@@ -23,7 +28,97 @@ defaults:
     shell: bash build/ci-step.sh {0}
 
 jobs:
+  legacy-marker-characterization:
+    # Candidate-only test control: never a release or native Codex migration claim.
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/legacy-marker-characterization-20261031'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+      GOMAXPROCS: '2'
+      CGO_ENABLED: '0'
+    steps:
+      - name: Verify reviewed dispatch identity before checkout
+        env:
+          EXPECTED_CONTROL_SHA: ${{ inputs.expected_control_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$EXPECTED_CONTROL_SHA" = "$GITHUB_SHA"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_control_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify candidate and isolate synthetic home
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-list --count --merges d65e4026f0856215a35232fabc4cbb3f98fa52d7..HEAD)" = 0
+          git merge-base --is-ancestor d65e4026f0856215a35232fabc4cbb3f98fa52d7 HEAD
+          git diff --name-only d65e4026f0856215a35232fabc4cbb3f98fa52d7 HEAD > "$RUNNER_TEMP/changed-paths"
+          printf '%s\n' '.github/workflows/test.yml' 'internal/sessions/codex_portable_legacy_status_test.go' > "$RUNNER_TEMP/expected-paths"
+          diff -u "$RUNNER_TEMP/expected-paths" "$RUNNER_TEMP/changed-paths"
+          mkdir -p "$RUNNER_TEMP/legacy-evidence" "$RUNNER_TEMP/synthetic-home" "$RUNNER_TEMP/legacy-test-tmp"
+          printf 'head=%s\ntree=%s\nbase=%s\ntest_blob=%s\n' "$GITHUB_SHA" "$(git rev-parse HEAD^{tree})" d65e4026f0856215a35232fabc4cbb3f98fa52d7 "$(git rev-parse HEAD:internal/sessions/codex_portable_legacy_status_test.go)" > "$RUNNER_TEMP/legacy-evidence/source.txt"
+          for key in GOPATH GOMODCACHE GOCACHE; do echo "$key=$(go env "$key")" >> "$GITHUB_ENV"; done
+          for key in HOME USERPROFILE XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME APPDATA LOCALAPPDATA; do echo "$key=$RUNNER_TEMP/synthetic-home" >> "$GITHUB_ENV"; done
+          echo "TMPDIR=$RUNNER_TEMP/legacy-test-tmp" >> "$GITHUB_ENV"
+      - name: Run only selected synthetic sessions tests
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l internal/sessions/codex_portable_legacy_status_test.go)"
+          go test -mod=readonly -p=2 -tags nogui -count=1 -timeout=8m -json -run '^Test(PortSyntheticLegacyMarkersScope|PortLineLeavesOthers|PortCodexRolloutsLeavesAnOpenThread)$' ./internal/sessions | tee "$RUNNER_TEMP/legacy-evidence/tests.jsonl"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          events = [json.loads(s) for s in (Path(os.environ['RUNNER_TEMP']) / 'legacy-evidence/tests.jsonl').read_text().splitlines()]
+          expected = {'TestPortSyntheticLegacyMarkersScope', 'TestPortLineLeavesOthers', 'TestPortCodexRolloutsLeavesAnOpenThread'}
+          passed = {e['Test'] for e in events if e.get('Action') == 'pass' and 'Test' in e and '/' not in e['Test']}
+          assert passed == expected, (passed, expected)
+          assert not any(e.get('Action') in {'skip', 'fail'} for e in events)
+          for variant in ('plain', 'zstd'):
+              assert any(e.get('Action') == 'pass' and e.get('Test') == 'TestPortSyntheticLegacyMarkersScope/' + variant for e in events)
+          assert any(e.get('Action') == 'pass' and e.get('Package') == 'github.com/yetone/magpie/internal/sessions' and 'Test' not in e for e in events)
+          print('Three selected top-level tests and both marker fixture variants passed; native resume not tested.')
+          PY
+          git diff --exit-code
+          git diff --cached --exit-code
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Clean only candidate-owned synthetic directories
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
+          for name in ('synthetic-home', 'legacy-test-tmp'):
+              path = root / name
+              if path.is_symlink():
+                  raise RuntimeError('Refusing symlink cleanup root: ' + str(path))
+              if path.exists():
+                  if path.resolve(strict=True).parent != root or not path.is_dir():
+                      raise RuntimeError('Unexpected cleanup target: ' + str(path))
+                  shutil.rmtree(path)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy-marker-characterization-${{ github.sha }}
+          path: ${{ runner.temp }}/legacy-evidence
+          if-no-files-found: error
+          retention-days: 7
   test:
+    if: github.ref != 'refs/heads/validation/legacy-marker-characterization-20261031'
     name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -240,7 +335,7 @@ jobs:
     name: cli (${{ matrix.goos }}/${{ matrix.goarch }}, nogui)
     needs: test
     # Preserve independent CLI/site evidence after test failures, not cancellation.
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.ref != 'refs/heads/validation/legacy-marker-characterization-20261031' }}
     strategy:
       fail-fast: false
       max-parallel: 1
