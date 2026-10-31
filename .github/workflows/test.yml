@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_control_sha:
-        description: Exact reviewed candidate SHA (required for native schema control)
+        description: Exact reviewed candidate SHA (required for native local projection control)
         required: true
         type: string
   workflow_call:
@@ -28,22 +28,13 @@ defaults:
     shell: bash build/ci-step.sh {0}
 
 jobs:
-  native-schema-fixture:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/native-index-fixture-20261031'
+  native-local-projection:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/native-local-projection-20261031'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
       run:
         shell: bash
-    env:
-      CARGO_BUILD_JOBS: '2'
-      CARGO_PROFILE_DEV_DEBUG: '0'
-      CARGO_PROFILE_TEST_DEBUG: '0'
-      CARGO_INCREMENTAL: '0'
-      GOTOOLCHAIN: local
-      GOMAXPROCS: '2'
-      CGO_ENABLED: '0'
-      GOWORK: 'off'
     steps:
       - name: Verify reviewed dispatch identity
         env:
@@ -63,102 +54,135 @@ jobs:
           ref: 970111f6cb62cc02fe36a82ea7d71b37a2889c97
           path: .native-codex
           persist-credentials: false
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Identity, source and dedicated-directory setup
+      - name: Fixed source, exact candidate files and owned synthetic roots
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 6e7d953159eff9483245b8a4800fa3b3cf7c3196
+          test "$(git rev-parse HEAD^)" = da3951b9b251293df31aa668a3d7c2caa318aab6
           test "$(git -C .native-codex rev-parse HEAD)" = 970111f6cb62cc02fe36a82ea7d71b37a2889c97
           python3 - <<'PYCODE'
-          import subprocess
-          expected={'.github/workflows/test.yml','build/native-schema/reference-hashes.json','build/native-schema/magpie_synthetic_contract.rs','build/native-schema/validate-offline.sh','internal/sessions/codex_native_schema_fixture_test.go'}
+          import hashlib,json,pathlib,subprocess
+          root=pathlib.Path('build/native-materialization')
+          hashes=json.loads((root/'source-hashes.json').read_text())
+          assert len(hashes)==21
+          actual={p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()}
+          assert actual==set(hashes)|{'source-hashes.json'}
+          for name,digest in hashes.items():
+              p=root/name
+              assert not p.is_symlink() and p.resolve()==root.resolve()/name
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==digest,name
+          expected={f'build/native-materialization/{name}' for name in actual}|{'.github/workflows/test.yml'}
           changed=set(subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines())
           assert changed==expected,(changed,expected)
+          # Frozen independent source-review identities, not regenerated expected values.
+          assert hashes['magpie_local_projection_contract.rs']=='2738d214383e3b85ee9458c3e278bf709a28cacfc993949655b6070355437495'
+          assert hashes['audit-local-projection.py']=='d00067c5bb06f041ef8f9b24489fa295810098d27bcd6b4395ea79fdc3965a90'
+          assert hashes['magpie_reference_hashes.json']=='ebea789f530fa5a3d49e55210b02b976361ef240f7ff42b03a2e9f0834ce325e'
           PYCODE
-          mkdir "$RUNNER_TEMP/native-schema-owned"
-          mkdir "$RUNNER_TEMP/native-schema-owned/home" "$RUNNER_TEMP/native-schema-owned/tmp" "$RUNNER_TEMP/native-schema-owned/evidence"
-          echo "EVIDENCE=$RUNNER_TEMP/native-schema-owned/evidence" >> "$GITHUB_ENV"
-          for key in GOPATH GOMODCACHE GOCACHE; do echo "$key=$(go env "$key")" >> "$GITHUB_ENV"; done
-          echo "RUSTUP_HOME=${RUSTUP_HOME:-$HOME/.rustup}" >> "$GITHUB_ENV"
-          echo "CARGO_HOME=$RUNNER_TEMP/native-schema-owned/cargo" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/native-schema-owned/target" >> "$GITHUB_ENV"
-          for key in HOME USERPROFILE XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME APPDATA LOCALAPPDATA; do echo "$key=$RUNNER_TEMP/native-schema-owned/home" >> "$GITHUB_ENV"; done
-          echo "TMPDIR=$RUNNER_TEMP/native-schema-owned/tmp" >> "$GITHUB_ENV"
-          echo "MAGPIE_SOURCE=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-          echo "CODEX_SOURCE=$GITHUB_WORKSPACE/.native-codex" >> "$GITHUB_ENV"
-          echo "MAGPIE_SYNTHETIC_OUTPUT=$GITHUB_WORKSPACE/internal/sessions/testdata/native-schema-generated" >> "$GITHUB_ENV"
-          printf 'magpie=%s\ncodex=%s\n' "$GITHUB_SHA" 970111f6cb62cc02fe36a82ea7d71b37a2889c97 > "$RUNNER_TEMP/native-schema-owned/evidence/source"
-      - name: Bounded locked target preparation and compilation (not test execution)
+          owned="$RUNNER_TEMP/native-local-projection-owned"
+          mkdir "$owned"
+          for name in home config cache data tmp cargo rustup target evidence; do mkdir "$owned/$name"; done
+          cp -a build/native-materialization/golden "$owned/golden"
+          {
+            echo "MAGPIE_OWNED_ROOT=$owned"
+            echo "EVIDENCE=$owned/evidence"
+            echo "MAGPIE_SOURCE=$GITHUB_WORKSPACE"
+            echo "CODEX_SOURCE=$GITHUB_WORKSPACE/.native-codex"
+            echo "MAGPIE_GOLDEN_INPUT=$owned/golden"
+            echo "MAGPIE_MATERIALIZATION_OUTPUT=$owned/event-rich"
+            echo "RUSTUP_BIN=$(command -v rustup)"
+          } >> "$GITHUB_ENV"
+          printf 'magpie=%s\ncodex=%s\n' "$GITHUB_SHA" 970111f6cb62cc02fe36a82ea7d71b37a2889c97 > "$owned/evidence/source"
+          cp build/native-materialization/source-hashes.json "$owned/evidence/reviewed-source-hashes.json"
+      - name: Bounded public dependency preparation and target-only compilation
         timeout-minutes: 60
         run: |
           set -euo pipefail
-          echo setup-dependencies-and-compilation > "$EVIDENCE/stage"
-          # Fail SETUP rather than silently expand disk or build scope.
+          printf 'setup-public-dependencies-and-target-compilation\n' > "$EVIDENCE/stage"
           test "$(df --output=avail -k "$RUNNER_TEMP" | tail -1)" -ge 16777216
-          command -v pkg-config
-          command -v cc
-          command -v cmake
-          command -v perl
-          command -v setpriv
-          command -v unshare
-          # Fail setup before compilation if this runner cannot isolate tests.
-          sudo -E unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups env PATH="$PATH" bash -c 'command -v bash; test "$(ip -o link show | wc -l)" = 1'
-          python3 build/native-schema/audit.py dependencies "$CODEX_SOURCE" > "$EVIDENCE/dependency-audit.json"
+          for tool in pkg-config cc cmake perl setpriv unshare ip; do command -v "$tool"; done
+          # Check namespace support before spending the compilation budget. No fallback.
+          sudo unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups env -i PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin bash -c 'test "$(ip -o link show | wc -l)" = 1'
+          python3 build/native-materialization/audit-dependencies.py "$CODEX_SOURCE" > "$EVIDENCE/dependency-audit.json"
           cp "$CODEX_SOURCE/LICENSE" "$EVIDENCE/CODEX-LICENSE"
           cp "$CODEX_SOURCE/NOTICE" "$EVIDENCE/CODEX-NOTICE"
-          timeout 4m rustup toolchain install 1.99.1 --profile minimal
-          rustc +1.99.1 --version | tee "$EVIDENCE/rust-version"
-          export RUSTUP_TOOLCHAIN=1.99.1
-          echo RUSTUP_TOOLCHAIN=1.99.1 >> "$GITHUB_ENV"
-          # Preserve official workspace/lock. Download and compile ONLY the
-          # reachable target closure; do not fetch the full 1476-package lock.
-          # Preparation executes locked dependency build.rs/procedural macros
-          # ONLINE. Only the later actual test stage is network-isolated.
-          mkdir -p "$CODEX_SOURCE/codex-rs/rollout/tests"
-          cp build/native-schema/magpie_synthetic_contract.rs "$CODEX_SOURCE/codex-rs/rollout/tests/magpie_synthetic_contract.rs"
-          cp build/native-schema/capsules.json "$CODEX_SOURCE/codex-rs/rollout/tests/magpie_capsules.json"
-          (cd "$CODEX_SOURCE/codex-rs" && timeout 45m env -i HOME="$HOME" PATH="$PATH" TMPDIR="$TMPDIR" CARGO_HOME="$CARGO_HOME" RUSTUP_HOME="$RUSTUP_HOME" RUSTUP_TOOLCHAIN=1.99.1 CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 cargo test --locked -p codex-rollout --test magpie_synthetic_contract --no-run) 2>&1 | tee "$EVIDENCE/prepare-compile.log"
-          timeout 5m go mod download 2>&1 | tee "$EVIDENCE/go-download.log"
+          owned="$MAGPIE_OWNED_ROOT"
+          # Toolchain and Cargo caches are this run's own. No user registry/SSH credentials.
+          timeout 4m env -i HOME="$owned/home" PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin TMPDIR="$owned/tmp" CARGO_HOME="$owned/cargo" RUSTUP_HOME="$owned/rustup" "$RUSTUP_BIN" toolchain install 1.99.1 --profile minimal
+          cargo_bin=$(env -i HOME="$owned/home" PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin CARGO_HOME="$owned/cargo" RUSTUP_HOME="$owned/rustup" "$RUSTUP_BIN" which --toolchain 1.99.1 cargo)
+          safe_path="$(dirname "$cargo_bin"):/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+          test -x "$cargo_bin"
+          echo "SAFE_PATH=$safe_path" >> "$GITHUB_ENV"
+          env -i HOME="$owned/home" PATH="$safe_path" rustc --version | tee "$EVIDENCE/rust-version"
+          mkdir -p "$CODEX_SOURCE/codex-rs/thread-store/tests"
+          test ! -e "$CODEX_SOURCE/codex-rs/thread-store/tests/magpie_local_projection_contract.rs"
+          test ! -e "$CODEX_SOURCE/codex-rs/thread-store/tests/magpie_reference_hashes.json"
+          cp build/native-materialization/magpie_local_projection_contract.rs "$CODEX_SOURCE/codex-rs/thread-store/tests/"
+          cp build/native-materialization/magpie_reference_hashes.json "$CODEX_SOURCE/codex-rs/thread-store/tests/"
+          # ONLINE preparation executes locked dependency build.rs/procedural macros.
+          # Only actual tests below are network-isolated. Never fetch/build the whole workspace.
+          (cd "$CODEX_SOURCE/codex-rs" && timeout 45m env -i HOME="$owned/home" CODEX_HOME="$owned/home" XDG_CONFIG_HOME="$owned/config" XDG_CACHE_HOME="$owned/cache" XDG_DATA_HOME="$owned/data" TMPDIR="$owned/tmp" PATH="$safe_path" CARGO_HOME="$owned/cargo" RUSTUP_HOME="$owned/rustup" CARGO_TARGET_DIR="$owned/target" CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 LANG=C.UTF-8 cargo test --locked -p codex-thread-store --test magpie_local_projection_contract --no-run) 2>&1 | tee "$EVIDENCE/prepare-compile.log"
           git diff --exit-code
           git -C "$CODEX_SOURCE" diff --exit-code
-      - name: Offline official parser and same-byte Go checks
+      - name: Offline real local writer, SQLite projection and four-revision lineage
         timeout-minutes: 20
         run: |
           set -euo pipefail
-          # OFFLINE STAGE ONLY: denies API/network calls, including any build
-          # scripts Cargo reruns. Preparation above is online.
-          # Drop back to the original runner uid/gid; retain isolated env/caches.
-          sudo -E unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups env PATH="$PATH" bash build/native-schema/validate-offline.sh
-      - name: Preserve stage, logs and synthetic evidence only
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-schema-${{ github.sha }}
-          path: ${{ runner.temp }}/native-schema-owned/evidence
-          if-no-files-found: error
-          retention-days: 7
-      - name: Cleanup only this candidate's synthetic directories
+          owned="$MAGPIE_OWNED_ROOT"
+          # Only this step is no-network; reset credentials/environment rather than sudo -E.
+          # The target supplies non-Git synthetic metadata.cwd; no provider manager is called.
+          sudo unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups env -i HOME="$owned/home" CODEX_HOME="$owned/home" XDG_CONFIG_HOME="$owned/config" XDG_CACHE_HOME="$owned/cache" XDG_DATA_HOME="$owned/data" TMPDIR="$owned/tmp" PATH="$SAFE_PATH" CARGO_HOME="$owned/cargo" RUSTUP_HOME="$owned/rustup" CARGO_TARGET_DIR="$owned/target" CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 LANG=C.UTF-8 MAGPIE_OWNED_ROOT="$owned" MAGPIE_SOURCE="$MAGPIE_SOURCE" CODEX_SOURCE="$CODEX_SOURCE" EVIDENCE="$EVIDENCE" MAGPIE_GOLDEN_INPUT="$MAGPIE_GOLDEN_INPUT" MAGPIE_MATERIALIZATION_OUTPUT="$MAGPIE_MATERIALIZATION_OUTPUT" bash build/native-materialization/validate-offline.sh
+      - name: Collect only bounded generated synthetic files, including partial failures
         if: always()
         run: |
           python3 - <<'PYCODE'
-          import os, pathlib, shutil
+          import os,pathlib,shutil
+          temp=pathlib.Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
+          owned=temp/'native-local-projection-owned'
+          if owned.exists():
+              assert not owned.is_symlink() and owned.resolve().parent==temp
+              source=owned/'event-rich'
+              if source.exists():
+                  assert source.is_dir() and not source.is_symlink() and source.resolve().parent==owned
+                  allowed={f'{v}/{p}/{r}.jsonl' for v in ('shrink','grow') for p in ('before','after') for r in 'ABCD'}|{'manifest.json'}
+                  entries=list(source.rglob('*'))
+                  assert all(not p.is_symlink() for p in entries)
+                  files=[p for p in entries if not p.is_dir()]
+                  assert len(files)<=17
+                  for p in files:
+                      relative=p.relative_to(source)
+                      assert p.is_file() and not p.is_symlink() and p.resolve()==source/relative
+                      assert relative.as_posix() in allowed and p.stat().st_size<=131072
+                      target=owned/'evidence'/'event-rich'/relative
+                      target.parent.mkdir(parents=True,exist_ok=True)
+                      shutil.copyfile(p,target)
+          PYCODE
+      - name: Preserve stage and bounded synthetic evidence, never caches or databases
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-local-projection-${{ github.sha }}
+          path: ${{ runner.temp }}/native-local-projection-owned/evidence
+          if-no-files-found: error
+          retention-days: 7
+      - name: Cleanup only owned synthetic directories
+        if: always()
+        run: |
+          python3 - <<'PYCODE'
+          import os,pathlib,shutil
           temp=pathlib.Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
           work=pathlib.Path(os.environ['GITHUB_WORKSPACE']).resolve(strict=True)
-          targets=[(temp,'native-schema-owned'),(work,'.native-codex'),(work/'internal/sessions/testdata','native-schema-generated')]
-          for parent,name in targets:
+          for parent,name in [(temp,'native-local-projection-owned'),(work,'.native-codex')]:
               p=parent/name
               if p.is_symlink(): raise RuntimeError('refuse symlink cleanup')
               if p.exists():
-                  if not p.is_dir() or p.resolve().parent != parent.resolve(): raise RuntimeError('unexpected cleanup target')
+                  if not p.is_dir() or p.resolve().parent!=parent: raise RuntimeError('unexpected cleanup target')
                   shutil.rmtree(p)
           PYCODE
 
+
   test:
-    if: github.ref != 'refs/heads/validation/native-index-fixture-20261031'
+    if: github.ref != 'refs/heads/validation/native-local-projection-20261031'
     name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -375,7 +399,7 @@ jobs:
     name: cli (${{ matrix.goos }}/${{ matrix.goarch }}, nogui)
     needs: test
     # Preserve independent CLI/site evidence after test failures, not cancellation.
-    if: ${{ !cancelled() && github.ref != 'refs/heads/validation/native-index-fixture-20261031' }}
+    if: ${{ !cancelled() && github.ref != 'refs/heads/validation/native-local-projection-20261031' }}
     strategy:
       fail-fast: false
       max-parallel: 1
