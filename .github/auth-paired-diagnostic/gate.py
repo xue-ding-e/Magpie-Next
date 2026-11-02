@@ -6,7 +6,8 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[2]
 C=ROOT/'.github/auth-paired-diagnostic'
-PARENT='b7888c94c70edf29b2275370d429ec077232a324'
+PARENT='a29ecedbdce7568146e58a21edc4d6c35fe58331'
+V5='b7888c94c70edf29b2275370d429ec077232a324'
 V3='5d98742b2345e88b7cba8f1a6ef1735f51740667'
 PRIOR='69513cff9acecd0d554a70c2c47dd05216da1306'
 CONTROL_BASE='1f5ec6f9f194df6359b6f40ccee18e6e36fa2f86'
@@ -18,7 +19,8 @@ assert os.environ['GITHUB_EVENT_NAME']=='push'
 assert os.environ['GITHUB_REF']=='refs/heads/validation/auth-diagnosis-20261102'
 head=git(ROOT,'rev-parse','HEAD');assert head==os.environ['GITHUB_SHA']
 assert git(ROOT,'rev-list','--parents','-n','1',head).split()==[head,PARENT]
-assert git(ROOT,'rev-list','--parents','-n','1',PARENT).split()==[PARENT,V3]
+assert git(ROOT,'rev-list','--parents','-n','1',PARENT).split()==[PARENT,V5]
+assert git(ROOT,'rev-list','--parents','-n','1',V5).split()==[V5,V3]
 assert git(ROOT,'rev-list','--parents','-n','1',V3).split()==[V3,PRIOR]
 assert git(ROOT,'rev-list','--parents','-n','1',PRIOR).split()==[PRIOR,CONTROL_BASE]
 manifest=json.loads((C/'control-hashes.json').read_text())

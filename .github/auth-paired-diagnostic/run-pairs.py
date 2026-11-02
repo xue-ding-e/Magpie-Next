@@ -12,7 +12,7 @@ import time
 CONTROL = Path(__file__).resolve().parent
 WORK = Path(os.environ['GITHUB_WORKSPACE']).resolve()
 SOURCES = {'candidate':WORK/'candidate', 'baseline':WORK/'baseline'}
-GROUPS = {'network-library':('library-all.test.cjs',240,600), 'webkit-preview-width':('agent-disconnect-preview.test.cjs',120,300)}
+GROUPS = {'webkit-preview-width':('agent-disconnect-preview.test.cjs',120,300)}
 def summarize(tap, code, label, filename, elapsed, group, denied):
     counts={key:[int(x) for x in re.findall(r'^# '+key+r' (\d+)$',tap,re.M)] for key in ['tests','pass','fail','cancelled','skipped','todo']}
     launch_fault=any(x in tap for x in ['browserType.launch:', "Executable doesn't exist", 'Host system is missing dependencies', 'MODULE_NOT_FOUND', 'SyntaxError:'])
@@ -22,9 +22,6 @@ def summarize(tap, code, label, filename, elapsed, group, denied):
 
 def main(name):
     assert name in GROUPS
-    if name=='webkit-preview-width':
-        previous=json.loads((WORK/'diagnostic-reports/network-library/summary.json').read_text())
-        assert previous.get('safe_to_continue') is True and len(previous.get('results',[]))==2 and all(r.get('process_safe_to_continue') is True for r in previous['results']), 'Previous pair did not safely terminate both sides'
     filename, per_run, total = GROUPS[name]
     report=WORK/'diagnostic-reports'/name
     report.mkdir(parents=True,exist_ok=True)
@@ -36,7 +33,7 @@ def main(name):
         out.mkdir()
         with tempfile.TemporaryDirectory(prefix='ma.',dir=os.environ['RUNNER_TEMP']) as tmp:
             home=Path(tmp)/'home';home.mkdir(mode=0o700)
-            env=dict(os.environ, HOME=str(home), USERPROFILE=str(home), XDG_CONFIG_HOME=str(home/'.config'), XDG_CACHE_HOME=str(home/'.cache'), XDG_DATA_HOME=str(home/'.local/share'), XDG_STATE_HOME=str(home/'.local/state'), APPDATA=str(home/'AppData/Roaming'), LOCALAPPDATA=str(home/'AppData/Local'), TMPDIR=tmp, BROWSER='webkit', ARTIFACT_DIR=str(out/'screens'), AUTH_DIAG_DENIED=str(out/'denied.jsonl'), AUTH_DIAG_LOCAL_BLOBS=str(out/'local-blobs.jsonl'), AUTH_DIAG_GEOMETRY=str(out/'geometry.jsonl'), AUTH_DIAG_TRACE=str(out/'traces'), AUTH_DIAG_CLICK=str(out/'click') if name=='network-library' else '', NODE_OPTIONS='--require='+str(CONTROL/'full-offline.cjs'))
+            env=dict(os.environ, HOME=str(home), USERPROFILE=str(home), XDG_CONFIG_HOME=str(home/'.config'), XDG_CACHE_HOME=str(home/'.cache'), XDG_DATA_HOME=str(home/'.local/share'), XDG_STATE_HOME=str(home/'.local/state'), APPDATA=str(home/'AppData/Roaming'), LOCALAPPDATA=str(home/'AppData/Local'), TMPDIR=tmp, BROWSER='webkit', ARTIFACT_DIR=str(out/'screens'), AUTH_DIAG_DENIED=str(out/'denied.jsonl'), AUTH_DIAG_LOCAL_BLOBS=str(out/'local-blobs.jsonl'), AUTH_DIAG_GEOMETRY=str(out/'geometry.jsonl'), AUTH_DIAG_TRACE=str(out/'traces'), AUTH_WIDTH_PROBE=str(out/'width-probe.jsonl'), AUTH_DIAG_CLICK=str(out/'click') if name=='network-library' else '', NODE_OPTIONS='--require='+str(CONTROL/'full-offline.cjs'))
             # File-load markers are not reused from the full run.
             env.pop('AUTH_FULL_REPORTS',None)
             command=['node','--test','--test-reporter=tap','--test-concurrency=1','internal/gui/tests/'+filename]

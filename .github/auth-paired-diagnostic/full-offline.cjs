@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const pw = require('playwright');
 const { safeURL } = require('./safe-url.cjs');
 const diagnostics = require('./readonly-diagnostics.cjs');
+const widthProbe = require('./width-probe.cjs');
 let violations = 0;
 const refuse = () => { violations++; process.exitCode = 1; throw new Error('Unmocked browser network refused'); };
 process.once('exit', () => { if (violations) process.exitCode = 1; });
@@ -102,13 +103,13 @@ async function protect(ctx) {
     ctx.unrouteAll = async options => { await unrouteAll(options); await rawRoute(denyPattern, deny); };
   }
   protectRoutes(ctx);
-  for (const page of ctx.pages()) { protectRoutes(page); protectGeometry(page); diagnostics.attachPage(page, process.env.AUTH_DIAG_CLICK); }
+  for (const page of ctx.pages()) { protectRoutes(page); protectGeometry(page); diagnostics.attachPage(page, process.env.AUTH_DIAG_CLICK); widthProbe.attach(page, process.env.AUTH_WIDTH_PROBE); }
   const newPage = ctx.newPage.bind(ctx);
   ctx.newPage = async () => {
     const page = await newPage();
     protectRoutes(page);
     protectGeometry(page);
-    diagnostics.attachPage(page, process.env.AUTH_DIAG_CLICK);
+    diagnostics.attachPage(page, process.env.AUTH_DIAG_CLICK); widthProbe.attach(page, process.env.AUTH_WIDTH_PROBE);
     return page;
   };
   return ctx;
