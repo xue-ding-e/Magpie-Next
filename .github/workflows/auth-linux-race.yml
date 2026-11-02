@@ -1,0 +1,98 @@
+name: Independent synthetic auth and account-usage race checks
+on:
+  push:
+    branches: [validation/auth-linux-race-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-independent-${{ github.repository }}
+  cancel-in-progress: false
+env:
+  GOTOOLCHAIN: local
+  GOMAXPROCS: '2'
+jobs:
+  linux_race:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: 7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Exact product/control identity
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '5bc42c36d8a3069cd4f6c7d58f1a7dcc53ed5de68b4919fa0599087c1ee75b1a  .github/auth-linux-race/gate.py' | sha256sum -c -
+          echo 'b82cd6e34dde015c5c6e41de648e80eedf63ebe25decabe7425a7bcddf3aeeb9  .github/auth-linux-race/control-hashes.json' | sha256sum -c -
+          python3 -I -B .github/auth-linux-race/gate.py
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 5
+        with:
+          go-version-file: source/go.mod
+          cache-dependency-path: source/go.sum
+      - name: Official runner native GUI headers, no desktop launch
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Pin caches and isolate all test-home state
+        id: test_home
+        timeout-minutes: 2
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          { echo "GOPATH=$(go env GOPATH)"; echo "GOMODCACHE=$(go env GOMODCACHE)"; echo "GOCACHE=$(go env GOCACHE)"; } >> "$GITHUB_ENV"
+          python3 -I -B build/ci_home.py create
+          python3 -I -B ../.github/auth-linux-race/temp.py
+          go version
+      - name: Race-instrumented synthetic auth security/export tests
+        timeout-minutes: 20
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mkdir -p ../reports
+          go test -mod=readonly -p 2 -race -json -count=1 -timeout 2m -tags gtk3 ./internal/provider ./internal/gui -run '^(TestSavedCodexAuthJSON|TestCodexAuthExport)' | tee ../reports/auth-race.jsonl
+          python3 -I -B ../.github/auth-linux-race/count.py ../reports/auth-race.jsonl | tee ../reports/auth-count.json
+          git diff --exit-code
+      - name: Original standard account-usage race selection
+        timeout-minutes: 15
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          go test -mod=readonly -p 2 -race -json -count=1 -timeout 10m -tags gtk3 ./internal/provider/ -run '^Test(LoginUsage|SubscriptionUsageEachAccount)' | tee ../reports/usage-race.jsonl
+          python3 -I -B ../.github/auth-linux-race/usage-count.py ../reports/usage-race.jsonl | tee ../reports/usage-count.json
+          git diff --exit-code
+      - name: Clean only recorded synthetic home
+        if: always() && steps.test_home.outputs.record != ''
+        timeout-minutes: 2
+        shell: bash
+        working-directory: source
+        env:
+          MAGPIE_CI_HOME_RECORD: ${{ steps.test_home.outputs.record }}
+        run: python3 -I -B build/ci_home.py cleanup
+      - name: Preserve logs only, no binary or account homes
+        if: always()
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: auth-linux-race-${{ github.sha }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7
