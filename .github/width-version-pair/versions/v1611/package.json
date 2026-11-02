@@ -1,0 +1,8 @@
+{
+  "name": "magpie-width-version-diagnostic",
+  "private": true,
+  "dependencies": {
+    "playwright": "1.61.1"
+  },
+  "version": "1.0.0"
+}

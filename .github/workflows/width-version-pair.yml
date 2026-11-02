@@ -1,0 +1,83 @@
+name: Original width fixture Playwright version comparison
+on:
+  push:
+    branches: [validation/auth-width-versions-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-independent-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  version_pair:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: 7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify source, exact controls and official package integrity locks
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '22739d9a32a0c87ef68d4efb463156ad4b725f0d5f74e9021c2d17bb3df0af36  .github/width-version-pair/gate.py' | sha256sum -c -
+          echo 'b0e1ee23bf629875500bab1b5d1f3736dd752ca6b6faa9d14db97c854aeb6e27  .github/width-version-pair/control-hashes.json' | sha256sum -c -
+          python3 -I -B .github/width-version-pair/gate.py
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 3
+        with:
+          node-version: 22
+      - name: Install both fixed packages without scripts, outside product
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/magpie-width-install-home"
+          export HOME="$RUNNER_TEMP/magpie-width-install-home"
+          export npm_config_userconfig=/dev/null npm_config_cache="$HOME/npm-cache"
+          for label in v1611 v1621; do
+            npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --prefix ".github/width-version-pair/versions/$label"
+          done
+          node --version
+      - name: Official matching WebKit 1.61.1 browser and dependencies
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/magpie-width-install-home"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/magpie-width-v1611"
+          node .github/width-version-pair/versions/v1611/node_modules/playwright/cli.js install --with-deps webkit
+      - name: Official matching WebKit 1.62.1 browser and dependencies
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/magpie-width-install-home"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/magpie-width-v1621"
+          node .github/width-version-pair/versions/v1621/node_modules/playwright/cli.js install --with-deps webkit
+      - name: Serial original full fixture, both languages, both versions
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=5s 390s python3 -I -B .github/width-version-pair/run.py
+      - name: Preserve synthetic results and screenshots only
+        if: always()
+        timeout-minutes: 2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: width-version-pair-${{ github.sha }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7
