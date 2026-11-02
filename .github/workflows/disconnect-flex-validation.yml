@@ -1,0 +1,75 @@
+name: Disconnect layout focused red green
+on:
+  push:
+    branches: [validation/disconnect-flex-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: disconnect-flex-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  focused:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 3
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: 2c53077ebb6bd8f34d34880a7ead19e18e54147b
+          path: candidate
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: 7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c
+          path: baseline
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact sources and isolated controls
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          echo 'eb376d54fe5e6b229b09fb78e12e5b81fc464cea14f786483741ca75c6fb9a14  control/.github/disconnect-flex-validation/gate.py' | sha256sum -c -
+          echo 'a3aff2aac1821c4269425bad986236d7b21fc80c210fe6d5d7abf991a7bdd1e2  control/.github/disconnect-flex-validation/hashes.json' | sha256sum -c -
+          python3 control/.github/disconnect-flex-validation/gate.py
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 2
+        with:
+          node-version: '22'
+      - name: Isolate all runtime state
+        timeout-minutes: 1
+        run: bash control/.github/disconnect-flex-validation/prepare-env.sh
+      - name: Install pinned official Playwright and matching engines
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          timeout 90 npm ci --prefix control/.github/disconnect-flex-validation --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+          node -e "for(const n of ['playwright','playwright-core']) if(require(n+'/package.json').version!=='1.61.1') process.exit(1)"
+          unset PLAYWRIGHT_DOWNLOAD_HOST PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST
+          timeout 180 node control/.github/disconnect-flex-validation/node_modules/playwright/cli.js install-deps chromium webkit
+          timeout 240 node control/.github/disconnect-flex-validation/node_modules/playwright/cli.js install chromium webkit
+      - name: Exact old red then new two-engine green and sibling checks
+        timeout-minutes: 14
+        run: timeout --kill-after=5 810 python3 control/.github/disconnect-flex-validation/run.py
+      - name: Clean only recorded task temporary directory
+        if: always() && env.AUTH_TMP_RECORD != ''
+        timeout-minutes: 2
+        run: bash control/.github/disconnect-flex-validation/prepare-env.sh cleanup
+      - name: Preserve only synthetic focused evidence
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: disconnect-flex-${{ github.sha }}
+          path: flex-reports/
+          if-no-files-found: warn
+          retention-days: 7

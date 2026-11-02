@@ -1,0 +1,28 @@
+{
+  "sha": "2c53077ebb6bd8f34d34880a7ead19e18e54147b",
+  "tree": "3d8c89de07afa54dd62048353ee9021bd9ee30e6",
+  "parent": "7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c",
+  "files": [
+    {
+      "path": "internal/gui/assets/app.css",
+      "bytes": 357548,
+      "sha256": "c7065253d05eb623042b9f4079481dda446cf4051dddebf5b1e2eb1a8b335bc7",
+      "git_blob": "ffd1618bff39c0e42b32817644b6e2db8e573ecd",
+      "base_sha256": "a99f2ff5467b337528268530761b092d5580fb52131ee2d858a76347c8a39ae9"
+    },
+    {
+      "path": "internal/gui/tests/agent-disconnect-preview.test.cjs",
+      "bytes": 14797,
+      "sha256": "1447a419e1f020445454f2998546c372af7cdee5b59c37250e9a32d019dbf285",
+      "git_blob": "8a3b49d0696aa9ba42861d9b2775ea2e3d1690f0",
+      "base_sha256": "7985f1020612366970856756a2c700cb3742dab1e9208323a8993319ff86cbb9"
+    },
+    {
+      "path": "docs/subsystems/gui-shell.md",
+      "bytes": 73922,
+      "sha256": "09f4e92f2f5353436c682a509ecffd28ce7a0bc8034b3e3e657bcd121a44cb20",
+      "git_blob": "4436166dd0987edc1aec3e48aa6139db782e78e3",
+      "base_sha256": "420ceca57a3f5e2f2e393c3914e6136e98dccca38e86f08a594bdd3d3bd08b52"
+    }
+  ]
+}
