@@ -1,0 +1,80 @@
+name: Auth bounded paired diagnostics
+on:
+  push:
+    branches: [validation/auth-diagnosis-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-paired-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  paired:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 5
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: 7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c
+          path: candidate
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: d65e4026f0856215a35232fabc4cbb3f98fa52d7
+          path: baseline
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify fixed sources and control whitelist
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          echo 'd17ec9e34e32e5cbad4ee4f707e1c861fd73c6e73af71fddbe13c3fca8e8109e  control/.github/auth-paired-diagnostic/gate.py' | sha256sum -c -
+          echo 'bb51bcda825f71de465e096637c10dc060784cdc6200b72366d3990f60cbd51d  control/.github/auth-paired-diagnostic/control-hashes.json' | sha256sum -c -
+          python3 control/.github/auth-paired-diagnostic/gate.py
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 2
+        with:
+          node-version: '22'
+      - name: Isolate runtime and official npm configuration
+        timeout-minutes: 1
+        run: bash control/.github/auth-paired-diagnostic/prepare-env.sh
+      - name: Install locked official tools and matching WebKit only
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          timeout 90 npm ci --prefix control/.github/auth-paired-diagnostic --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+          node -e "for(const n of ['playwright','playwright-core']) if(require(n+'/package.json').version!=='1.61.1') process.exit(1)"
+          unset PLAYWRIGHT_DOWNLOAD_HOST PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST
+          timeout 180 node control/.github/auth-paired-diagnostic/node_modules/playwright/cli.js install-deps webkit
+          timeout 240 node control/.github/auth-paired-diagnostic/node_modules/playwright/cli.js install webkit
+      - name: Paired WebKit library network diagnostic, not product acceptance
+        id: library_pair
+        timeout-minutes: 10
+        run: timeout 570 python3 control/.github/auth-paired-diagnostic/run-pairs.py network-library
+      - name: Paired WebKit preview width diagnostic, not product acceptance
+        if: ${{ !cancelled() && (steps.library_pair.outcome == 'success' || steps.library_pair.outcome == 'failure') }}
+        timeout-minutes: 5
+        run: timeout 270 python3 control/.github/auth-paired-diagnostic/run-pairs.py webkit-preview-width
+      - name: Clean only recorded temporary directory
+        if: always() && env.AUTH_TMP_RECORD != ''
+        timeout-minutes: 2
+        run: bash control/.github/auth-paired-diagnostic/prepare-env.sh cleanup
+      - name: Preserve synthetic paired evidence
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: auth-paired-${{ github.sha }}
+          path: diagnostic-reports/
+          if-no-files-found: warn
+          retention-days: 7
