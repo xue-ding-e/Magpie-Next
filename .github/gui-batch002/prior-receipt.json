@@ -1,0 +1,355 @@
+{
+  "official_jobs": [
+    {
+      "run": 41537350250,
+      "job": 125592458962,
+      "head_sha": "08bf33f0635e1364840ec72631c95f3b81e35b4e",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-11-02T22:27:00Z",
+      "completed_at": "2026-11-02T22:31:22Z",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:27:00Z",
+          "completed_at": "2026-11-02T22:27:02Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:27:02Z",
+          "completed_at": "2026-11-02T22:27:06Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:27:06Z",
+          "completed_at": "2026-11-02T22:27:10Z"
+        },
+        {
+          "name": "Frozen controls, product and complete 827-file inventory",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:27:10Z",
+          "completed_at": "2026-11-02T22:27:10Z"
+        },
+        {
+          "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:27:10Z",
+          "completed_at": "2026-11-02T22:27:11Z"
+        },
+        {
+          "name": "Install integrity-locked README-tested Playwright without scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:27:11Z",
+          "completed_at": "2026-11-02T22:27:11Z"
+        },
+        {
+          "name": "Install official matched Chromium and WebKit on ephemeral runner",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:27:11Z",
+          "completed_at": "2026-11-02T22:27:53Z"
+        },
+        {
+          "name": "Classifier preflight",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:27:53Z",
+          "completed_at": "2026-11-02T22:27:53Z"
+        },
+        {
+          "name": "Bounded two-file concurrency, full original engine/language loops",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-11-02T22:27:53Z",
+          "completed_at": "2026-11-02T22:31:18Z"
+        },
+        {
+          "name": "Preserve complete and incomplete synthetic file evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:31:18Z",
+          "completed_at": "2026-11-02T22:31:19Z"
+        },
+        {
+          "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "skipped",
+          "started_at": "2026-11-02T22:31:19Z",
+          "completed_at": "2026-11-02T22:31:19Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:31:19Z",
+          "completed_at": "2026-11-02T22:31:19Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:31:19Z",
+          "completed_at": "2026-11-02T22:31:20Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:31:20Z",
+          "completed_at": "2026-11-02T22:31:20Z"
+        }
+      ]
+    },
+    {
+      "run": 41540637378,
+      "job": 125603587333,
+      "head_sha": "3853d01f26569be668bdea5b8e60f3a98d945397",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-11-02T22:50:45Z",
+      "completed_at": "2026-11-02T22:53:17Z",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:50:46Z",
+          "completed_at": "2026-11-02T22:50:47Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:50:47Z",
+          "completed_at": "2026-11-02T22:50:53Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:50:53Z",
+          "completed_at": "2026-11-02T22:50:58Z"
+        },
+        {
+          "name": "Frozen test-only controls and exact product source",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:50:58Z",
+          "completed_at": "2026-11-02T22:50:59Z"
+        },
+        {
+          "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:50:59Z",
+          "completed_at": "2026-11-02T22:51:00Z"
+        },
+        {
+          "name": "Install integrity-locked README-tested Playwright without scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:51:00Z",
+          "completed_at": "2026-11-02T22:51:02Z"
+        },
+        {
+          "name": "Install official matched Chromium and WebKit on ephemeral runner",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:51:02Z",
+          "completed_at": "2026-11-02T22:51:51Z"
+        },
+        {
+          "name": "Classifier preflight",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:51:51Z",
+          "completed_at": "2026-11-02T22:51:51Z"
+        },
+        {
+          "name": "Six sequential four-case browser fixtures, exact expected red-green",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:51:51Z",
+          "completed_at": "2026-11-02T22:53:11Z"
+        },
+        {
+          "name": "Preserve complete and incomplete synthetic file evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:53:11Z",
+          "completed_at": "2026-11-02T22:53:13Z"
+        },
+        {
+          "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:53:13Z",
+          "completed_at": "2026-11-02T22:53:13Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:53:13Z",
+          "completed_at": "2026-11-02T22:53:13Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:53:13Z",
+          "completed_at": "2026-11-02T22:53:14Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-11-02T22:53:14Z",
+          "completed_at": "2026-11-02T22:53:14Z"
+        }
+      ]
+    }
+  ],
+  "pilot_ledger_sha256": "ce04cadcd747e0eb26e70cff686aedf2e04da809e72e4d79c2beeae8cd56a4bc",
+  "pilot_ledger_elapsed_seconds": 204.503744186,
+  "pilot_ledger_source": "7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c",
+  "diagnostic_summary_sha256": "5404d1d905dc158b7b8009568b5217ae7e12197b3222fb309716946a786c8e43",
+  "diagnostic_test_step_seconds": 80,
+  "spent_test_seconds": 541.736122483,
+  "spent_job_seconds": 742,
+  "scope": "Conservatively includes initial pilot plus intervening synchronization diagnostic. This budget starts at GUI recovery pilot, not the earlier abandoned full run. Both original evidence artifacts remain preserved.",
+  "recheck_job": {
+    "id": 125609973905,
+    "run_id": 41542521718,
+    "head_sha": "afc1e0c8aef507436e1d037756392ecd86ddcacd",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-02T23:04:47Z",
+    "completed_at": "2026-11-02T23:10:15Z",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-11-02T23:04:48Z",
+        "completed_at": "2026-11-02T23:04:49Z"
+      },
+      {
+        "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-11-02T23:04:49Z",
+        "completed_at": "2026-11-02T23:04:53Z"
+      },
+      {
+        "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-11-02T23:04:53Z",
+        "completed_at": "2026-11-02T23:04:57Z"
+      },
+      {
+        "name": "Frozen controls, product and complete 827-file inventory",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-11-02T23:04:57Z",
+        "completed_at": "2026-11-02T23:04:58Z"
+      },
+      {
+        "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-11-02T23:04:58Z",
+        "completed_at": "2026-11-02T23:04:59Z"
+      },
+      {
+        "name": "Install integrity-locked README-tested Playwright without scripts",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-11-02T23:04:59Z",
+        "completed_at": "2026-11-02T23:04:59Z"
+      },
+      {
+        "name": "Install official matched Chromium and WebKit on ephemeral runner",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-11-02T23:04:59Z",
+        "completed_at": "2026-11-02T23:05:51Z"
+      },
+      {
+        "name": "Classifier preflight",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-11-02T23:05:51Z",
+        "completed_at": "2026-11-02T23:05:51Z"
+      },
+      {
+        "name": "Bounded two-file concurrency, full original engine/language loops",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-11-02T23:05:51Z",
+        "completed_at": "2026-11-02T23:10:08Z"
+      },
+      {
+        "name": "Preserve complete and incomplete synthetic file evidence",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-11-02T23:10:08Z",
+        "completed_at": "2026-11-02T23:10:10Z"
+      },
+      {
+        "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 18,
+        "started_at": "2026-11-02T23:10:10Z",
+        "completed_at": "2026-11-02T23:10:11Z"
+      },
+      {
+        "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 19,
+        "started_at": "2026-11-02T23:10:11Z",
+        "completed_at": "2026-11-02T23:10:11Z"
+      },
+      {
+        "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 20,
+        "started_at": "2026-11-02T23:10:11Z",
+        "completed_at": "2026-11-02T23:10:11Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 21,
+        "started_at": "2026-11-02T23:10:11Z",
+        "completed_at": "2026-11-02T23:10:11Z"
+      }
+    ]
+  },
+  "recheck_ledger_sha256": "e7b830c23fb295d04b9753e5a9baeeec784582e921f072ce87992f02d5f602cb",
+  "recheck_elapsed_seconds": 257.232378297
+}

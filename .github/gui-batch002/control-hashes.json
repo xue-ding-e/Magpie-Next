@@ -1,0 +1,14 @@
+{
+  ".github/gui-batch002/carry.py": "d141bf40eec25d659d4db564d449ccc70563a0fde169f1476772f3ddd9c75814",
+  ".github/gui-batch002/carry-selftest.py": "d108d210caeede7ddf77685ebf0619dfe5830b40af5b696d427f672262be2ff8",
+  ".github/gui-batch002/gate.py": "a381fe7ad16e89f45a9fea3575cf424d7070b28eaf32f1ed28dcc787ff9b666d",
+  ".github/gui-batch002/inventory.json": "1dd82e825c122a3b77850a61575a8fc9d02f37534afaa7ac26a07b8e742c4d6a",
+  ".github/gui-batch002/offline.cjs": "43bae8cdc5737bb3e7397032ebdd4d45684a061fe143ca02ec375edb7f80d132",
+  ".github/gui-batch002/package-lock.json": "4a89b7aeb34c4beee2dc974e227dddce2d7c73d97e2c27d9da85fac1c33dfa43",
+  ".github/gui-batch002/package.json": "c070188c751622e9715cfc4746e38b76c55b0d0b6d5dea0c0df77307ec32ae25",
+  ".github/gui-batch002/prior-ledger.json": "e7b830c23fb295d04b9753e5a9baeeec784582e921f072ce87992f02d5f602cb",
+  ".github/gui-batch002/prior-receipt.json": "00643d716a2164a78e3486fc42c5308b29077be45f423274ab6e04ba83fc9e09",
+  ".github/gui-batch002/run.py": "163b43b572f10dbad816ca05baca9b1961d574fb588f9fea231393ce6d51585f",
+  ".github/gui-batch002/selftest.py": "0884fb4f1cddbec6e712d56a9cda29159e25e8adedc8c788652e1b1d9e950a18",
+  ".github/gui-batch002/source.json": "740d87f8fdd8bcd80f4ec2e36de3d271b745afc661dfa3e23af3da4225f86ffb"
+}
