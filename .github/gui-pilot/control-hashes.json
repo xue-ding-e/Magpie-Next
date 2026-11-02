@@ -1,0 +1,10 @@
+{
+  ".github/gui-pilot/source.json": "e188111a22d9604e76b82d4768f2b258ba7895dc6d647da60db6a0323dafa04c",
+  ".github/gui-pilot/inventory.json": "3f895378ce93aba4f3094eeca6f302c127a4a4aceb8958a162e0520f32742220",
+  ".github/gui-pilot/package.json": "c070188c751622e9715cfc4746e38b76c55b0d0b6d5dea0c0df77307ec32ae25",
+  ".github/gui-pilot/package-lock.json": "4a89b7aeb34c4beee2dc974e227dddce2d7c73d97e2c27d9da85fac1c33dfa43",
+  ".github/gui-pilot/offline.cjs": "43bae8cdc5737bb3e7397032ebdd4d45684a061fe143ca02ec375edb7f80d132",
+  ".github/gui-pilot/run.py": "fedd4c04eef8699d1cd64b830de10230f16a6dba064c9e9d0c53558eba090388",
+  ".github/gui-pilot/gate.py": "c051a8802a6d755f24455ea46736ea7f65108188718a738da6d70bd8e7570160",
+  ".github/gui-pilot/selftest.py": "0884fb4f1cddbec6e712d56a9cda29159e25e8adedc8c788652e1b1d9e950a18"
+}
