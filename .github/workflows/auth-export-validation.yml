@@ -17,18 +17,20 @@ jobs:
         timeout-minutes: 2
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
       - name: Verify reviewed source and isolated validation controls
         timeout-minutes: 1
         shell: bash
         run: |
           set -euo pipefail
-          echo '57395798551088b640cfab3b422581257626d76a69036c81c94ca9906c0c1906  .github/auth-export-validation/gate.py' | sha256sum -c -
+          echo '646e254e9ed9d1863136063eea8377f1b6adf00573960db3b57ebcc0e9c39f47  .github/auth-export-validation/gate.py' | sha256sum -c -
           echo 'a9416c14bb7542b8f282530048a3d0f7aa7db9a7cdf3547e3d148259bd0a24cb  .github/auth-export-validation/control-hashes.json' | sha256sum -c -
           python3 .github/auth-export-validation/gate.py
           R="$GITHUB_WORKSPACE/.validation-runtime"
-          mkdir -p "$R"/{home,tmp,npm-cache,browsers,reports}
+          mkdir -p "$R"/{home,npm-cache,browsers,reports}
+          T="$GITHUB_WORKSPACE/.t"
+          mkdir -p -m 700 "$T"
           : > "$R/npmrc"
           : > "$R/global-npmrc"
           {
@@ -40,7 +42,7 @@ jobs:
             echo "XDG_STATE_HOME=$R/home/.local/state"
             echo "APPDATA=$R/home/AppData/Roaming"
             echo "LOCALAPPDATA=$R/home/AppData/Local"
-            echo "TMPDIR=$R/tmp"
+            echo "TMPDIR=$T"
             echo "NPM_CONFIG_USERCONFIG=$R/npmrc"
             echo "NPM_CONFIG_GLOBALCONFIG=$R/global-npmrc"
             echo "NPM_CONFIG_CACHE=$R/npm-cache"

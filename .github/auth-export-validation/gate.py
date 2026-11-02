@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTROL = ROOT / '.github/auth-export-validation'
 SOURCE = '7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c'
 BASE = 'd65e4026f0856215a35232fabc4cbb3f98fa52d7'
+CONTROL_PARENT = '33546050110ff59f6003153cae647f2fab7b868f'
 BRANCH = 'refs/heads/validation/auth-export-20261102'
 
 def git(*args):
@@ -17,11 +18,25 @@ def require(ok, reason):
     if not ok:
         raise SystemExit(reason)
 
+# Linux sockaddr_un.sun_path is 108 bytes, including the terminating NUL.
+# Chromium creates this socket directly below TMPDIR; keep the path inside
+# this workspace but short enough, rather than disabling its singleton guard.
+SOCKET_SUFFIX = '/org.chromium.Chromium.XXXXXX/SingletonSocket'
+def socket_tmp_fits(directory):
+    return len(os.fsencode(str(directory) + SOCKET_SUFFIX)) < 108
+
+require(socket_tmp_fits('/' + 'x' * (106 - len(SOCKET_SUFFIX))), '107-byte boundary must fit')
+require(not socket_tmp_fits('/' + 'x' * (107 - len(SOCKET_SUFFIX))), '108-byte boundary must fail')
+require(not socket_tmp_fits('/home/runner/work/Magpie-Next/Magpie-Next/.validation-runtime/tmp'), 'Original failing path must be rejected')
+require(socket_tmp_fits(ROOT / '.t'), 'Workspace temporary path exceeds Unix socket limit')
+require(not (ROOT / '.t').is_symlink(), 'Temporary directory must not be a symlink')
+
 require(os.environ.get('GITHUB_REPOSITORY') == 'xue-ding-e/Magpie-Next', 'Wrong repository')
 require(os.environ.get('GITHUB_EVENT_NAME') == 'push' and os.environ.get('GITHUB_REF') == BRANCH, 'Wrong event or branch')
 head = git('rev-parse', 'HEAD')
 require(head == os.environ.get('GITHUB_SHA'), 'Wrong checked-out commit')
-require(git('rev-list', '--parents', '-n', '1', head).split() == [head, SOURCE], 'Validation commit must have exactly the feature parent')
+require(git('rev-list', '--parents', '-n', '1', head).split() == [head, CONTROL_PARENT], 'Fixup must have exactly the previous control parent')
+require(git('rev-list', '--parents', '-n', '1', CONTROL_PARENT).split() == [CONTROL_PARENT, SOURCE], 'Previous control must have exactly the feature parent')
 require(git('rev-list', '--parents', '-n', '1', SOURCE).split() == [SOURCE, BASE], 'Feature must have exactly the reviewed parent')
 require(git('rev-parse', SOURCE + '^{tree}') == '50c8793a9ed93262b78123903f42ac8e72c4bee1', 'Wrong feature tree')
 m = json.loads((CONTROL / 'source.json').read_text())
