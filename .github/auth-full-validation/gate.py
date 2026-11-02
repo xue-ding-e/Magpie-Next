@@ -9,6 +9,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[2]
 CONTROL = ROOT / '.github/auth-full-validation'
 SOURCE = '7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c'
+PRIOR_CONTROL = '653701cbee64946bec6440eb05a86315228b7c86'
 BASE = 'd65e4026f0856215a35232fabc4cbb3f98fa52d7'
 BRANCHES = {'linux-gui': 'validation/auth-full-20261102', 'native': 'validation/auth-native-20261102'}
 
@@ -25,7 +26,8 @@ require(os.environ.get('GITHUB_REPOSITORY') == 'xue-ding-e/Magpie-Next', 'Wrong 
 require(os.environ.get('GITHUB_EVENT_NAME') == 'push' and os.environ.get('GITHUB_REF') == 'refs/heads/' + BRANCHES[phase], 'Wrong event or exact branch')
 head = git('rev-parse', 'HEAD')
 require(head == os.environ.get('GITHUB_SHA'), 'Wrong checkout')
-require(git('rev-list', '--parents', '-n', '1', head).split() == [head, SOURCE], 'Control must have exactly the fixed product parent')
+require(git('rev-list', '--parents', '-n', '1', head).split() == [head, PRIOR_CONTROL], 'Control fix must have exactly the fixed prior control parent')
+require(git('rev-list', '--parents', '-n', '1', PRIOR_CONTROL).split() == [PRIOR_CONTROL, SOURCE], 'Unexpected prior control parent')
 require(git('rev-list', '--parents', '-n', '1', SOURCE).split() == [SOURCE, BASE], 'Unexpected product parent')
 require(git('rev-parse', SOURCE + '^{tree}') == '50c8793a9ed93262b78123903f42ac8e72c4bee1', 'Wrong product tree')
 source = json.loads((CONTROL / 'source.json').read_text())
@@ -52,12 +54,14 @@ for name, entry in lock['packages'].items():
     require(entry['resolved'].startswith('https://registry.npmjs.org/') and entry['integrity'].startswith('sha512-'), 'Non-official or unlocked dependency')
     require(entry['version'] == ('2.3.2' if name.endswith('/fsevents') else '1.61.1'), 'Wrong dependency version')
 require(len(list((ROOT / 'internal/gui/tests').glob('*.test.cjs'))) == 827, 'Full GUI inventory drift')
-# The short workspace directory accommodates Chromium's Unix singleton socket.
+# The task-owned runner temporary directory must be outside Git worktrees.
 if os.environ.get('RUNNER_OS') != 'Windows':
     suffix = '/org.chromium.Chromium.XXXXXX/SingletonSocket'
     fits = lambda directory: len(os.fsencode(str(directory) + suffix)) < 108
     require(fits('/' + 'x' * (106-len(suffix))) and not fits('/' + 'x' * (107-len(suffix))), 'Socket boundary regression')
-    require(fits(ROOT / '.t') and not (ROOT / '.t').is_symlink(), 'Unsafe browser temporary directory')
+    temporary_root = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
+    require(not any((p / '.git').exists() for p in (temporary_root, *temporary_root.parents)), 'Runner temp inside repository')
+    require(fits(temporary_root / 'ma.XXXXXXXX'), 'Unsafe browser temporary path length')
 if phase == 'native':
     # No credential is needed to read this public repository's workflow run.
     # Native validation requires phase 1 to have completed on this exact same

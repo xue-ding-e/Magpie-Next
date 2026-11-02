@@ -17,15 +17,15 @@ jobs:
         timeout-minutes: 2
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
       - name: Verify frozen product and phase controls
         timeout-minutes: 2
         shell: bash
         run: |
           set -euo pipefail
-          echo '61d531bf5ac67fd258e278bf2b652a335d09b60587f665d863051a6020f860a5  .github/auth-full-validation/gate.py' | sha256sum -c -
-          echo '48b0df4808952542d65ecf2b2c6c5a35c65eae0b886f7742701287ba05d1bec5  .github/auth-full-validation/control-hashes.json' | sha256sum -c -
+          echo '515913081601f6fb6d6dd50703aaeec129c12d418c8295f29ab826e3639094b8  .github/auth-full-validation/gate.py' | sha256sum -c -
+          echo 'f5404672ad8448888704d0fad0a00aa027373691f141dbe85d67b3945f1b5870  .github/auth-full-validation/control-hashes.json' | sha256sum -c -
           python3 .github/auth-full-validation/gate.py native
   standard:
     needs: verified
@@ -42,7 +42,7 @@ jobs:
         timeout-minutes: 2
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         timeout-minutes: 5

@@ -1,7 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Use a task-owned runner temp directory OUTSIDE any repository. A Go
+# TempDir inside the checkout changes existing work-directory git detection.
+if [ "${1:-}" = cleanup ]; then
+  python3 - <<'PY_CLEAN'
+import json, os, shutil, stat
+from pathlib import Path
+record = json.loads(os.environ['AUTH_TMP_RECORD'])
+p = Path(record['path'])
+root = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
+assert p.parent == root and p.name.startswith('ma.') and not p.is_symlink()
+s = p.lstat()
+assert stat.S_ISDIR(s.st_mode) and [s.st_dev, s.st_ino] == record['identity']
+shutil.rmtree(p)
+PY_CLEAN
+  exit
+fi
 R="$GITHUB_WORKSPACE/.validation-runtime"
-T="$GITHUB_WORKSPACE/.t"
+T=$(python3 - <<'PY_TEMP'
+import json, os, tempfile
+from pathlib import Path
+root = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
+assert not any((p / '.git').exists() for p in (root, *root.parents)), 'Runner temp must not be inside a repository'
+assert len(os.fsencode(str(root / 'ma.XXXXXXXX') + '/org.chromium.Chromium.XXXXXX/SingletonSocket')) < 108, 'Temporary socket path too long'
+p = Path(tempfile.mkdtemp(prefix='ma.', dir=root))
+s = p.stat()
+with open(os.environ['GITHUB_ENV'], 'a') as f:
+    f.write('AUTH_TMP_RECORD=' + json.dumps({'path':str(p), 'identity':[s.st_dev,s.st_ino]}) + '\n')
+print(p)
+PY_TEMP
+)
 mkdir -p "$R"/{home,npm-cache,browsers,reports}
 test ! -L "$T"
 mkdir -p -m 700 "$T"

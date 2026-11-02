@@ -5,8 +5,9 @@
   "gui-full.cjs": "3e4cdc92454252aa77fef53a5dbed735915c60a90ce1f2dbb919687abe3d23d5",
   "package-lock.json": "2b5b9ba01d0c2f7d19770db20fba9620b492e615823d19bd782fc5928124eb4c",
   "package.json": "62dec65e00c2ec96390edddfe40061a1b30c1d3e90a87df79c6c32c07ba275ba",
-  "prepare-env.sh": "d6878d1f55f98e114e3bf585a1419412cd16e0710e590895db5387123e2ae6fd",
+  "prepare-env.sh": "5735e1bd74cdf5aa1e456ffb88c9a0d7657b938de0b70d5d445d152fb194aef3",
   "source.json": "e188111a22d9604e76b82d4768f2b258ba7895dc6d647da60db6a0323dafa04c",
+  "temp-regression.py": "07e29d48938ec7c23cd5a44627407badfa3f44b9a3a2eb979239c6b34f699698",
   "visual-offline.cjs": "1dbedd28e39a67d6e722fbb81314c82889d334b2c88e1585fff661ccc35c75cb",
   "visual-run.cjs": "290856d36874db031229336a0d1cc127198a5d8619bcce2e763f59f9a7c3c370"
 }
