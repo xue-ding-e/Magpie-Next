@@ -1,0 +1,68 @@
+name: Next release metadata candidate
+
+# Candidate-only validation: no default-branch change, manual dispatch, tags,
+# pull requests, reusable jobs, packaging, or publishing.
+on:
+  push:
+    branches: [validation/next-release-source-20261102]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next-release-source-candidate
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    if: github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/next-release-source-20261102' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+      CGO_ENABLED: '0'
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify reviewed candidate source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = d65e4026f0856215a35232fabc4cbb3f98fa52d7
+          test -z "$(git status --porcelain)"
+          python3 - <<'PY'
+          import hashlib, pathlib, subprocess
+          expected = {
+              'internal/update/nextrelease/main_test.go': '8a3df3fa478f27dd0feac8c5d22362bc195ede78f2b5af529eae8e3a2b3b4648',
+              'internal/update/nextrelease/source.go': '34ef57f523a29bb183a308bc946397e68e37176eee520205c8c94dcddfdc9479',
+              'internal/update/nextrelease/source_test.go': '2e422e674020f2e9263c55edaf1e7ddd3d57eddcd4de60def939409fecdf4979',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', 'HEAD^', 'HEAD'], text=True).splitlines())
+          assert changed == set(expected) | {'.github/workflows/next-release-source-validation.yml'}, changed
+          for name, digest in expected.items():
+              assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == digest, name
+          assert 'go 1.26.10' in pathlib.Path('go.mod').read_text().splitlines()
+          PY
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+          cache: false
+      - name: Format evidence and isolated metadata tests only
+        run: |
+          set -euo pipefail
+          test "$(go env GOVERSION)" = go1.26.10
+          for key in GOPATH GOMODCACHE GOCACHE; do export "$key=$(go env "$key")"; done
+          home=$(mktemp -d "$RUNNER_TEMP/next-release-home.XXXXXX")
+          for key in HOME USERPROFILE XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME APPDATA LOCALAPPDATA; do export "$key=$home"; done
+          export GOPROXY=off GOSUMDB=off
+          # A formatting failure must not hide useful compiler/test diagnostics.
+          bad=$(gofmt -l internal/update/nextrelease/*.go)
+          gofmt -d internal/update/nextrelease/*.go
+          go test -mod=readonly -count=1 -timeout=60s -v ./internal/update/nextrelease
+          git diff --exit-code
+          test -z "$bad"
