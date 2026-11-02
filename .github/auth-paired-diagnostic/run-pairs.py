@@ -36,7 +36,7 @@ def main(name):
         out.mkdir()
         with tempfile.TemporaryDirectory(prefix='ma.',dir=os.environ['RUNNER_TEMP']) as tmp:
             home=Path(tmp)/'home';home.mkdir(mode=0o700)
-            env=dict(os.environ, HOME=str(home), USERPROFILE=str(home), XDG_CONFIG_HOME=str(home/'.config'), XDG_CACHE_HOME=str(home/'.cache'), XDG_DATA_HOME=str(home/'.local/share'), XDG_STATE_HOME=str(home/'.local/state'), APPDATA=str(home/'AppData/Roaming'), LOCALAPPDATA=str(home/'AppData/Local'), TMPDIR=tmp, BROWSER='webkit', ARTIFACT_DIR=str(out/'screens'), AUTH_DIAG_DENIED=str(out/'denied.jsonl'), AUTH_DIAG_LOCAL_BLOBS=str(out/'local-blobs.jsonl'), AUTH_DIAG_GEOMETRY=str(out/'geometry.jsonl'), NODE_OPTIONS='--require='+str(CONTROL/'full-offline.cjs'))
+            env=dict(os.environ, HOME=str(home), USERPROFILE=str(home), XDG_CONFIG_HOME=str(home/'.config'), XDG_CACHE_HOME=str(home/'.cache'), XDG_DATA_HOME=str(home/'.local/share'), XDG_STATE_HOME=str(home/'.local/state'), APPDATA=str(home/'AppData/Roaming'), LOCALAPPDATA=str(home/'AppData/Local'), TMPDIR=tmp, BROWSER='webkit', ARTIFACT_DIR=str(out/'screens'), AUTH_DIAG_DENIED=str(out/'denied.jsonl'), AUTH_DIAG_LOCAL_BLOBS=str(out/'local-blobs.jsonl'), AUTH_DIAG_GEOMETRY=str(out/'geometry.jsonl'), AUTH_DIAG_TRACE=str(out/'traces'), AUTH_DIAG_CLICK=str(out/'click') if name=='network-library' else '', NODE_OPTIONS='--require='+str(CONTROL/'full-offline.cjs'))
             # File-load markers are not reused from the full run.
             env.pop('AUTH_FULL_REPORTS',None)
             command=['node','--test','--test-reporter=tap','--test-concurrency=1','internal/gui/tests/'+filename]

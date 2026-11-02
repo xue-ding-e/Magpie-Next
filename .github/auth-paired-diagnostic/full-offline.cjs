@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const pw = require('playwright');
 const { safeURL } = require('./safe-url.cjs');
+const diagnostics = require('./readonly-diagnostics.cjs');
 let violations = 0;
 const refuse = () => { violations++; process.exitCode = 1; throw new Error('Unmocked browser network refused'); };
 process.once('exit', () => { if (violations) process.exitCode = 1; });
@@ -48,17 +49,29 @@ function protectGeometry(page) {
   page.screenshot = async options => {
     // Original test calls screenshot only after its own animation wait. Read
     // geometry here without changing classes, styles, scroll or assertions.
-    const measurement = await page.evaluate(() => {
+    // Concurrent short frame series, never awaited by the original screenshot.
+    diagnostics.bestEffort(()=>page.evaluate(async () => {
+      const values=[];
+      for(let i=0;i<12;i++) {
+        await new Promise(requestAnimationFrame);
+        const b=document.querySelector('.editor.disconnect-ask > .ebody');
+        if(!b)break;
+        const d=b.querySelector('.ag-diff-wrap')?.getBoundingClientRect();
+        values.push({time:performance.now(),clientWidth:b.clientWidth,scrollWidth:b.scrollWidth,clientHeight:b.clientHeight,scrollHeight:b.scrollHeight,scrollTop:b.scrollTop,diffWidth:d?.width});
+      }
+      return values;
+    }),1000).then(result=>diagnostics.safeAppend(process.env.AUTH_DIAG_GEOMETRY+'.frames',result.ok ? {values:result.value}:{samplingEnded:true})).catch(diagnostics.markFailure);
+    const measured = await diagnostics.bestEffort(()=>page.evaluate(() => {
       const body = document.querySelector('.editor.disconnect-ask > .ebody');
       if (!body) return null;
       const css = getComputedStyle(body), rect = body.getBoundingClientRect();
       const diff = body.querySelector('.ag-diff-wrap'), d = diff?.getBoundingClientRect();
-      return { clientWidth: body.clientWidth, scrollWidth: body.scrollWidth, offsetWidth: body.offsetWidth, clientLeft: body.clientLeft,
-        rect: {left:rect.left,right:rect.right,width:rect.width}, diff:d ? {left:d.left,right:d.right,width:d.width}:null,
-        css:{width:css.width,boxSizing:css.boxSizing,paddingLeft:css.paddingLeft,paddingRight:css.paddingRight,borderLeftWidth:css.borderLeftWidth,borderRightWidth:css.borderRightWidth,overflowX:css.overflowX,overflowY:css.overflowY,gridTemplateColumns:css.gridTemplateColumns,scrollbarGutter:css.scrollbarGutter},
+      return { clientWidth: body.clientWidth, scrollWidth: body.scrollWidth, offsetWidth: body.offsetWidth, clientLeft: body.clientLeft, clientHeight:body.clientHeight,scrollHeight:body.scrollHeight,offsetHeight:body.offsetHeight,scrollTop:body.scrollTop,
+        rect: {left:rect.left,right:rect.right,width:rect.width,height:rect.height}, diff:d ? {left:d.left,right:d.right,width:d.width}:null,
+        css:{width:css.width,boxSizing:css.boxSizing,paddingLeft:css.paddingLeft,paddingRight:css.paddingRight,borderLeftWidth:css.borderLeftWidth,borderRightWidth:css.borderRightWidth,overflowX:css.overflowX,overflowY:css.overflowY,gridTemplateColumns:css.gridTemplateColumns,scrollbarGutter:css.scrollbarGutter,scrollbarWidth:css.scrollbarWidth,gridTemplateRows:css.gridTemplateRows},
         devicePixelRatio, viewport:{width:innerWidth,height:innerHeight}, zoom:getComputedStyle(document.documentElement).getPropertyValue('--zoom') };
-    });
-    if (measurement) fs.appendFileSync(process.env.AUTH_DIAG_GEOMETRY, JSON.stringify(measurement)+'\n');
+    }),500);
+    if (measured.ok && measured.value) diagnostics.safeAppend(process.env.AUTH_DIAG_GEOMETRY, measured.value);
     return screenshot(options);
   };
 }
@@ -66,17 +79,18 @@ const contexts = new WeakSet();
 async function protect(ctx) {
   if (contexts.has(ctx)) return ctx;
   contexts.add(ctx);
+  await diagnostics.startTrace(ctx, process.env.AUTH_DIAG_TRACE);
   // A private predicate keeps unroute("**/*") from removing the final
   // network refusal. unrouteAll removes user handlers and reinstalls it.
   const denyPattern = url => {
     const local = localFixtureBlob(url);
-    if (local && process.env.AUTH_DIAG_LOCAL_BLOBS) fs.appendFileSync(process.env.AUTH_DIAG_LOCAL_BLOBS, JSON.stringify({classification:'synthetic-local-blob',allowed:true})+'\n');
+    if (local && process.env.AUTH_DIAG_LOCAL_BLOBS) diagnostics.safeAppend(process.env.AUTH_DIAG_LOCAL_BLOBS, {classification:'synthetic-local-blob',allowed:true});
     return !local;
   };
   const deny = async route => {
     if (process.env.AUTH_DIAG_DENIED) {
       const request = route.request();
-      fs.appendFileSync(process.env.AUTH_DIAG_DENIED, JSON.stringify({ event: 'denied-http', method: request.method(), ...safeURL(request.url()) }) + '\n');
+      diagnostics.safeAppend(process.env.AUTH_DIAG_DENIED, { event: 'denied-http', method: request.method(), ...safeURL(request.url()) });
     }
     await route.abort(); refuse();
   };
@@ -88,12 +102,13 @@ async function protect(ctx) {
     ctx.unrouteAll = async options => { await unrouteAll(options); await rawRoute(denyPattern, deny); };
   }
   protectRoutes(ctx);
-  for (const page of ctx.pages()) { protectRoutes(page); protectGeometry(page); }
+  for (const page of ctx.pages()) { protectRoutes(page); protectGeometry(page); diagnostics.attachPage(page, process.env.AUTH_DIAG_CLICK); }
   const newPage = ctx.newPage.bind(ctx);
   ctx.newPage = async () => {
     const page = await newPage();
     protectRoutes(page);
     protectGeometry(page);
+    diagnostics.attachPage(page, process.env.AUTH_DIAG_CLICK);
     return page;
   };
   return ctx;
@@ -102,6 +117,8 @@ for (const engine of ['chromium', 'webkit']) {
   const launch = pw[engine].launch.bind(pw[engine]);
   pw[engine].launch = async options => {
     const browser = await launch(options);
+    const close = browser.close.bind(browser);
+    browser.close = async (...args) => { let failure; try { await diagnostics.finishTraces(browser); } catch(e) { failure=e; } const value=await close(...args); if(failure)throw failure; return value; };
     const newContext = browser.newContext.bind(browser);
     browser.newContext = async options => protect(await newContext({ ...options, serviceWorkers: 'block' }));
     browser.newPage = async options => (await browser.newContext(options)).newPage();

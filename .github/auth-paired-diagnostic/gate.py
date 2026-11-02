@@ -6,7 +6,8 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[2]
 C=ROOT/'.github/auth-paired-diagnostic'
-PARENT='69513cff9acecd0d554a70c2c47dd05216da1306'
+PARENT='5d98742b2345e88b7cba8f1a6ef1735f51740667'
+PRIOR='69513cff9acecd0d554a70c2c47dd05216da1306'
 CONTROL_BASE='1f5ec6f9f194df6359b6f40ccee18e6e36fa2f86'
 SOURCE='7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c'
 BASE='d65e4026f0856215a35232fabc4cbb3f98fa52d7'
@@ -16,7 +17,8 @@ assert os.environ['GITHUB_EVENT_NAME']=='push'
 assert os.environ['GITHUB_REF']=='refs/heads/validation/auth-diagnosis-20261102'
 head=git(ROOT,'rev-parse','HEAD');assert head==os.environ['GITHUB_SHA']
 assert git(ROOT,'rev-list','--parents','-n','1',head).split()==[head,PARENT]
-assert git(ROOT,'rev-list','--parents','-n','1',PARENT).split()==[PARENT,CONTROL_BASE]
+assert git(ROOT,'rev-list','--parents','-n','1',PARENT).split()==[PARENT,PRIOR]
+assert git(ROOT,'rev-list','--parents','-n','1',PRIOR).split()==[PRIOR,CONTROL_BASE]
 manifest=json.loads((C/'control-hashes.json').read_text())
 paths={'.github/auth-paired-diagnostic/'+n for n in manifest}|{'.github/auth-paired-diagnostic/control-hashes.json','.github/auth-paired-diagnostic/gate.py','.github/workflows/auth-paired-diagnostic.yml'}
 assert set(git(ROOT,'diff','--name-only',CONTROL_BASE,head).splitlines())==paths
