@@ -137,3 +137,75 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     });
   }
 }
+
+// A real body scrollbar can disappear after a preview loads or the window
+// grows. Its former gutter must not remain in the full-width preview/note.
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  for (const lang of ["en", "zh"]) {
+    test(`${engine} ${lang}: disconnect blocks stay full width across body overflow`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+      t.after(() => browser.close());
+      for (const [width, height, textSize] of [[890, 800, 100], [560, 420, 100], [890, 800, 150]]) {
+        const zoom = textSize / 100, posts = [];
+        const context = await browser.newContext({ viewport: { width: Math.round(width / zoom), height: Math.round(height / zoom) }, deviceScaleFactor: zoom, reducedMotion: "reduce" });
+        const page = await context.newPage();
+        page.setDefaultTimeout(5000);
+        const errors = [];
+        page.on("pageerror", (e) => errors.push(e.message));
+        page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+        await page.route("**/*", serve(lang, textSize, posts));
+        await page.goto("http://magpie.test/?view=agents");
+        await page.locator('.row.agent[data-id="codex"] .ag-conn').click();
+        const ask = page.locator(".editor.disconnect-ask"), body = ask.locator(":scope > .ebody");
+        await ask.locator(".ag-diff-file").last().waitFor();
+        await page.locator("#modal").evaluate((m) => Promise.all(m.getAnimations({ subtree: true }).map((a) => a.finished)));
+        const check = async () => {
+          const layout = await body.evaluate((b) => {
+            const r = b.getBoundingClientRect(), css = getComputedStyle(b), scale = r.width / b.offsetWidth;
+            const rect = (e) => { const x = e.getBoundingClientRect(); return { left: x.left, right: x.right, top: x.top, bottom: x.bottom }; };
+            return { left: r.left + (b.clientLeft + parseFloat(css.paddingLeft)) * scale,
+              right: r.left + (b.clientLeft + b.clientWidth - parseFloat(css.paddingRight)) * scale,
+              diff: rect(b.querySelector(".ag-diff-wrap")), note: rect(b.querySelector(".ag-note")),
+              overflow: b.scrollWidth - b.clientWidth };
+          });
+          for (const item of [layout.diff, layout.note]) {
+            assert.ok(Math.abs(item.left - layout.left) <= 1 && Math.abs(item.right - layout.right) <= 1,
+              `full-width blocks after overflow at ${width}x${height}, ${textSize}%: ${JSON.stringify(layout)}`);
+          }
+          assert.ok(layout.note.top >= layout.diff.bottom - 1, "the note follows, rather than overlapping, the preview");
+          assert.ok(layout.overflow <= 1, "the body does not overflow horizontally");
+        };
+        const old = await body.evaluate((b) => ({ value: b.style.getPropertyValue("max-height"), priority: b.style.getPropertyPriority("max-height") }));
+        for (let cycle = 0; cycle < 2; cycle++) {
+          try {
+            await body.evaluate((b) => { b.style.maxHeight = "120px"; });
+            await page.waitForFunction(() => { const b = document.querySelector(".disconnect-ask > .ebody"); return b.scrollHeight > b.clientHeight; });
+            await check();
+            await body.evaluate((b) => { b.scrollTop = b.scrollHeight; });
+            assert.ok(await body.evaluate((b) => b.scrollTop > 0), "the constrained body really scrolls");
+          } finally {
+            await body.evaluate((b, old) => { if (old.value) b.style.setProperty("max-height", old.value, old.priority); else b.style.removeProperty("max-height"); }, old);
+          }
+          // The roomy viewport must actually lose its scrollbar, not merely
+          // align to a still-scrollable client box. Small windows may keep it.
+          if (width === 890 && height === 800 && textSize === 100) {
+            await page.waitForFunction(() => { const b = document.querySelector(".disconnect-ask > .ebody"); return b.scrollHeight <= b.clientHeight; });
+            assert.ok(await body.evaluate((b) => b.scrollHeight <= b.clientHeight), "the restored roomy body no longer overflows vertically");
+          }
+          await check();
+        }
+        const cancel = ask.locator(".bar").getByRole("button", { name: lang === "zh" ? "取消" : "Cancel", exact: true });
+        await cancel.focus();
+        await page.keyboard.press("Tab");
+        assert.ok(await ask.locator(".bar .primary").evaluate((b) => b === document.activeElement), "the destructive action remains next in keyboard order");
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(await cancel.evaluate((b) => b === document.activeElement), "keyboard focus returns to Cancel");
+        await page.keyboard.press("Escape");
+        await page.locator("#modal").waitFor({ state: "hidden" });
+        assert.deepEqual(posts, [], "preview, scrollbar transitions and keyboard dismissal write no configuration");
+        assert.deepEqual(errors, [], "the real page has no runtime or console errors");
+        await context.close();
+      }
+    });
+  }
+}

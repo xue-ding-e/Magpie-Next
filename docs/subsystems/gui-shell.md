@@ -543,3 +543,14 @@ still follows the existing Not set up folding rules. The dialog explains that
 restoring visibility does not pin an unconfigured agent into the main list.
 See `agent-bulk-visibility.test.cjs` for persistence, partial selection, failed
 saves, narrow layouts and all five languages in Chromium and WebKit.
+
+### Disconnect confirmation layout
+
+Disconnect and leave confirmations contain full-width paragraphs, the optional
+file preview and its note, not the editor's label/value columns. Their framed
+body is a vertical flex container with non-shrinking children. The existing
+body and preview scroll regions remain separate, and the heading and action
+bar stay outside the body. This avoids retaining a narrower grid track after
+a vertical scrollbar disappears in WebKit. The original disconnect-preview
+checks and the overflow-transition regression cover small windows, native
+150% text scaling, keyboard dismissal and unchanged configuration requests.
