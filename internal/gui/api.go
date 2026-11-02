@@ -1142,6 +1142,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		access.MigrateLegacyLANKeyBestEffort()
 		writeJSON(rw, settingsState())
 	})
+	localDictionaryRoutes(mux)
 	mux.HandleFunc("POST /api/settings", func(rw http.ResponseWriter, r *http.Request) {
 		var body json.RawMessage
 		var in settings.Settings
