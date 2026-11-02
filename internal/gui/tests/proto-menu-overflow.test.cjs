@@ -104,8 +104,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await last.scrollIntoViewIfNeeded();
       const scrolled = await menu.evaluate((e) => e.scrollTop > 0);
       assert.ok(scrolled, "scrolling the menu moves it, so the last rows are reachable");
+      // Saving starts when the menu closes and runs through the async prefs
+      // queue. Arm before the click so an early close cannot race the listener.
+      const saveResponse = page.waitForResponse((r) =>
+        new URL(r.url()).origin === "http://magpie.test" &&
+        new URL(r.url()).pathname === "/api/settings" && r.request().method() === "POST");
+      // Preserve an earlier click/keyboard error without an unhandled waiter
+      // rejection when t.after closes the browser.
+      void saveResponse.catch(() => {});
       await last.click();
       await page.keyboard.press("Escape");
+      const response = await saveResponse;
+      assert.ok(response.ok(), "the settings save completed successfully");
       const saved = posts.at(-1)?.trayUsages;
       assert.ok(Array.isArray(saved) && saved.length === 1 && /acct\d+@b\.c$/.test(saved[0]),
         `the last account was picked and saved: ${JSON.stringify(saved)}`);
