@@ -1,0 +1,77 @@
+name: Proto menu synthetic POST synchronization red-green
+on:
+  push:
+    branches: [validation/proto-save-pair-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-independent-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  proto_save_pair:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: 7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Frozen test-only controls and exact product source
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'e927e973a1c3cc840ea04a742869cdbbf3074024de34ca977297a087a894726a  .github/proto-save-pair/gate.py' | sha256sum -c -
+          echo '56d3115a197e707cf4b846dcbb9fa480c65b6fc9c5c02d3144829bb0495dd019  .github/proto-save-pair/control-hashes.json' | sha256sum -c -
+          python3 -I -B .github/proto-save-pair/gate.py
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 3
+        with:
+          node-version: 22
+      - name: Install integrity-locked README-tested Playwright without scripts
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/magpie-gui-install-home"
+          export HOME="$RUNNER_TEMP/magpie-gui-install-home" npm_config_userconfig=/dev/null
+          export npm_config_cache="$HOME/npm-cache"
+          npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --prefix .github/proto-save-pair
+      - name: Install official matched Chromium and WebKit on ephemeral runner
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/magpie-gui-install-home"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/magpie-gui-browsers"
+          node .github/proto-save-pair/node_modules/playwright/cli.js install --with-deps chromium webkit
+          echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+      - name: Classifier preflight
+        timeout-minutes: 1
+        shell: bash
+        run: python3 -I -B .github/proto-save-pair/selftest.py
+      - name: Six sequential four-case browser fixtures, exact expected red-green
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=5s 570s python3 -I -B .github/proto-save-pair/run.py
+      - name: Preserve complete and incomplete synthetic file evidence
+        if: always()
+        timeout-minutes: 2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: proto-save-pair-${{ github.sha }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,11 @@
+{
+  ".github/proto-save-pair/candidate.cjs": "746408358e760028a3f0b13b1ca6f157e75da3244c82004d7b3c2b95600a6e8e",
+  ".github/proto-save-pair/gate.py": "e927e973a1c3cc840ea04a742869cdbbf3074024de34ca977297a087a894726a",
+  ".github/proto-save-pair/inject.py": "3bed610c59af6a2eaa756bfbd50d4c3bc9469163b0dfec89a55d3f6dfd87e068",
+  ".github/proto-save-pair/offline.cjs": "43bae8cdc5737bb3e7397032ebdd4d45684a061fe143ca02ec375edb7f80d132",
+  ".github/proto-save-pair/package-lock.json": "4a89b7aeb34c4beee2dc974e227dddce2d7c73d97e2c27d9da85fac1c33dfa43",
+  ".github/proto-save-pair/package.json": "c070188c751622e9715cfc4746e38b76c55b0d0b6d5dea0c0df77307ec32ae25",
+  ".github/proto-save-pair/run.py": "474cf3054a1da8914e1db5ab77f10eb1384f4a07fd06a4698ad9d80bd2d787c8",
+  ".github/proto-save-pair/selftest.py": "9f1ec7f9d53e8cc13e00c7215630210a61c5108ecd3c08d6eaf0ab639ffa3bc2",
+  ".github/proto-save-pair/source.json": "1bd1399eeb9a71a1d87d1d3c0f8a6e6ff9b5f1994aaae321725f84becafa0a97"
+}
