@@ -1,0 +1,18 @@
+/* Minimized from fixed d65 app.css: .editor 2807, framed 3622-3630,
+   disconnect 4239-4242, non-Mac scrollbar 516. Harness dimensions below
+   match the observed 600px dialog/890x800 viewport; not the full app. */
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; display: flex; justify-content: center; }
+.dialog { width: 600px; max-height: 768px; display: flex; flex-direction: column; }
+.editor { padding: 16px 18px 14px; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px 14px; align-items: start; }
+.editor.framed { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; min-height: 0; overflow: hidden; }
+.editor.framed > .ebody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-columns: inherit; gap: 10px 14px; align-items: start; padding: 14px 18px; }
+.editor.framed > .ehead, .editor.framed > .bar { flex: none; min-height: 48px; margin: 0; padding: 0 18px; }
+.editor.disconnect-ask > .ebody { grid-auto-rows: max-content; }
+.disconnect-ask .ag-diff-wrap { grid-column: 1 / -1; max-height: min(46vh, 380px); overflow: auto; margin: 2px 0 10px; }
+.disconnect-ask .ag-note { grid-column: 1 / -1; margin: 0 0 10px; font-size: 12px; }
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+.zero-scrollbar ::-webkit-scrollbar { width: 0; height: 0; }
+/* Synthetic content, no real files or credentials. */
+.ebody > p { grid-column: 1 / -1; margin: 0; }
+.fixture-lines { height: 316px; }

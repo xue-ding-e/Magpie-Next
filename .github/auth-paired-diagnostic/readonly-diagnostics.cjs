@@ -24,6 +24,30 @@ function bestEffort(operation, milliseconds=1000) {
     Promise.resolve().then(operation).then(value=>finish({ok:true,value}),()=>{markFailure();finish({ok:false});});
   });
 }
+// Drain registered observers before normal page/context/browser teardown.
+// Their existing deadlines remain active; genuine failures still mark red.
+const observers = new WeakMap();
+function track(page, operation) {
+  let state=observers.get(page);
+  if(!state) {
+    state={pending:new Set(),closing:false};observers.set(page,state);
+    const close=page.close.bind(page);
+    page.close=async(...args)=>{await drain(page);return close(...args);};
+  }
+  if(state.closing){markFailure();return Promise.resolve();}
+  const pending=Promise.resolve().then(operation).catch(markFailure);
+  state.pending.add(pending);
+  pending.then(()=>state.pending.delete(pending));
+  return pending;
+}
+async function drain(page) {
+  const state=observers.get(page);if(!state)return;
+  state.closing=true;
+  await Promise.all([...state.pending]);
+}
+async function drainContext(context) {
+  await Promise.all(context.pages().map(drain));
+}
 function sample(element) {
   return new Promise(resolve => {
     const values = [];
@@ -59,7 +83,7 @@ function attachPage(page, directory) {
     const id=++sequence;
     // Run the read-only sampler concurrently. Never wait before invoking the
     // original action, delay success, scroll, focus, force, or change timeout.
-    bestEffort(()=>this.evaluate(sample),5500).then(result=>safeAppend(path.join(state.directory,'click-samples.jsonl'),result.ok ? {id,values:result.value}:{id,samplingEnded:true})).catch(markFailure);
+    track(this.page(),()=>bestEffort(()=>this.evaluate(sample),5500).then(result=>safeAppend(path.join(state.directory,'click-samples.jsonl'),result.ok ? {id,values:result.value}:{id,samplingEnded:true})));
     try { return await click.apply(this,args); }
     catch (error) {
       try {
@@ -79,9 +103,9 @@ async function startTrace(context,directory) {
   const stop=async()=>{if(active){active=false;await bestEffort(()=>context.tracing.stop({path:file}),2000);}};
   contexts.set(context,stop);
   const close=context.close.bind(context);
-  context.close=async(...args)=>{let failure;try{await stop();}catch(e){failure=e;}const value=await close(...args);if(failure)throw failure;return value;};
+  context.close=async(...args)=>{await drainContext(context);let failure;try{await stop();}catch(e){failure=e;}const value=await close(...args);if(failure)throw failure;return value;};
 }
 async function finishTraces(browser) {
-  for(const context of browser.contexts()) {const stop=contexts.get(context);if(stop)await stop();}
+  for(const context of browser.contexts()) {await drainContext(context);const stop=contexts.get(context);if(stop)await stop();}
 }
-module.exports={attachPage,startTrace,finishTraces,safeAppend,bestEffort,markFailure};
+module.exports={attachPage,startTrace,finishTraces,safeAppend,bestEffort,markFailure,track,drain,drainContext};

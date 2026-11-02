@@ -18,7 +18,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: control
-          fetch-depth: 7
+          fetch-depth: 8
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         timeout-minutes: 2
@@ -38,8 +38,8 @@ jobs:
         timeout-minutes: 2
         run: |
           set -euo pipefail
-          echo '9eb28e32f1b537c1a8eed99b37ee680a352eb17b8b8b87a95fd83bc53488172f  control/.github/auth-paired-diagnostic/gate.py' | sha256sum -c -
-          echo 'caa095b1ad8c806ab4b5aa4a2750fecb83578235b421faf8d90925381b3ff138  control/.github/auth-paired-diagnostic/control-hashes.json' | sha256sum -c -
+          echo '0f63f4253be58203d4c96574177d3e6cbca9bd3fb2d62d37b536ae2fb6741537  control/.github/auth-paired-diagnostic/gate.py' | sha256sum -c -
+          echo '396f6517f0a117f6e21af11a2fb3965cc3bcd0a4d3697c695100788ad6f14d42  control/.github/auth-paired-diagnostic/control-hashes.json' | sha256sum -c -
           python3 control/.github/auth-paired-diagnostic/gate.py
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         timeout-minutes: 2
@@ -57,6 +57,9 @@ jobs:
           unset PLAYWRIGHT_DOWNLOAD_HOST PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST
           timeout 180 node control/.github/auth-paired-diagnostic/node_modules/playwright/cli.js install-deps webkit
           timeout 240 node control/.github/auth-paired-diagnostic/node_modules/playwright/cli.js install webkit
+      - name: Minimal synthetic layout variables, not product acceptance
+        timeout-minutes: 3
+        run: timeout --kill-after=5 120 node control/.github/auth-paired-diagnostic/layout-minimal.cjs
       - name: Paired WebKit library network diagnostic, not product acceptance
         id: library_pair
         timeout-minutes: 10

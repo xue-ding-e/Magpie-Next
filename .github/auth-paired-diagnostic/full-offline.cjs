@@ -50,7 +50,7 @@ function protectGeometry(page) {
     // Original test calls screenshot only after its own animation wait. Read
     // geometry here without changing classes, styles, scroll or assertions.
     // Concurrent short frame series, never awaited by the original screenshot.
-    diagnostics.bestEffort(()=>page.evaluate(async () => {
+    diagnostics.track(page,()=>diagnostics.bestEffort(()=>page.evaluate(async () => {
       const values=[];
       for(let i=0;i<12;i++) {
         await new Promise(requestAnimationFrame);
@@ -60,7 +60,7 @@ function protectGeometry(page) {
         values.push({time:performance.now(),clientWidth:b.clientWidth,scrollWidth:b.scrollWidth,clientHeight:b.clientHeight,scrollHeight:b.scrollHeight,scrollTop:b.scrollTop,diffWidth:d?.width});
       }
       return values;
-    }),1000).then(result=>diagnostics.safeAppend(process.env.AUTH_DIAG_GEOMETRY+'.frames',result.ok ? {values:result.value}:{samplingEnded:true})).catch(diagnostics.markFailure);
+    }),1000).then(result=>diagnostics.safeAppend(process.env.AUTH_DIAG_GEOMETRY+'.frames',result.ok ? {values:result.value}:{samplingEnded:true})));
     const measured = await diagnostics.bestEffort(()=>page.evaluate(() => {
       const body = document.querySelector('.editor.disconnect-ask > .ebody');
       if (!body) return null;
