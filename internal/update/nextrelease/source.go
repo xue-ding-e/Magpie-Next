@@ -1,5 +1,6 @@
-// Package nextrelease validates proposed Next release metadata without fetching,
-// installing, or changing update policy. The existing Next updater stays disabled.
+// Package nextrelease validates proposed Next release metadata without installing
+// or changing update policy. Its separate, unwired GitHub lister returns only
+// unverified metadata. The existing Next updater stays disabled.
 package nextrelease
 
 import (

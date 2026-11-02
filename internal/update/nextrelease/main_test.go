@@ -6,6 +6,9 @@ import (
 	"github.com/yetone/magpie/internal/testenv"
 )
 
-// Match the parent update package's isolation even though these tests use only
-// synthetic bytes and callbacks: future tests must not inherit live settings.
-func TestMain(m *testing.M) { testenv.Main(m) }
+// Match the parent update package's isolation. Metadata tests use synthetic
+// loopback servers only, and must not inherit live settings or reach the network.
+func TestMain(m *testing.M) {
+	testenv.Offline()
+	testenv.Main(m)
+}
