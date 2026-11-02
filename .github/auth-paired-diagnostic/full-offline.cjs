@@ -36,13 +36,43 @@ function protectRoutes(owner) {
   };
   owner.unroute = (pattern, handler) => unroute(pattern, handler ? (wrappers.get(handler) || handler) : handler);
 }
+// Browser-created memory URLs from the sole synthetic fixture origin are
+// not network fetches. Match the entire canonical shape, never other origins,
+// null origins, suffixes, encoded forms, query strings or fragments.
+function localFixtureBlob(value) {
+  return /^blob:http:\/\/magpie\.test\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])/.test(String(value));
+}
+function protectGeometry(page) {
+  if (!page.screenshot || !process.env.AUTH_DIAG_GEOMETRY) return;
+  const screenshot = page.screenshot.bind(page);
+  page.screenshot = async options => {
+    // Original test calls screenshot only after its own animation wait. Read
+    // geometry here without changing classes, styles, scroll or assertions.
+    const measurement = await page.evaluate(() => {
+      const body = document.querySelector('.editor.disconnect-ask > .ebody');
+      if (!body) return null;
+      const css = getComputedStyle(body), rect = body.getBoundingClientRect();
+      const diff = body.querySelector('.ag-diff-wrap'), d = diff?.getBoundingClientRect();
+      return { clientWidth: body.clientWidth, scrollWidth: body.scrollWidth, offsetWidth: body.offsetWidth, clientLeft: body.clientLeft,
+        rect: {left:rect.left,right:rect.right,width:rect.width}, diff:d ? {left:d.left,right:d.right,width:d.width}:null,
+        css:{width:css.width,boxSizing:css.boxSizing,paddingLeft:css.paddingLeft,paddingRight:css.paddingRight,borderLeftWidth:css.borderLeftWidth,borderRightWidth:css.borderRightWidth,overflowX:css.overflowX,overflowY:css.overflowY,gridTemplateColumns:css.gridTemplateColumns,scrollbarGutter:css.scrollbarGutter},
+        devicePixelRatio, viewport:{width:innerWidth,height:innerHeight}, zoom:getComputedStyle(document.documentElement).getPropertyValue('--zoom') };
+    });
+    if (measurement) fs.appendFileSync(process.env.AUTH_DIAG_GEOMETRY, JSON.stringify(measurement)+'\n');
+    return screenshot(options);
+  };
+}
 const contexts = new WeakSet();
 async function protect(ctx) {
   if (contexts.has(ctx)) return ctx;
   contexts.add(ctx);
   // A private predicate keeps unroute("**/*") from removing the final
   // network refusal. unrouteAll removes user handlers and reinstalls it.
-  const denyPattern = () => true;
+  const denyPattern = url => {
+    const local = localFixtureBlob(url);
+    if (local && process.env.AUTH_DIAG_LOCAL_BLOBS) fs.appendFileSync(process.env.AUTH_DIAG_LOCAL_BLOBS, JSON.stringify({classification:'synthetic-local-blob',allowed:true})+'\n');
+    return !local;
+  };
   const deny = async route => {
     if (process.env.AUTH_DIAG_DENIED) {
       const request = route.request();
@@ -58,11 +88,12 @@ async function protect(ctx) {
     ctx.unrouteAll = async options => { await unrouteAll(options); await rawRoute(denyPattern, deny); };
   }
   protectRoutes(ctx);
-  for (const page of ctx.pages()) protectRoutes(page);
+  for (const page of ctx.pages()) { protectRoutes(page); protectGeometry(page); }
   const newPage = ctx.newPage.bind(ctx);
   ctx.newPage = async () => {
     const page = await newPage();
     protectRoutes(page);
+    protectGeometry(page);
     return page;
   };
   return ctx;

@@ -18,7 +18,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: control
-          fetch-depth: 5
+          fetch-depth: 6
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         timeout-minutes: 2
@@ -38,8 +38,8 @@ jobs:
         timeout-minutes: 2
         run: |
           set -euo pipefail
-          echo 'd17ec9e34e32e5cbad4ee4f707e1c861fd73c6e73af71fddbe13c3fca8e8109e  control/.github/auth-paired-diagnostic/gate.py' | sha256sum -c -
-          echo 'bb51bcda825f71de465e096637c10dc060784cdc6200b72366d3990f60cbd51d  control/.github/auth-paired-diagnostic/control-hashes.json' | sha256sum -c -
+          echo '83d6fe93ce51b1a4462045edd24cc3be36e5d60b74c99987c4ba47bed7534530  control/.github/auth-paired-diagnostic/gate.py' | sha256sum -c -
+          echo '6f4d167a3be84f85d5e8466b881e6dedacfe0bde6f3f86f4f021e752c1132b81  control/.github/auth-paired-diagnostic/control-hashes.json' | sha256sum -c -
           python3 control/.github/auth-paired-diagnostic/gate.py
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         timeout-minutes: 2

@@ -6,7 +6,8 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[2]
 C=ROOT/'.github/auth-paired-diagnostic'
-PARENT='1f5ec6f9f194df6359b6f40ccee18e6e36fa2f86'
+PARENT='69513cff9acecd0d554a70c2c47dd05216da1306'
+CONTROL_BASE='1f5ec6f9f194df6359b6f40ccee18e6e36fa2f86'
 SOURCE='7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c'
 BASE='d65e4026f0856215a35232fabc4cbb3f98fa52d7'
 def git(root,*args):return subprocess.check_output(['git',*args],cwd=root,text=True).strip()
@@ -15,9 +16,10 @@ assert os.environ['GITHUB_EVENT_NAME']=='push'
 assert os.environ['GITHUB_REF']=='refs/heads/validation/auth-diagnosis-20261102'
 head=git(ROOT,'rev-parse','HEAD');assert head==os.environ['GITHUB_SHA']
 assert git(ROOT,'rev-list','--parents','-n','1',head).split()==[head,PARENT]
+assert git(ROOT,'rev-list','--parents','-n','1',PARENT).split()==[PARENT,CONTROL_BASE]
 manifest=json.loads((C/'control-hashes.json').read_text())
 paths={'.github/auth-paired-diagnostic/'+n for n in manifest}|{'.github/auth-paired-diagnostic/control-hashes.json','.github/auth-paired-diagnostic/gate.py','.github/workflows/auth-paired-diagnostic.yml'}
-assert set(git(ROOT,'diff','--name-only',PARENT,head).splitlines())==paths
+assert set(git(ROOT,'diff','--name-only',CONTROL_BASE,head).splitlines())==paths
 for name in paths:assert git(ROOT,'ls-tree',head,'--',name).startswith('100644 blob ')
 for name,sha in manifest.items():assert hashlib.sha256((C/name).read_bytes()).hexdigest()==sha
 work=Path(os.environ['GITHUB_WORKSPACE'])
