@@ -1,0 +1,92 @@
+name: Independent synthetic macOS auth validation
+on:
+  push:
+    branches: [validation/auth-macos-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-independent-${{ github.repository }}
+  cancel-in-progress: false
+env:
+  GOTOOLCHAIN: local
+  GOMAXPROCS: '2'
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  macos_auth:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: 7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Exact product/control identity
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '16a38ac02728dfa11580a87dcef9f0e002678133f1112992be6971fac961fbbb  .github/auth-macos-validation/gate.py' | sha256sum -c -
+          echo '0453b118da90b0cda07f5fc3239772bd2c316aa1fedaeaedb26fecaeecd6c21b  .github/auth-macos-validation/control-hashes.json' | sha256sum -c -
+          python3 -I -B .github/auth-macos-validation/gate.py
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 5
+        with:
+          go-version-file: source/go.mod
+          cache-dependency-path: source/go.sum
+      - name: Pin caches and isolate all test-home state
+        id: test_home
+        timeout-minutes: 2
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          { echo "GOPATH=$(go env GOPATH)"; echo "GOMODCACHE=$(go env GOMODCACHE)"; echo "GOCACHE=$(go env GOCACHE)"; } >> "$GITHUB_ENV"
+          python3 -I -B build/ci_home.py create
+          python3 -I -B ../.github/auth-macos-validation/temp.py
+          go version
+      - name: Link native macOS application; do not launch or publish it
+        timeout-minutes: 15
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mkdir -p ../reports
+          go build -mod=readonly -p 2 -o "$RUNNER_TEMP/magpie-auth-native" . 2>&1 | tee ../reports/build.log
+      - name: Execute synthetic auth security and export tests
+        timeout-minutes: 10
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          go test -mod=readonly -p 2 -json -count=1 -timeout 2m ./internal/provider ./internal/gui -run '^(TestSavedCodexAuthJSON|TestCodexAuthExport)' | tee ../reports/auth.jsonl
+          python3 -I -B ../.github/auth-macos-validation/count.py ../reports/auth.jsonl | tee ../reports/count.json
+          git diff --exit-code
+      - name: Clean only recorded synthetic home
+        if: always() && steps.test_home.outputs.record != ''
+        timeout-minutes: 2
+        shell: bash
+        working-directory: source
+        env:
+          MAGPIE_CI_HOME_RECORD: ${{ steps.test_home.outputs.record }}
+        run: python3 -I -B build/ci_home.py cleanup
+      - name: Preserve logs only, no binary or account homes
+        if: always()
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: auth-macos-${{ github.sha }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7
