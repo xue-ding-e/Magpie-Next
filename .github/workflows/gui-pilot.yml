@@ -1,0 +1,77 @@
+name: Full GUI recovery pilot recheck - one synchronized fixture
+on:
+  push:
+    branches: [validation/auth-gui-pilot-recheck-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-independent-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  gui_pilot:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: 94e6698e22322ae4bfa09efdd3ab2bec9238919a
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Frozen controls, product and complete 827-file inventory
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '3aa2b3d134f7eac7d660df17979a3c90fc98a9ec448f5efba76f1db448367b56  .github/gui-pilot/gate.py' | sha256sum -c -
+          echo '750a8f3af36af05c8458068eaededb341660137ad01e9729affa79c094ec6e80  .github/gui-pilot/control-hashes.json' | sha256sum -c -
+          python3 -I -B .github/gui-pilot/gate.py
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 3
+        with:
+          node-version: 22
+      - name: Install integrity-locked README-tested Playwright without scripts
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/magpie-gui-install-home"
+          export HOME="$RUNNER_TEMP/magpie-gui-install-home" npm_config_userconfig=/dev/null
+          export npm_config_cache="$HOME/npm-cache"
+          npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --prefix .github/gui-pilot
+      - name: Install official matched Chromium and WebKit on ephemeral runner
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/magpie-gui-install-home"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/magpie-gui-browsers"
+          node .github/gui-pilot/node_modules/playwright/cli.js install --with-deps chromium webkit
+          echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+      - name: Classifier preflight
+        timeout-minutes: 1
+        shell: bash
+        run: python3 -I -B .github/gui-pilot/selftest.py
+      - name: Bounded two-file concurrency, full original engine/language loops
+        timeout-minutes: 21
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=5s 1260s python3 -I -B .github/gui-pilot/run.py
+      - name: Preserve complete and incomplete synthetic file evidence
+        if: always()
+        timeout-minutes: 2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gui-pilot-recheck-${{ github.sha }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7
