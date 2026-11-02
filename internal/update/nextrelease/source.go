@@ -1,6 +1,6 @@
 // Package nextrelease validates proposed Next release metadata without installing
-// or changing update policy. Its separate, unwired GitHub lister returns only
-// unverified metadata. The existing Next updater stays disabled.
+// or changing update policy. Its separate, unwired GitHub readers return only
+// metadata, not install authorization. The existing Next updater stays disabled.
 package nextrelease
 
 import (
@@ -51,11 +51,12 @@ type PublishedAsset struct {
 	Size int64
 }
 
-// Record is supplied by a future transport after resolving the release's tag to
+// Record is supplied by a transport after resolving the release's tag to
 // its commit (target_commitish may be a branch and is not sufficient). Manifest
 // bytes must be from that release's manifest.json, not a separate mutable feed.
-// This package does not implement that transport or trust a network URL supplied
-// by the manifest. No record is an instruction to install anything.
+// ReadReleaseRecord implements this bounded metadata-only transport without
+// trusting network URLs supplied by the manifest. It does not verify publisher
+// signatures. No record is an instruction to install anything.
 type Record struct {
 	Tag        string
 	CommitSHA  string
