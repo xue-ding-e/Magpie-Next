@@ -1,0 +1,90 @@
+name: Auth export isolated browser validation
+on:
+  push:
+    branches: [validation/auth-export-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-export-validation-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  browsers:
+    if: github.repository == 'xue-ding-e/Magpie-Next' && github.event_name == 'push' && github.ref == 'refs/heads/validation/auth-export-20261102'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          persist-credentials: false
+      - name: Verify reviewed source and isolated validation controls
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '57395798551088b640cfab3b422581257626d76a69036c81c94ca9906c0c1906  .github/auth-export-validation/gate.py' | sha256sum -c -
+          echo 'a9416c14bb7542b8f282530048a3d0f7aa7db9a7cdf3547e3d148259bd0a24cb  .github/auth-export-validation/control-hashes.json' | sha256sum -c -
+          python3 .github/auth-export-validation/gate.py
+          R="$GITHUB_WORKSPACE/.validation-runtime"
+          mkdir -p "$R"/{home,tmp,npm-cache,browsers,reports}
+          : > "$R/npmrc"
+          : > "$R/global-npmrc"
+          {
+            echo "HOME=$R/home"
+            echo "USERPROFILE=$R/home"
+            echo "XDG_CONFIG_HOME=$R/home/.config"
+            echo "XDG_CACHE_HOME=$R/home/.cache"
+            echo "XDG_DATA_HOME=$R/home/.local/share"
+            echo "XDG_STATE_HOME=$R/home/.local/state"
+            echo "APPDATA=$R/home/AppData/Roaming"
+            echo "LOCALAPPDATA=$R/home/AppData/Local"
+            echo "TMPDIR=$R/tmp"
+            echo "NPM_CONFIG_USERCONFIG=$R/npmrc"
+            echo "NPM_CONFIG_GLOBALCONFIG=$R/global-npmrc"
+            echo "NPM_CONFIG_CACHE=$R/npm-cache"
+            echo 'NPM_CONFIG_REGISTRY=https://registry.npmjs.org/'
+            echo "PLAYWRIGHT_BROWSERS_PATH=$R/browsers"
+            echo 'PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=30000'
+            echo "NODE_PATH=$GITHUB_WORKSPACE/.github/auth-export-validation/node_modules"
+          } >> "$GITHUB_ENV"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 2
+        with:
+          node-version: '22'
+      - name: Install repository-pinned Playwright with registry integrity
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90 npm ci --prefix .github/auth-export-validation --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+          node -e "for (const n of ['playwright','playwright-core']) if (require(n+'/package.json').version !== '1.61.1') process.exit(1)"
+      - name: Install official browser dependencies on the ephemeral runner only
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 150 node .github/auth-export-validation/node_modules/playwright/cli.js install-deps chromium webkit 2>&1 | tee .validation-runtime/reports/dependencies.log
+      - name: Download matching official Chromium and WebKit
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset PLAYWRIGHT_DOWNLOAD_HOST PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST
+          timeout 170 node .github/auth-export-validation/node_modules/playwright/cli.js install chromium webkit 2>&1 | tee .validation-runtime/reports/browsers.log
+      - name: Run synthetic regressions serially with exact counts and no live network
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 420 node .github/auth-export-validation/run.cjs
+      - name: Save synthetic validation logs and last screens only
+        if: always()
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: auth-export-synthetic-${{ github.sha }}
+          path: .validation-runtime/reports/
+          if-no-files-found: warn
+          retention-days: 3
