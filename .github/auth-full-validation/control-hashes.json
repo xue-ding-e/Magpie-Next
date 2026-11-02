@@ -1,0 +1,12 @@
+{
+  "auth-visual.test.cjs": "638bb92a6fb26e08c0f9135a5c4ccf7d52c08eed33449f0b149170fa5fe68d4e",
+  "full-offline.cjs": "6e966541a54dcf7b31a704e79ec38c46f8e10730e709d91a135a6a0e80729e3f",
+  "go-standard.sh": "b91373f30f2c69e239511f18fcdcd2f29c6138c6e970fccc61a0215500d5fcf6",
+  "gui-full.cjs": "3e4cdc92454252aa77fef53a5dbed735915c60a90ce1f2dbb919687abe3d23d5",
+  "package-lock.json": "2b5b9ba01d0c2f7d19770db20fba9620b492e615823d19bd782fc5928124eb4c",
+  "package.json": "62dec65e00c2ec96390edddfe40061a1b30c1d3e90a87df79c6c32c07ba275ba",
+  "prepare-env.sh": "d6878d1f55f98e114e3bf585a1419412cd16e0710e590895db5387123e2ae6fd",
+  "source.json": "e188111a22d9604e76b82d4768f2b258ba7895dc6d647da60db6a0323dafa04c",
+  "visual-offline.cjs": "1dbedd28e39a67d6e722fbb81314c82889d334b2c88e1585fff661ccc35c75cb",
+  "visual-run.cjs": "290856d36874db031229336a0d1cc127198a5d8619bcce2e763f59f9a7c3c370"
+}

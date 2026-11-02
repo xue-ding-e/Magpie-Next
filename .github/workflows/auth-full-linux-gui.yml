@@ -1,0 +1,124 @@
+name: Auth full candidate Linux and GUI gates
+on:
+  push:
+    branches: [validation/auth-full-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-full-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  linux:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          persist-credentials: false
+      - name: Verify frozen product and phase controls
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '61d531bf5ac67fd258e278bf2b652a335d09b60587f665d863051a6020f860a5  .github/auth-full-validation/gate.py' | sha256sum -c -
+          echo '48b0df4808952542d65ecf2b2c6c5a35c65eae0b886f7742701287ba05d1bec5  .github/auth-full-validation/control-hashes.json' | sha256sum -c -
+          python3 .github/auth-full-validation/gate.py linux-gui
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 10
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        timeout-minutes: 5
+        with:
+          bun-version: 1.4.2
+      - name: Pin caches then isolate synthetic runtime home
+        id: test_home
+        timeout-minutes: 2
+        run: |
+          bash .github/auth-full-validation/prepare-env.sh go
+          python3 -I -B build/ci_home.py create
+      - name: Install official native Linux build dependencies
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          timeout 180 sudo apt-get update
+          timeout 360 sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Complete Linux standard vet build and nogui suite
+        timeout-minutes: 100
+        run: timeout 5900 bash .github/auth-full-validation/go-standard.sh
+      - name: Clean only the recorded synthetic home
+        if: always() && steps.test_home.outputs.record != ''
+        timeout-minutes: 2
+        env:
+          MAGPIE_CI_HOME_RECORD: ${{ steps.test_home.outputs.record }}
+        run: python3 -I -B build/ci_home.py cleanup
+      - name: Preserve synthetic logs only
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: auth-linux-full-${{ github.sha }}
+          path: .validation-runtime/reports/
+          if-no-files-found: warn
+          retention-days: 7
+  gui:
+    needs: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          persist-credentials: false
+      - name: Verify frozen product and phase controls
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '61d531bf5ac67fd258e278bf2b652a335d09b60587f665d863051a6020f860a5  .github/auth-full-validation/gate.py' | sha256sum -c -
+          echo '48b0df4808952542d65ecf2b2c6c5a35c65eae0b886f7742701287ba05d1bec5  .github/auth-full-validation/control-hashes.json' | sha256sum -c -
+          python3 .github/auth-full-validation/gate.py linux-gui
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 2
+        with:
+          node-version: '22'
+      - name: Isolate synthetic browser environment
+        timeout-minutes: 1
+        run: bash .github/auth-full-validation/prepare-env.sh
+      - name: Install locked repository browser tools
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          timeout 90 npm ci --prefix .github/auth-full-validation --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+          node -e "for (const n of ['playwright','playwright-core']) if (require(n+'/package.json').version !== '1.61.1') process.exit(1)"
+      - name: Install official matching browsers and runner dependencies
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          unset PLAYWRIGHT_DOWNLOAD_HOST PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST
+          timeout 180 node .github/auth-full-validation/node_modules/playwright/cli.js install-deps chromium webkit
+          timeout 240 node .github/auth-full-validation/node_modules/playwright/cli.js install chromium webkit
+      - name: Run all 827 candidate GUI files under original Make semantics
+        timeout-minutes: 331
+        run: |
+          set -euo pipefail
+          timeout 19800 node .github/auth-full-validation/gui-full.cjs
+          git diff --exit-code
+      - name: Add masked visual captures without changing product tests
+        timeout-minutes: 8
+        run: timeout 420 node .github/auth-full-validation/visual-run.cjs
+      - name: Preserve synthetic logs only
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: auth-gui-full-${{ github.sha }}
+          path: .validation-runtime/reports/
+          if-no-files-found: warn
+          retention-days: 7

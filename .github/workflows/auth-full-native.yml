@@ -1,0 +1,82 @@
+name: Auth remaining native platform gates
+on:
+  push:
+    branches: [validation/auth-native-20261102]
+permissions:
+  contents: read
+concurrency:
+  group: auth-full-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  verified:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          persist-credentials: false
+      - name: Verify frozen product and phase controls
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '61d531bf5ac67fd258e278bf2b652a335d09b60587f665d863051a6020f860a5  .github/auth-full-validation/gate.py' | sha256sum -c -
+          echo '48b0df4808952542d65ecf2b2c6c5a35c65eae0b886f7742701287ba05d1bec5  .github/auth-full-validation/control-hashes.json' | sha256sum -c -
+          python3 .github/auth-full-validation/gate.py native
+  standard:
+    needs: verified
+    uses: xue-ding-e/Magpie-Next/.github/workflows/test.yml@7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c
+    # No secrets are inherited. The fixed existing workflow has max-parallel:1
+    # across Linux/macOS/Windows (180min each), then two CLI targets
+    # (100min each), including Linux nogui/site/installer tests. None removed.
+  windows_auth:
+    needs: standard
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 5
+        with:
+          go-version-file: go.mod
+      - name: Pin caches and use existing isolated-home helper
+        id: test_home
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          { echo "GOPATH=$(go env GOPATH)"; echo "GOMODCACHE=$(go env GOMODCACHE)"; echo "GOCACHE=$(go env GOCACHE)"; echo 'GOTOOLCHAIN=local'; echo 'GOMAXPROCS=2'; } >> "$GITHUB_ENV"
+          python -I -B build/ci_home.py create
+      - name: Run new synthetic auth tests on Windows, not compilation only
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .validation-runtime/reports
+          go test -mod=readonly -p 2 -tags nogui -count=1 -timeout 2m -json ./internal/provider ./internal/gui -run '^(TestSavedCodexAuthJSON|TestCodexAuthExport)' | tee .validation-runtime/reports/windows-auth.jsonl
+          python -c "import json; e=[json.loads(l) for l in open('.validation-runtime/reports/windows-auth.jsonl')]; p=[x['Test'] for x in e if x.get('Action')=='pass' and x.get('Test')]; assert len([t for t in p if '/' not in t])==8 and len([t for t in p if '/' in t])==10; assert not any(x.get('Action') in ['skip','fail'] for x in e)"
+      - name: Clean only the recorded synthetic home
+        if: always() && steps.test_home.outputs.record != ''
+        timeout-minutes: 2
+        shell: bash
+        env:
+          MAGPIE_CI_HOME_RECORD: ${{ steps.test_home.outputs.record }}
+        run: python -I -B build/ci_home.py cleanup
+      - name: Preserve synthetic logs only
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: auth-windows-focused-${{ github.sha }}
+          path: .validation-runtime/reports/
+          if-no-files-found: warn
+          retention-days: 7
