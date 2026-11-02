@@ -3,17 +3,59 @@ on:
   push:
     branches: [main, maintenance/next-installers-20261030]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Explicitly publish a source-pinned main release after validation and packaging'
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 concurrency:
   group: next-package-${{ github.repository }}
   cancel-in-progress: false
 jobs:
+  impact:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      package: ${{ steps.classify.outputs.package }}
+      publish: ${{ steps.classify.outputs.publish }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify previous tree for main push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        timeout-minutes: 1
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          [[ "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ && "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]]
+          if ! git cat-file -e "$BEFORE_SHA^{commit}"; then
+            git fetch --no-tags --depth=1 origin "$BEFORE_SHA"
+          fi
+      - name: Classify package inputs without skipping validation
+        id: classify
+        timeout-minutes: 1
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          MANUAL_PUBLISH: ${{ inputs.publish || false }}
+        run: |
+          python3 -I -B build/next-package-impact_test.py
+          python3 -I -B build/next-package-impact.py
   validation:
     uses: ./.github/workflows/test.yml
   package:
-    needs: validation
-    if: github.repository == 'xue-ding-e/Magpie-Next'
+    needs: [validation, impact]
+    if: needs.impact.outputs.package == 'true' && github.repository == 'xue-ding-e/Magpie-Next'
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -84,8 +126,8 @@ jobs:
           retention-days: 30
 
   publish:
-    needs: package
-    if: github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/main'
+    needs: [package, impact]
+    if: needs.impact.outputs.publish == 'true' && github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/main'
     runs-on: windows-latest
     timeout-minutes: 15
     permissions:
