@@ -1,0 +1,90 @@
+name: Next release-record adapter candidate
+
+# Local draft only until separately reviewed. No main, tags, manual dispatch,
+# pull requests, reusable jobs, packaging, publishing or runtime enablement.
+on:
+  push:
+    branches: [validation/next-release-adapter-20261102]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next-release-adapter-candidate
+  cancel-in-progress: false
+
+jobs:
+  record-adapter:
+    if: github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/next-release-adapter-20261102' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+      CGO_ENABLED: '0'
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          persist-credentials: false
+      - name: Verify exact reviewed source and workflow-only candidate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = f4d9789c5419163b4b243f6f23d752f769904d1e
+          test "$(git rev-parse HEAD^^)" = 53783baaf25aedac3dd37deab84bc45b82ab9647
+          test "$(git rev-parse 'HEAD~1^{tree}')" = 8cc7d67dcdb86374a507ff74d82d58852e8c28ad
+          test -z "$(git status --porcelain)"
+          python3 - <<'PY'
+          import hashlib, pathlib, subprocess
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          for ref in ('HEAD', 'HEAD^'):
+              assert len(git('rev-list', '--parents', '-n', '1', ref).split()) == 2, ref
+          expected = {
+              'internal/update/nextrelease/adapter.go': 'ee442a87aedd549615d939f71cafed762b298899547ed7d5e5913fb2a82907c2',
+              'internal/update/nextrelease/adapter_test.go': '9d45746d1cd839e4c8e49d4577308da0eca81f1d1ea48bbffc54e1739876a7c1',
+              'internal/update/nextrelease/github.go': '3ba69ff8f0205d62c2808331b362849f8dfae6696fece2ea361dc79476ea1ba3',
+              'internal/update/nextrelease/github_test.go': 'b1a1c643933acfea1f93652325fa7a8e80f35b77f54cdbb55a3e70d0fdbe6b2b',
+              'internal/update/nextrelease/main_test.go': '329644c9676b4119cd5838ded2fb3ae8573562c85d98e161766662996fb403fe',
+              'internal/update/nextrelease/source.go': '0d5aed5a53dfa6a0b105bc1caa6c9b16f63430bdfef6ccd2556cd276eef94b19',
+          }
+          source_changes = set(git('diff', '--name-only', 'HEAD^^', 'HEAD^').splitlines())
+          assert source_changes == {
+              'internal/update/nextrelease/adapter.go',
+              'internal/update/nextrelease/adapter_test.go',
+              'internal/update/nextrelease/source.go',
+          }, source_changes
+          workflow_changes = set(git('diff', '--name-only', 'HEAD^', 'HEAD').splitlines())
+          assert workflow_changes == {'.github/workflows/next-release-adapter-validation.yml'}, workflow_changes
+          expected['internal/update/nextrelease/source_test.go'] = '2e422e674020f2e9263c55edaf1e7ddd3d57eddcd4de60def939409fecdf4979'
+          for name, digest in expected.items():
+              assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == digest, name
+          assert 'go 1.26.10' in pathlib.Path('go.mod').read_text().splitlines()
+          PY
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+          cache: false
+      - name: Format, vet and isolated package tests only
+        run: |
+          set -euo pipefail
+          test "$(go env GOVERSION)" = go1.26.10
+          for key in GOPATH GOMODCACHE GOCACHE; do export "$key=$(go env "$key")"; done
+          sandbox=$(mktemp -d "$RUNNER_TEMP/next-adapter.XXXXXX")
+          mkdir "$sandbox/home" "$sandbox/tmp"
+          for key in HOME USERPROFILE XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME APPDATA LOCALAPPDATA; do export "$key=$sandbox/home"; done
+          export TMPDIR="$sandbox/tmp" TMP="$sandbox/tmp" TEMP="$sandbox/tmp"
+          export GOPROXY=off GOSUMDB=off
+          # Run the pure selector, listing and record-adapter regression tests.
+          # HTTP fixtures constrain every production-client request to loopback;
+          # the Offline default-transport guard is not global network isolation.
+          # Preserve compiler/test diagnostics even when formatting is wrong.
+          bad=$(gofmt -l internal/update/nextrelease/*.go)
+          gofmt -d internal/update/nextrelease/*.go
+          timeout 120s go test -mod=readonly -p=1 -count=1 -timeout=60s -v ./internal/update/nextrelease
+          timeout 60s go vet -mod=readonly -p=1 ./internal/update/nextrelease
+          git diff --exit-code
+          test -z "$bad"
