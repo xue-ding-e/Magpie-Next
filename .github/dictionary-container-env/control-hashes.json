@@ -1,0 +1,7 @@
+{
+  ".github/dictionary-container-env/gate.py": "2e7076d942d7ec6dd098ee1ce6e59f6cb79e4a9b0e0b2a8ebde21e1a40c9113c",
+  ".github/dictionary-container-env/probe.py": "2e1660556fd5bfc745f48ab30f46be6a45b517efcb9d1db98048af481d8a2d1d",
+  ".github/dictionary-container-env/selftest.py": "5c665ed414de207ac3eb3c47e4c75d0a5e9ab462d50694ea7e6abb79df73d73d",
+  ".github/dictionary-container-env/source.json": "e5df722705382ff4fdc9209eb27c320dcabe6c8f55f356062e99b30ae8afd969",
+  ".github/workflows/local-dictionary-container-env.yml": "278ddbd1b0c8a8dd44332afe7adf9209020e444fd03d53ea2493c583d8ce0373"
+}

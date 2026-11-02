@@ -1,0 +1,59 @@
+{
+  "enabled": true,
+  "repository": "xue-ding-e/Magpie-Next",
+  "actions_allowlist_verified": true,
+  "action_admission_evidence": {
+    "browser_run": 41429799254,
+    "browser_job": 125225229043,
+    "go_run": 41438741797,
+    "go_job": 125255000377
+  },
+  "scope": "environment-proof-only; no Go, dictionary workload, native child lifecycle, UI, packaging or release acceptance",
+  "branch": "refs/heads/validation/local-dictionary-container-env-20261102",
+  "base": "d65e4026f0856215a35232fabc4cbb3f98fa52d7",
+  "source": "203a1811105a97fa46cb62fcf9706f44535b0ebd",
+  "source_tree": "0ceb41a3c81cf0b562f902fc8ad688733cdbf393",
+  "reviewed_full_product_patch_sha256": "7a6f609b8a4fc5ddbf451ece21fd7bf7f00a7fcdaf8439c00be886bac2e68dbf",
+  "files": {
+    "internal/backup/local_dictionary_test.go": "e23e9da39b36274fcd8efc47ecd4c3dead7ee03afe04adc6c656661af763445a",
+    "internal/gateway/decide.go": "c10411f2204e4df89b8cd5a4c14bfec1da83e594f907a111b5ed292cc5310439",
+    "internal/gateway/local_dictionary_test.go": "a87a409d94896e7f8a822328dbfc8b849df1aea49223ffbcfaac978abced487b",
+    "internal/gateway/redact.go": "a7f508c9f1a086b975f8fe9ee5f418067c80552c55aba03038000cfabc085d4b",
+    "internal/gateway/video.go": "21494370e31af2562f094ab79465739cc033380ae6f3c5df59e40677f39678c6",
+    "internal/gui/api.go": "f6fbff88a3fc91afb08d83f3bb394bec1265f913fb2dbf027dabdc6e50f1b095",
+    "internal/gui/local_dictionary.go": "a20d98521d638666b22fde5e20f4c55b5717c33a2e54e26166f62ce6edc57382",
+    "internal/gui/local_dictionary_test.go": "2245335c093362e65e302044e960d64ea0b7ab11c389e4a9d76fe0fb8ebcb0d1",
+    "internal/localdictionary/store.go": "61eb57c18830beeacd35ed960960dba1fe37d5fd0e7f5444069ef8d8401ca829",
+    "internal/localdictionary/store_test.go": "ebb49780fd0c0172a70b1a40f86cd0d219cd960d21ee5fbefb717ea6d01c11ca",
+    "internal/masking/masking.go": "4c13dbbef574c2cd76672dd8185e898b6f0ba68e2839d258264b80c33bcf771a",
+    "internal/redact/dictionary.go": "d1e82fe351fff670bda78b38d859b406b8c71912138fc1cf305ffdd9ff5eb591",
+    "internal/redact/dictionary_integration_test.go": "350aa1c571ee64ac8fb3ce786d1f82f042ff02d9231e4046c627cfb25ca98aa2",
+    "internal/redact/dictionary_test.go": "cf889b276320e23899c22b1c36fcbb2a466c19a0a1cf4058366b76caaabf8e16",
+    "internal/redact/json.go": "e3f503238ac6b353b35a2aa261b4c161729a966ea9ce78439a9ce8fb95fd7a4b",
+    "internal/redact/known.go": "61d5912299d4b21679dadfe745166c3db37780e383626fad2455de9869f93cb1",
+    "internal/redact/redact.go": "bb2353efcb4a61ba08277506a86a4db9e30a1830dac77b077ddc604aae8207af"
+  },
+  "actions": [
+    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+  ],
+  "container": {
+    "image": "docker.io/library/python@sha256:38b3a52e74d49330ab2f55255503669bcbbd759c847472816131b807b83cf2a6",
+    "platform": "linux/amd64",
+    "python": "3.13.18",
+    "uid": 1001,
+    "gid": 1001,
+    "options": "--memory=2g --memory-swap=2g --user=1001:1001 --cap-drop=ALL --security-opt=no-new-privileges --cgroupns=private",
+    "source": "https://raw.githubusercontent.com/docker-library/repo-info/master/repos/python/remote/3.13-bookworm.md",
+    "proof": "readonly cgroup and identity checks plus at most 1 MiB; kernel limit only covers container processes, not host image pull or daemon; successful post-job container removal must be independently checked in complete runner logs"
+  },
+  "environment_boundaries": {
+    "authority": "standard GitHub-hosted non-privileged job.container only; no additional GitHub permissions, registry credentials, user volumes or Docker API access",
+    "before_checkout": "UID/GID/saved IDs=1001, all capabilities=0, NoNewPrivs=1, seccomp filter, Docker socket inaccessible by effective identity, private read-only cgroup2 memory.max=2147483648 and memory.swap.max=0",
+    "host_operations": "no sudo, chmod, chown, cgroup mkdir/write/migration, mount changes, Docker socket calls, Go or child processes",
+    "probe": "at most one 1 MiB allocation; 10-second in-process alarm; no pressure/OOM test; no native child-lifecycle acceptance",
+    "initialization": "job-level 5-minute outer timeout; pull and daemon are outside container memory accounting; first-step alarm is not an initialization deadline",
+    "cleanup_acceptance": "full official Stop containers log must confirm deletion and no Docker rm failure warning; green job alone is insufficient",
+    "future_large_workload": "requires separate review, native lifecycle proof inside this container, budget including initialization, and explicit handling of oom.group=0; no automatic continuation"
+  }
+}
