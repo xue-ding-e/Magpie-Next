@@ -1,0 +1,20 @@
+{
+  ".github/dictionary-core-validation/compile_resource.py": "08c2361eefd7314a4fe0348b5b4ff9b9f86ed73323f3c55cbe8f5b9707685676",
+  ".github/dictionary-core-validation/fixtures/backup_offline_test.go": "b446f89e07bacafab7183777519a40f90451d54265531de35d24ef0b8f025479",
+  ".github/dictionary-core-validation/fixtures/gateway_offline_test.go": "05bce00fb7e59364fd4f3ad2a5decf08af861ca98c4b8da3eb00cf5d77020d97",
+  ".github/dictionary-core-validation/fixtures/gui_offline_test.go": "c25ca73379c434c3276300f19d14ce24d1e4e76dc29dc5ed2aed4450eed6c2c6",
+  ".github/dictionary-core-validation/fixtures/localdictionary_offline_test.go": "c074998869fc4e1925dd336f36475756cc07ac71956f99c72ff138c18796259e",
+  ".github/dictionary-core-validation/fixtures/redact_offline_test.go": "ff48a1378eee1a15fe50b388d1edef74389a6934eebf90510857fba7c09d7f6a",
+  ".github/dictionary-core-validation/fixtures/request_scope_test.go": "1a98e27be436d3911662c3a486df7d233b64b7c120f1cd9efe7ddd5f7022a1e8",
+  ".github/dictionary-core-validation/fixtures/resource_test.go": "ee5ea2c0588cdc52213966e991bbc94617b924c1e47e54e98e48e5e3b9b0cc52",
+  ".github/dictionary-core-validation/gate.py": "8290ec3cef8b4e3c485513ce9ec553ce4d2af09faa72d9c0356def49fafb5631",
+  ".github/dictionary-core-validation/install_fixtures.py": "ba71877be32e8b12797c8d517163b54b4abbf41a7552bdfbf54e6d1b79984072",
+  ".github/dictionary-core-validation/owned-selftest.py": "d35edba84b6083ba1a20a4bf53211dd2a6fe176f5535401194a86d60b73ca587",
+  ".github/dictionary-core-validation/owned_process.py": "ccc5f62d94b14c4093159ddeb447e44778490e803ec70d6c916866c5531b5e62",
+  ".github/dictionary-core-validation/resources.py": "c33438a7cb2e8d403690896b549537d01b6c04e8c004b478b6c808bbe9aecaf9",
+  ".github/dictionary-core-validation/run_go.py": "4c02e3ca23429956aa583662dee34576129be2d55ff07707ed0543f727ec37f0",
+  ".github/dictionary-core-validation/selftest.py": "5a9e73bc4464fcc34b6b1adb8642fdea8d838fbfcb4d2a3a9244d0c53be301b7",
+  ".github/dictionary-core-validation/source.json": "32329231522689e2b638b4c878f7c62cc3f26ba18d6fa11689c658a537a4b261",
+  ".github/dictionary-core-validation/tests.json": "2aa04e1f4e62df51a507990e147cff1454ccb0f10ae07e3d58e0d0a26db71a37",
+  ".github/workflows/local-dictionary-core-validation.yml": "c692c8c3261f78a1829b1863cba968313eea8e3945732f369d05ea9e808eeb7d"
+}

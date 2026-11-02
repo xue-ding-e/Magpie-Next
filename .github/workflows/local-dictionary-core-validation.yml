@@ -1,0 +1,176 @@
+# Backend-only independent validation. No UI/browser, Windows ACL, main, tag,
+# packaging, release, writable token, real account or real dictionary. The core
+# identity is fixed. Publishing this enabled candidate requires its reviewed
+# activation diff and a reserved slot; this file does not authorize a ref write.
+name: Local dictionary core candidate validation
+on:
+  push:
+    branches: [validation/local-dictionary-core-20261102]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: magpie-dictionary-core-validation-${{ github.repository }}
+  cancel-in-progress: false
+env:
+  GOTOOLCHAIN: local
+  GOWORK: 'off'
+  GOMAXPROCS: '2'
+  GOFLAGS: '-mod=readonly'
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Start shared monotonic budget before checkout
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          python3 -I -B - <<'PYCODE'
+          import os, time
+          start = time.monotonic()
+          cap = 900
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as stream:
+              print(f'DICTIONARY_JOB_START_MONOTONIC={start:.6f}', file=stream)
+              print(f'DICTIONARY_JOB_DEADLINE_MONOTONIC={start + cap - 180:.6f}', file=stream)
+              print(f'DICTIONARY_JOB_CAP_SECONDS={cap}', file=stream)
+          PYCODE
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 4
+          persist-credentials: false
+      - name: Verify frozen backend source and exact candidate control
+        timeout-minutes: 1
+        shell: bash
+        run: python3 -I -B .github/dictionary-core-validation/gate.py
+      - name: Prove native owned-child cleanup before any test workload
+        timeout-minutes: 1
+        shell: bash
+        run: python3 -I -B .github/dictionary-core-validation/owned-selftest.py --require-native
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 2
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Isolate synthetic test home
+        timeout-minutes: 1
+        id: home
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B .github/dictionary-core-validation/owned_process.py --check-budget
+          echo "GOPATH=$(go env GOPATH)" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$(go env GOMODCACHE)" >> "$GITHUB_ENV"
+          echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          python3 -I -B build/ci_home.py create
+      - name: Final request-scope race and selected regressions
+        timeout-minutes: 13
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B .github/dictionary-core-validation/install_fixtures.py core
+          python3 -I -B .github/dictionary-core-validation/run_go.py core
+      - name: Clean only the recorded synthetic home
+        timeout-minutes: 1
+        if: ${{ always() && steps.home.outputs.record != '' }}
+        shell: bash
+        env:
+          MAGPIE_CI_HOME_RECORD: ${{ steps.home.outputs.record }}
+        run: python3 -I -B build/ci_home.py cleanup
+      - name: Preserve synthetic check evidence only
+        timeout-minutes: 1
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dictionary-core-only-regressions-${{ github.run_attempt }}
+          path: .validation-runtime/reports/
+          if-no-files-found: warn
+          retention-days: 7
+
+  resources:
+    needs: core
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Start shared monotonic budget before checkout
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          python3 -I -B - <<'PYCODE'
+          import os, time
+          start = time.monotonic()
+          cap = 600
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as stream:
+              print(f'DICTIONARY_JOB_START_MONOTONIC={start:.6f}', file=stream)
+              print(f'DICTIONARY_JOB_DEADLINE_MONOTONIC={start + cap - 180:.6f}', file=stream)
+              print(f'DICTIONARY_JOB_CAP_SECONDS={cap}', file=stream)
+          PYCODE
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 4
+          persist-credentials: false
+      - name: Verify frozen backend source and exact candidate control
+        timeout-minutes: 1
+        shell: bash
+        run: python3 -I -B .github/dictionary-core-validation/gate.py
+      - name: Prove native owned-child cleanup before any test workload
+        timeout-minutes: 1
+        shell: bash
+        run: python3 -I -B .github/dictionary-core-validation/owned-selftest.py --require-native
+      - name: Require unprivileged delegated kernel hard memory limit
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .validation-runtime/reports
+          python3 -I -B .github/dictionary-core-validation/resources.py probe 2>&1 | tee .validation-runtime/reports/resource-preflight.log
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 1
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Isolate synthetic test home
+        timeout-minutes: 1
+        id: home
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B .github/dictionary-core-validation/owned_process.py --check-budget
+          echo "GOPATH=$(go env GOPATH)" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$(go env GOMODCACHE)" >> "$GITHUB_ENV"
+          echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          python3 -I -B build/ci_home.py create
+      - name: Compile resource fixture without running it
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B .github/dictionary-core-validation/install_fixtures.py resources
+          python3 -I -B .github/dictionary-core-validation/compile_resource.py
+      - name: Serial 100k, exact 16 MiB, held replacement and release plus GC
+        timeout-minutes: 9
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B .github/dictionary-core-validation/resources.py run "$RUNNER_TEMP/dictionary-resource.test" 2>&1 | tee .validation-runtime/reports/resources.log
+      - name: Clean only the recorded synthetic home
+        timeout-minutes: 1
+        if: ${{ always() && steps.home.outputs.record != '' }}
+        shell: bash
+        env:
+          MAGPIE_CI_HOME_RECORD: ${{ steps.home.outputs.record }}
+        run: python3 -I -B build/ci_home.py cleanup
+      - name: Preserve synthetic check evidence only
+        timeout-minutes: 1
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dictionary-core-only-resources-${{ github.run_attempt }}
+          path: .validation-runtime/reports/
+          if-no-files-found: warn
+          retention-days: 7

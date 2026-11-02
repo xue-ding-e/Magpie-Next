@@ -1,0 +1,54 @@
+{
+  "github.com/yetone/magpie/internal/redact": [
+    "TestDictionaryLiteralSpans",
+    "TestDictionaryMatchesReference",
+    "TestDictionaryLimitsAndPrivacy",
+    "TestDictionaryConcurrentReaders",
+    "TestLocalDictionaryMaskIntegration",
+    "TestLocalDictionaryKeepsLegacyShortInputSemantics",
+    "TestLocalDictionaryUnknownPlaceholderDoesNotBypass",
+    "TestLocalDictionaryDenseBudgetFailsClosed",
+    "TestLocalDictionaryJSONSharedBudget",
+    "TestLocalDictionaryBudgetBoundary",
+    "TestLocalDictionaryInputBudget",
+    "TestLocalDictionarySignedReplay",
+    "TestLocalDictionarySignedUnknownFailsClosed",
+    "TestLocalDictionarySignedOverlapUsesWinner",
+    "TestLocalDictionaryBudgetExcludesImageData",
+    "TestLocalDictionaryBudgetCountsOnlyScannedStrings",
+    "TestDictionaryValidationRequestScopeRace",
+    "TestDictionaryValidationGrowthBoundary",
+    "TestDictionaryValidationSignedProtocols",
+    "TestDictionaryValidationUnknownSignedProtocols",
+    "TestMaskJSONKeepsReasoningSummaryDelivery",
+    "TestMaskJSONKeepsToolServerNames",
+    "TestMaskJSONKeepsIDs",
+    "TestMaskJSONSignedGoesBackAsWritten",
+    "TestKnownInSigned"
+  ],
+  "github.com/yetone/magpie/internal/localdictionary": [
+    "TestImportCASAndLiteralRoundTrip",
+    "TestImportConcurrentCAS",
+    "TestCorruptDictionaryFailsClosed",
+    "TestImportLimits",
+    "TestImportEmptyAndDuplicate",
+    "TestMissingEnabledDictionaryFailsClosed",
+    "TestImportTooManyEmptyLines",
+    "TestHardlinkUpdateDoesNotModifyOtherName",
+    "TestFailedFirstWriteCanRetry",
+    "TestFailedReplaceKeepsOldGeneration",
+    "TestImportNullEntriesRejected"
+  ],
+  "github.com/yetone/magpie/internal/gui": [
+    "TestLocalDictionaryAPI",
+    "TestLocalDictionaryAPIGuards",
+    "TestLocalDictionaryAPIRejectsInvalidTextAndNull"
+  ],
+  "github.com/yetone/magpie/internal/gateway": [
+    "TestLocalDictionaryHTTPBudgetAndRecovery",
+    "TestLocalDictionaryVideoAndStateShareBudget"
+  ],
+  "github.com/yetone/magpie/internal/backup": [
+    "TestLocalDictionaryExcludedFromBackup"
+  ]
+}
