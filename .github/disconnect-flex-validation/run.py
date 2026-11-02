@@ -18,7 +18,7 @@ def main():
     assert subprocess.check_output(['git','status','--porcelain'],cwd=old,text=True)==''
     (old/TEST).write_bytes((new/TEST).read_bytes())
     assert subprocess.check_output(['git','diff','--name-only'],cwd=old,text=True).strip()==TEST
-    stages=[('baseline-webkit',old,'webkit',[TEST],4,120,True),('candidate-chromium',new,'chromium',FILES,11,240,False),('candidate-webkit',new,'webkit',FILES,11,240,False),('candidate-aside-both',new,None,['internal/gui/tests/aside-native.test.cjs'],8,180,False)]
+    stages=[('baseline-webkit',old,'webkit',[TEST],4,120,True),('candidate-chromium',new,'chromium',FILES,11,240,False),('candidate-webkit',new,'webkit',FILES,11,240,False),('candidate-aside-both',new,None,['internal/gui/tests/aside-native.test.cjs'],8,180,False),('candidate-web-spacing-both',new,None,[str(C/'web-spacing.test.cjs')],4,120,False)]
     results=[];start=time.monotonic()
     try:
       for name,source,engine,files,count,budget,red in stages:
@@ -40,5 +40,5 @@ def main():
           assert subprocess.check_output(['git','diff','--name-only'],cwd=old,text=True).strip()==TEST
           assert result['accepted'], 'Focused stage failed; retain evidence, do not rerun or weaken assertions'
     finally:
-      (report/'summary.json').write_text(json.dumps({'results':results,'elapsed_seconds':time.monotonic()-start,'complete':len(results)==4 and all(x['accepted'] for x in results),'not_full_acceptance':True},indent=2))
+      (report/'summary.json').write_text(json.dumps({'results':results,'elapsed_seconds':time.monotonic()-start,'complete':len(results)==5 and all(x['accepted'] for x in results),'not_full_acceptance':True},indent=2))
 if __name__=='__main__':main()

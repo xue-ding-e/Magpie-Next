@@ -1,13 +1,13 @@
 {
-  "sha": "2c53077ebb6bd8f34d34880a7ead19e18e54147b",
-  "tree": "3d8c89de07afa54dd62048353ee9021bd9ee30e6",
-  "parent": "7feed2b7e7a94ad0263ad3f44a1b0ab3b2fc065c",
+  "sha": "75953a1f3da2e82a62c1b33559b8749a9cd5c20b",
+  "tree": "6b053c9f6930af0beb65c573ce3b6c8b3e9ba312",
+  "parent": "2c53077ebb6bd8f34d34880a7ead19e18e54147b",
   "files": [
     {
       "path": "internal/gui/assets/app.css",
-      "bytes": 357548,
-      "sha256": "c7065253d05eb623042b9f4079481dda446cf4051dddebf5b1e2eb1a8b335bc7",
-      "git_blob": "ffd1618bff39c0e42b32817644b6e2db8e573ecd",
+      "bytes": 357982,
+      "sha256": "651ee653828e08e4a534bf96de64cb6b39c9e265be8149f5ddbaaa2eeceb6fbb",
+      "git_blob": "c1b03bf98f11a7c6432b7bb71e45e642022caa63",
       "base_sha256": "a99f2ff5467b337528268530761b092d5580fb52131ee2d858a76347c8a39ae9"
     },
     {
@@ -19,9 +19,9 @@
     },
     {
       "path": "docs/subsystems/gui-shell.md",
-      "bytes": 73922,
-      "sha256": "09f4e92f2f5353436c682a509ecffd28ce7a0bc8034b3e3e657bcd121a44cb20",
-      "git_blob": "4436166dd0987edc1aec3e48aa6139db782e78e3",
+      "bytes": 73949,
+      "sha256": "2a4767d1ca664e6455bf3afc02c3c26b695a558b6d403b12539bcd6285aad22b",
+      "git_blob": "739676a3cc684a24f11fb2ab501f3fe5c090fb5b",
       "base_sha256": "420ceca57a3f5e2f2e393c3914e6136e98dccca38e86f08a594bdd3d3bd08b52"
     }
   ]

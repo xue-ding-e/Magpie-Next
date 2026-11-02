@@ -18,14 +18,14 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: control
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         timeout-minutes: 2
         with:
-          ref: 2c53077ebb6bd8f34d34880a7ead19e18e54147b
+          ref: 75953a1f3da2e82a62c1b33559b8749a9cd5c20b
           path: candidate
-          fetch-depth: 1
+          fetch-depth: 3
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         timeout-minutes: 2
@@ -38,8 +38,8 @@ jobs:
         timeout-minutes: 2
         run: |
           set -euo pipefail
-          echo 'eb376d54fe5e6b229b09fb78e12e5b81fc464cea14f786483741ca75c6fb9a14  control/.github/disconnect-flex-validation/gate.py' | sha256sum -c -
-          echo 'a3aff2aac1821c4269425bad986236d7b21fc80c210fe6d5d7abf991a7bdd1e2  control/.github/disconnect-flex-validation/hashes.json' | sha256sum -c -
+          echo '2bb4f3ca5cb3948113b2a69113a6ecf2aa51318cfa848b8221a786424e317bb1  control/.github/disconnect-flex-validation/gate.py' | sha256sum -c -
+          echo 'caabb9fee5389f7041bfea6f79254ec0720a7c594925ed025c53fe2e43ff47cb  control/.github/disconnect-flex-validation/hashes.json' | sha256sum -c -
           python3 control/.github/disconnect-flex-validation/gate.py
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         timeout-minutes: 2
@@ -58,8 +58,8 @@ jobs:
           timeout 180 node control/.github/disconnect-flex-validation/node_modules/playwright/cli.js install-deps chromium webkit
           timeout 240 node control/.github/disconnect-flex-validation/node_modules/playwright/cli.js install chromium webkit
       - name: Exact old red then new two-engine green and sibling checks
-        timeout-minutes: 14
-        run: timeout --kill-after=5 810 python3 control/.github/disconnect-flex-validation/run.py
+        timeout-minutes: 16
+        run: timeout --kill-after=5 930 python3 control/.github/disconnect-flex-validation/run.py
       - name: Clean only recorded task temporary directory
         if: always() && env.AUTH_TMP_RECORD != ''
         timeout-minutes: 2
