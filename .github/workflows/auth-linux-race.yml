@@ -14,13 +14,13 @@ jobs:
   linux_race:
     if: github.repository == 'xue-ding-e/Magpie-Next'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         timeout-minutes: 2
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         timeout-minutes: 2
@@ -34,8 +34,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '5bc42c36d8a3069cd4f6c7d58f1a7dcc53ed5de68b4919fa0599087c1ee75b1a  .github/auth-linux-race/gate.py' | sha256sum -c -
-          echo 'b82cd6e34dde015c5c6e41de648e80eedf63ebe25decabe7425a7bcddf3aeeb9  .github/auth-linux-race/control-hashes.json' | sha256sum -c -
+          echo '8d18aa658099b4320ad0c0dacaf363a9ffa28c01afdb62ef95e5ea123a6289f7  .github/auth-linux-race/gate.py' | sha256sum -c -
+          echo '2196c051009873dff9a45235d5d8721cd1812db2b5917f3660e47abb52466ef5  .github/auth-linux-race/control-hashes.json' | sha256sum -c -
           python3 -I -B .github/auth-linux-race/gate.py
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         timeout-minutes: 5

@@ -11,9 +11,11 @@ def main():
  expected=set(manifest)|{'.github/auth-linux-race/control-hashes.json','.github/workflows/auth-linux-race.yml'}
  src=json.loads((CONTROL/'source.json').read_text())
  assert git('rev-parse','HEAD')==os.environ['GITHUB_SHA']
- assert git('rev-parse','HEAD^')==src['source']
+ assert git('rev-parse','HEAD^')=='22c4e1140644408788d337dd64d5768101826a8a'
+ assert git('rev-parse','HEAD^^')==src['source']
+ assert len(git('rev-list','--parents','-n','1','HEAD^').split())==2
  assert len(git('rev-list','--parents','-n','1','HEAD').split())==2
- assert set(git('diff','--name-only','HEAD^','HEAD').splitlines())==expected
+ assert set(git('diff','--name-only','HEAD^^','HEAD').splitlines())==expected
  for file,digest in manifest.items():assert hashlib.sha256((ROOT/file).read_bytes()).hexdigest()==digest,file
  source=ROOT/'source'
  assert git('rev-parse','HEAD',cwd=source)==src['source']
