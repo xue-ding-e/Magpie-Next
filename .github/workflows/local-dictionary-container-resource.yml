@@ -1,0 +1,762 @@
+# Enabled diagnostic candidate: only create the canonical ref after root assigns its heavy slot.
+# One fixed-source container only; no main/tag/release/UI or delegated cgroup write.
+# Job initialization precedes steps. The outer 10-minute timeout covers it;
+# exact public API started_at then maps its elapsed time into a conservative
+# shared monotonic work cutoff, with 3 minutes reserved for cleanup/evidence.
+# GitHub string == ignores case; activation must use only the canonical ref.
+# The Python pre-checkout budget and post-checkout source gates are byte-exact.
+name: Local dictionary container resource candidate
+on:
+  push:
+    branches: [validation/local-dictionary-container-resource-diagnostics-20261102]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: magpie-dictionary-container-resource-${{ github.repository }}
+  cancel-in-progress: false
+env:
+  GOTOOLCHAIN: local
+  GOWORK: 'off'
+  GOMAXPROCS: '2'
+  GOFLAGS: '-mod=readonly'
+jobs:
+  container-resources:
+    if: ${{ github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/local-dictionary-container-resource-diagnostics-20261102' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: docker.io/library/python@sha256:38b3a52e74d49330ab2f55255503669bcbbd759c847472816131b807b83cf2a6
+      options: --memory=2g --memory-swap=2g --user=1001:1001 --cap-drop=ALL --security-opt=no-new-privileges --cgroupns=private
+    steps:
+      - name: Read-only hard-cap and non-root proof before checkout
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          python3 -I -B - <<'PYPROBE'
+          """Small environment proof only; never create cgroups, children or Go workloads.
+          
+          GitHub's runner creates the container before the first step. The job's outer
+          timeout is the only bound on image pull/initialization; this program's alarm is
+          only a short bound on its own proof. Failure never selects a weaker fallback.
+          """
+          import gc
+          import json
+          import os
+          from pathlib import Path
+          import platform
+          import signal
+          import stat
+          import sys
+          import time
+          
+          LIMIT = 2 * 1024 ** 3
+          PROBE_BYTES = 1 << 20
+          CGROUP = Path('/sys/fs/cgroup')
+          OUTPUT = 'dictionary-container-env-proof.json'
+          
+          
+          def require(ok, reason):
+              if not ok:
+                  raise RuntimeError('ENVIRONMENT NOT RUN: ' + reason)
+          
+          
+          def read(path):
+              with Path(path).open('r', encoding='utf-8') as stream:
+                  text = stream.read(65537)
+              require(len(text) <= 65536, 'unexpectedly large kernel metadata')
+              return text.strip()
+          
+          
+          def events(text):
+              pairs = [line.split() for line in text.splitlines()]
+              require(all(len(pair) == 2 and pair[1].isdigit() for pair in pairs), 'invalid memory event counters')
+              result = {key: int(value) for key, value in pairs}
+              require(len(result) == len(pairs), 'duplicate memory event counter')
+              require({'oom', 'oom_kill', 'oom_group_kill'} <= result.keys(), 'missing OOM counters')
+              return result
+          
+          
+          def collect():
+              status = dict(line.split(':', 1) for line in read('/proc/self/status').splitlines() if ':' in line)
+              sockets = []
+              # Only stat/access the runner's standard socket paths. Never connect or
+              # call Docker. ContainerInfo in runner v2.338.2 mounts this host socket.
+              for name in ('/var/run/docker.sock', '/run/docker.sock'):
+                  try:
+                      metadata = os.stat(name)
+                  except FileNotFoundError:
+                      sockets.append({'path': name, 'present': False})
+                  else:
+                      sockets.append({'path': name, 'present': True,
+                          'socket': stat.S_ISSOCK(metadata.st_mode),
+                          'readable': os.access(name, os.R_OK, effective_ids=True),
+                          'writable': os.access(name, os.W_OK, effective_ids=True)})
+              writable = {}
+              # These are standard runner CI-output mounts, not additional host mounts.
+              # Failure does not chown/chmod them or retry as root.
+              for key in ('GITHUB_ENV', 'GITHUB_WORKSPACE', 'RUNNER_TEMP', 'RUNNER_TOOL_CACHE', 'HOME'):
+                  value = os.environ.get(key, '')
+                  require(value and Path(value).is_absolute(), 'missing absolute runner path: ' + key)
+                  path = Path(value)
+                  require(path.is_file() if key == 'GITHUB_ENV' else path.is_dir(), 'runner path missing: ' + key)
+                  mask = os.W_OK if key == 'GITHUB_ENV' else os.R_OK | os.W_OK | os.X_OK
+                  writable[key] = os.access(path, mask, effective_ids=True)
+              return {
+                  'uid': list(os.getresuid()), 'gid': list(os.getresgid()), 'groups': os.getgroups(),
+                  'caps': {key: status.get(key, '').strip() for key in ('CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb')},
+                  'no_new_privs': status.get('NoNewPrivs', '').strip(),
+                  'seccomp': status.get('Seccomp', '').strip(),
+                  'proc_pid': os.readlink('/proc/self'), 'pid': os.getpid(),
+                  'nspid': status.get('NSpid', '').split(),
+                  'machine': platform.machine(), 'python': platform.python_version(),
+                  'sockets': sockets, 'docker_host_present': bool(os.environ.get('DOCKER_HOST')),
+                  'runner_paths_accessible': writable,
+                  'membership': read('/proc/self/cgroup'), 'mountinfo': read('/proc/self/mountinfo'),
+                  'controls': {name: read(CGROUP / name) for name in ('memory.max', 'memory.swap.max', 'memory.oom.group')},
+                  'control_writable': {name: os.access(CGROUP / name, os.W_OK, effective_ids=True)
+                                       for name in ('memory.max', 'memory.swap.max', 'memory.oom.group', 'cgroup.procs')},
+                  'memory_current': int(read(CGROUP / 'memory.current')),
+                  'memory_peak': int(read(CGROUP / 'memory.peak')),
+                  'events': events(read(CGROUP / 'memory.events')),
+              }
+          
+          
+          def verify(snapshot):
+              require(snapshot['uid'] == [1001] * 3 and snapshot['gid'] == [1001] * 3, 'UID/GID or saved identity is not the fixed non-root account')
+              require(set(snapshot['groups']) <= {1001}, 'unexpected supplementary group')
+              require(set(snapshot['caps']) == {'CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'}, 'incomplete capability evidence')
+              require(all(value and int(value, 16) == 0 for value in snapshot['caps'].values()), 'Linux capabilities are not all dropped')
+              require(snapshot['no_new_privs'] == '1' and snapshot['seccomp'] == '2', 'no-new-privileges/default seccomp proof missing')
+              require(snapshot['proc_pid'] == str(snapshot['pid']) and snapshot['nspid'] == [str(snapshot['pid'])], 'procfs PID namespace mismatch')
+              require(snapshot['machine'] == 'x86_64' and snapshot['python'] == '3.13.18', 'unexpected image platform or Python version')
+              require(not snapshot['docker_host_present'], 'unexpected Docker control endpoint environment')
+              require(len(snapshot['sockets']) == 2 and {item['path'] for item in snapshot['sockets']} == {'/var/run/docker.sock', '/run/docker.sock'}, 'incomplete Docker socket evidence')
+              require(all(not item['present'] or (item['socket'] and not item['readable'] and not item['writable']) for item in snapshot['sockets']), 'host Docker socket accessible or unexpected file type')
+              require(set(snapshot['runner_paths_accessible']) == {'GITHUB_ENV', 'GITHUB_WORKSPACE', 'RUNNER_TEMP', 'RUNNER_TOOL_CACHE', 'HOME'} and all(snapshot['runner_paths_accessible'].values()), 'non-root standard CI output/tool/home mount not accessible')
+              require(snapshot['membership'] == '0::/', 'not the expected private unified cgroup namespace')
+              mounts = []
+              for line in snapshot['mountinfo'].splitlines():
+                  fields, separator, tail = line.partition(' - ')
+                  left, right = fields.split(), tail.split()
+                  require(separator and len(left) >= 6 and len(right) >= 3, 'unparseable mountinfo')
+                  if left[4] == '/sys/fs/cgroup':
+                      mounts.append((left[3], left[5].split(','), right[0]))
+              require(len(mounts) == 1 and mounts[0][0] == '/' and 'ro' in mounts[0][1] and 'rw' not in mounts[0][1] and mounts[0][2] == 'cgroup2', 'cgroup2 is not the expected read-only private mount')
+              require(snapshot['controls']['memory.max'] == str(LIMIT) and snapshot['controls']['memory.swap.max'] == '0', 'missing exact 2 GiB kernel memory cap or zero swap')
+              require(snapshot['controls']['memory.oom.group'] in ('0', '1'), 'invalid OOM group metadata')
+              require(set(snapshot['control_writable']) == {'memory.max', 'memory.swap.max', 'memory.oom.group', 'cgroup.procs'} and not any(snapshot['control_writable'].values()), 'cgroup control writable or evidence incomplete')
+              require(0 < snapshot['memory_current'] < LIMIT - (4 << 20), 'insufficient safe space for the tiny accounting observation')
+              require(0 < snapshot['memory_peak'] <= LIMIT, 'invalid cumulative job memory peak')
+              require(all(snapshot['events'][key] == 0 for key in ('oom', 'oom_kill', 'oom_group_kill')), 'container already experienced an OOM event')
+          
+          
+          def prove():
+              before = collect()
+              verify(before)
+              # Exactly 1 MiB, touched once. This is not a pressure/OOM test or proof of
+              # the dictionary workload. No Go compile, matcher or child process starts.
+              data = bytearray(PROBE_BYTES)
+              for offset in range(0, len(data), 4096):
+                  data[offset] = 1
+              try:
+                  after = collect()
+                  verify(after)
+                  require(after['events'] == before['events'], 'memory events changed during the tiny proof')
+              finally:
+                  del data
+                  gc.collect()
+              # Peak includes all container setup/steps; never label it a per-stage peak.
+              return {'schema': 1, 'scope': 'environment-only; no Go/dictionary/native-child-lifecycle acceptance',
+                  'configured_image': 'docker.io/library/python@sha256:38b3a52e74d49330ab2f55255503669bcbbd759c847472816131b807b83cf2a6',
+                  'runtime_image_digest_requires_runner_pull_log_check': True,
+                  'uid': before['uid'], 'gid': before['gid'], 'capabilities_zero': True,
+                  'no_new_privs': True, 'seccomp_filter': True, 'docker_socket_access': False,
+                  'runner_paths_accessible': before['runner_paths_accessible'], 'cgroup_readonly': True,
+                  'hard_limit_bytes': LIMIT, 'swap_limit_bytes': 0,
+                  'oom_group': before['controls']['memory.oom.group'],
+                  'probe_bytes': PROBE_BYTES, 'memory_current_before': before['memory_current'],
+                  'memory_current_during': after['memory_current'], 'job_cumulative_peak_bytes': after['memory_peak'],
+                  'memory_events_before': before['events'], 'memory_events_after': after['events'],
+                  'post_stop_cleanup': 'NOT YET VERIFIED: independently check complete runner Stop containers logs; removal warning is failure',
+                  'initialization': 'outer job timeout only; this step alarm does not include image pull',
+                  'host_pull_and_daemon_not_covered_by_container_memory_cap': True, 'ok': True}
+          
+          
+          def main():
+              def timeout(_signum, _frame):
+                  raise RuntimeError('ENVIRONMENT NOT RUN: tiny proof exceeded 10 seconds')
+              signal.signal(signal.SIGALRM, timeout)
+              signal.alarm(10)
+              start = time.monotonic()
+              try:
+                  result = prove()
+                  result['proof_seconds'] = time.monotonic() - start
+                  root = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
+                  # A single new synthetic evidence file, never replace existing data.
+                  with (root / OUTPUT).open('x', encoding='utf-8') as stream:
+                      json.dump(result, stream, indent=2)
+                      stream.write('\n')
+                  print(json.dumps(result, sort_keys=True))
+              except (OSError, RuntimeError, ValueError, KeyError) as error:
+                  print(json.dumps({'ok': False, 'classification': 'ENVIRONMENT NOT RUN', 'error': str(error), 'no_fallback': True}), file=sys.stderr)
+                  return 1
+              finally:
+                  signal.alarm(0)
+              return 0
+          
+          
+          if __name__ == '__main__':
+              sys.exit(main())
+          PYPROBE
+      - name: Bind initialization-inclusive deadline without credentials
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          python3 -I -B - <<'PYBUDGET'
+          """Bind the work deadline to this job's official start, including container init.
+          
+          Public read-only API metadata, no token, redirect, retry or unbounded fallback.
+          The outer job timeout alone covers pull/initialization before this code starts.
+          """
+          from datetime import datetime, timezone
+          from email.utils import parsedate_to_datetime
+          import json
+          import math
+          import os
+          from pathlib import Path
+          import re
+          import signal
+          import time
+          import urllib.request
+          
+          REPO = 'xue-ding-e/Magpie-Next'
+          BRANCH = 'validation/local-dictionary-container-resource-diagnostics-20261102'
+          WORKFLOW = '.github/workflows/local-dictionary-container-resource.yml'
+          JOB = 'container-resources'
+          CAP = 600
+          RESERVE = 180
+          MAX_BODY = 256 << 10
+          
+          
+          def require(ok, reason):
+              if not ok:
+                  raise RuntimeError('BUDGET NOT RUN: ' + reason)
+          
+          
+          def context(env):
+              require(env.get('GITHUB_REPOSITORY') == REPO, 'wrong repository')
+              require(env.get('GITHUB_REF') == 'refs/heads/' + BRANCH, 'wrong canonical ref')
+              require(env.get('GITHUB_EVENT_NAME') in ('push', 'workflow_dispatch'), 'wrong event')
+              require(env.get('GITHUB_JOB') == JOB, 'wrong job')
+              require(re.fullmatch(r'[1-9][0-9]{0,15}', env.get('GITHUB_RUN_ID', '')) is not None, 'invalid run ID')
+              require(env.get('GITHUB_RUN_ATTEMPT') == '1', 'reruns are not authorized')
+              require(re.fullmatch(r'[0-9a-f]{40}', env.get('GITHUB_SHA', '')) is not None, 'invalid head SHA')
+              return int(env['GITHUB_RUN_ID']), env['GITHUB_SHA']
+          
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *_args, **_kwargs):
+                  raise RuntimeError('BUDGET NOT RUN: API redirect refused')
+          
+          
+          def unique_pairs(pairs):
+              out = {}
+              for key, value in pairs:
+                  require(key not in out, 'duplicate API JSON key')
+                  out[key] = value
+              return out
+          
+          
+          def fetch(path):
+              url = 'https://api.github.com/repos/' + REPO + path
+              # Ignore proxy environment and never send a credential to this public API.
+              opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+              request = urllib.request.Request(url, headers={'Accept': 'application/vnd.github+json',
+                  'Accept-Encoding': 'identity', 'X-GitHub-Api-Version': '2022-11-28',
+                  'User-Agent': 'Magpie-Next-container-budget'})
+              before = time.monotonic()
+              with opener.open(request, timeout=4) as response:
+                  require(response.status == 200 and response.geturl() == url, 'unexpected API response target/status')
+                  require(not response.headers.get('Content-Encoding'), 'encoded API response refused')
+                  require(not response.headers.get('Link'), 'paginated job evidence refused')
+                  body = response.read(MAX_BODY + 1)
+                  require(len(body) <= MAX_BODY, 'API response too large')
+                  server = parsedate_to_datetime(response.headers['Date'])
+                  require(server.utcoffset() is not None and server.utcoffset().total_seconds() == 0, 'API Date is not UTC')
+              # Decode before recording the anchor: parsing and any scheduling pause are
+              # part of the same bounded observation, not invisible time after the fetch.
+              data = json.loads(body, object_pairs_hook=unique_pairs)
+              observed_mono = time.monotonic()
+              elapsed = observed_mono - before
+              require(0 <= elapsed <= 5, 'API observation took too long')
+              # Date is rounded to a second; include that second and all request latency.
+              upper = server.timestamp() + 1 + elapsed
+              require(abs(time.time() - server.timestamp()) <= 6, 'runner/API clocks disagree')
+              return data, upper, observed_mono
+          
+          
+          def advance_upper(upper_utc, observed_mono, now_mono, local_utc):
+              require(all(math.isfinite(value) for value in (upper_utc, observed_mono, now_mono, local_utc)),
+                  'nonfinite API observation anchor')
+              require(now_mono >= observed_mono, 'monotonic observation moved backwards')
+              # Pair UTC with its monotonic observation. In particular, a lagging local
+              # wall clock must not hide a pause between API parsing and deadline mapping.
+              return max(local_utc, upper_utc + (now_mono - observed_mono)) + 2
+          
+          
+          def derive(run, jobs, env, utc_upper, now_mono):
+              run_id, head = context(env)
+              require(run.get('id') == run_id and run.get('run_attempt') == 1, 'run/attempt mismatch')
+              require(run.get('head_sha') == head and run.get('head_branch') == BRANCH, 'run head/ref mismatch')
+              require(run.get('repository', {}).get('full_name') == REPO, 'run repository mismatch')
+              require(run.get('path') == WORKFLOW and run.get('event') == env['GITHUB_EVENT_NAME'], 'run workflow/event mismatch')
+              require(run.get('status') == 'in_progress', 'run is not current in-progress attempt')
+              require(jobs.get('total_count') == 1 and len(jobs.get('jobs', [])) == 1, 'job is not unique')
+              job = jobs['jobs'][0]
+              require(job.get('name') == JOB and job.get('run_id') == run_id and job.get('head_sha') == head, 'job identity mismatch')
+              require(job.get('status') == 'in_progress' and job.get('conclusion') is None, 'job already terminal')
+              require(type(job.get('id')) is int and job['id'] > 0, 'missing job ID')
+              stamp = job.get('started_at', '')
+              require(isinstance(stamp, str) and re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ', stamp) is not None, 'invalid job start')
+              start_utc = datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+              elapsed = utc_upper - start_utc
+              require(all(math.isfinite(x) for x in (utc_upper, now_mono, elapsed)), 'nonfinite clock')
+              require(0 <= elapsed < CAP - RESERVE - 180, 'init consumed the available work budget or start is future')
+              start = now_mono - elapsed
+              require(start >= 0, 'invalid monotonic start mapping')
+              return {'start_monotonic': start, 'deadline_monotonic': start + CAP - RESERVE,
+                  'cap_seconds': CAP, 'cleanup_reserve_seconds': RESERVE, 'job_id': job['id'],
+                  'job_started_at': stamp, 'elapsed_before_work_seconds_upper': elapsed,
+                  'run_id': run_id, 'attempt': 1, 'head_sha': head, 'includes_container_initialization': True,
+                  'method': 'public exact run-attempt/job metadata; conservative API Date/parse latency plus paired monotonic observation'}
+          
+          
+          def main():
+              def timeout(_signum, _frame):
+                  raise RuntimeError('BUDGET NOT RUN: metadata observation exceeded 15 seconds')
+              signal.signal(signal.SIGALRM, timeout)
+              signal.alarm(15)
+              try:
+                  run_id, _head = context(os.environ)
+                  run, _, _ = fetch(f'/actions/runs/{run_id}/attempts/1')
+                  jobs, upper, observed_mono = fetch(f'/actions/runs/{run_id}/attempts/1/jobs?per_page=100')
+                  # At least 2 additional seconds for server timestamp rounding/skew.
+                  now_mono = time.monotonic()
+                  utc_upper = advance_upper(upper, observed_mono, now_mono, time.time())
+                  result = derive(run, jobs, os.environ, utc_upper, now_mono)
+                  with (Path(os.environ['RUNNER_TEMP']) / 'dictionary-container-budget.json').open('x') as stream:
+                      json.dump(result, stream, indent=2)
+                  with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as stream:
+                      print(f"DICTIONARY_JOB_START_MONOTONIC={result['start_monotonic']:.6f}", file=stream)
+                      print(f"DICTIONARY_JOB_DEADLINE_MONOTONIC={result['deadline_monotonic']:.6f}", file=stream)
+                      print(f'DICTIONARY_JOB_CAP_SECONDS={CAP}', file=stream)
+                  print(json.dumps(result, sort_keys=True))
+              finally:
+                  signal.alarm(0)
+          
+          
+          if __name__ == '__main__':
+              main()
+          PYBUDGET
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 4
+          persist-credentials: false
+      - name: Verify fixed source, activation manifest and control allowlist
+        timeout-minutes: 1
+        shell: bash
+        run: python3 -I -B .github/dictionary-container-resource/gate.py
+      - name: Five native lifecycle scenarios and no owned residual children
+        timeout-minutes: 2
+        shell: bash
+        run: python3 -I -B .github/dictionary-container-resource/runner.py native
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 1
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Owned compile then four full synthetic resource stages serially
+        timeout-minutes: 7
+        shell: bash
+        run: python3 -I -B .github/dictionary-container-resource/runner.py workload
+      - name: Fail closed on OOM, timeout or missing phase and cleanup evidence
+        if: always()
+        timeout-minutes: 1
+        shell: bash
+        run: python3 -I -B .github/dictionary-container-resource/runner.py finalize
+      - name: Collect exact synthetic evidence into one private directory
+        id: evidence
+        if: always()
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          python3 -I -B - <<'PYCOLLECT'
+          """Bounded, dirfd-anchored, allowlist-only synthetic evidence collection.
+          
+          One upload directory avoids the runner's multiline INPUT_PATH prefix bug.
+          Never follow substituted parent directories, upload caches or replace a prior
+          stage failure. A killed/incomplete collector never creates an acceptance claim.
+          """
+          from contextlib import ExitStack
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import signal
+          import stat
+          import sys
+          import time
+          
+          PHASES = ('native', 'go-env', 'compile', '100k', '16mib', 'held', 'released')
+          REPORTS = 'dictionary-container-resource-reports'
+          BUNDLE = 'dictionary-container-resource-evidence'
+          MAX_FILE = 16 << 20
+          MAX_TOTAL = 64 << 20
+          DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+          
+          
+          def names():
+              required = {'dictionary-container-env-proof.json', 'dictionary-container-budget.json'}
+              report_required = {'native-cases.json', 'native-complete.json', 'home-cleanup.json',
+                  'workload-complete.json', 'acceptance.json', 'workload-final-memory.json', 'acceptance-final-memory.json'}
+              optional = {'workload-final-rejected.json', 'acceptance-final-rejected.json'}
+              for phase in PHASES:
+                  report_required.update({phase + '.log', phase + '-owned.json', phase + '-before-memory.json', phase + '-after-memory.json'})
+                  optional.update({phase + '-exception.json', phase + '-before-rejected.json', phase + '-after-rejected.json'})
+              required.update(REPORTS + '/' + name for name in report_required)
+              return required, required | {REPORTS + '/' + name for name in optional}
+          
+          
+          def check_time(deadline):
+              if time.monotonic() >= deadline:
+                  raise TimeoutError('synthetic evidence collection soft deadline')
+          
+          
+          def absolute_directory(path):
+              """Walk every component without symlinks; caller owns the returned fd."""
+              path = Path(path)
+              if not path.is_absolute() or '..' in path.parts:
+                  raise RuntimeError('evidence path must be absolute without traversal')
+              descriptor = os.open('/', DIR_FLAGS)
+              try:
+                  for part in path.parts[1:]:
+                      next_descriptor = os.open(part, DIR_FLAGS, dir_fd=descriptor)
+                      os.close(descriptor)
+                      descriptor = next_descriptor
+                  return descriptor
+              except BaseException:
+                  os.close(descriptor)
+                  raise
+          
+          
+          def directory(descriptor):
+              meta = os.fstat(descriptor)
+              if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != os.geteuid():
+                  raise RuntimeError('evidence directory not an owned ordinary directory')
+          
+          
+          def empty_directory(descriptor):
+              directory(descriptor)
+              if os.listdir(descriptor):
+                  raise RuntimeError('new evidence directory was not empty at capture')
+          
+          
+          def identity(metadata):
+              return metadata.st_dev, metadata.st_ino, stat.S_IFMT(metadata.st_mode), metadata.st_uid
+          
+          
+          def same_child(parent, name, descriptor):
+              if identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != identity(os.fstat(descriptor)):
+                  raise RuntimeError('evidence directory identity changed: ' + name)
+          
+          
+          def same_path(path, descriptor):
+              current = absolute_directory(path)
+              try:
+                  if identity(os.fstat(current)) != identity(os.fstat(descriptor)):
+                      raise RuntimeError('evidence root identity changed')
+              finally:
+                  os.close(current)
+          
+          
+          def atomic_json(descriptor, name, value):
+              temporary = '.' + name + '.pending'
+              created = False
+              payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+              try:
+                  fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=descriptor)
+                  created = True
+                  with os.fdopen(fd, 'wb') as stream:
+                      stream.write(payload)
+                  os.link(temporary, name, src_dir_fd=descriptor, dst_dir_fd=descriptor, follow_symlinks=False)
+              finally:
+                  if created:
+                      os.unlink(temporary, dir_fd=descriptor)
+              return {'path': name, 'bytes': len(payload), 'sha256': hashlib.sha256(payload).hexdigest()}
+          
+          
+          def inventory(destination, expected, reports_created, deadline):
+              """Audit exactly what directory upload will see, not just what we copied."""
+              by_name = {entry['path']: entry for entry in expected}
+              if len(by_name) != len(expected):
+                  raise RuntimeError('duplicate expected evidence inventory')
+              root_names = {name for name in by_name if '/' not in name}
+              report_names = {name.split('/')[1] for name in by_name if name.startswith(REPORTS + '/')}
+              if reports_created:
+                  root_names.add(REPORTS)
+              elif report_names:
+                  raise RuntimeError('unanchored report evidence in inventory')
+              check_time(deadline)
+              if set(os.listdir(destination)) != root_names:
+                  raise RuntimeError('unexpected or missing bundle inventory entry')
+              with ExitStack() as descriptors:
+                  report_fd = None
+                  if reports_created:
+                      report_fd = os.open(REPORTS, DIR_FLAGS, dir_fd=destination)
+                      descriptors.callback(os.close, report_fd)
+                      directory(report_fd)
+                      if set(os.listdir(report_fd)) != report_names:
+                          raise RuntimeError('unexpected or missing reports inventory entry')
+                  for relative, expected_file in sorted(by_name.items()):
+                      check_time(deadline)
+                      parent = report_fd if relative.startswith(REPORTS + '/') else destination
+                      name = relative.split('/')[-1]
+                      meta = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                      if not stat.S_ISREG(meta.st_mode) or meta.st_uid != os.geteuid() or meta.st_nlink != 1 or meta.st_size != expected_file['bytes']:
+                          raise RuntimeError('invalid evidence inventory file: ' + relative)
+                      descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+                      digest = hashlib.sha256()
+                      size = 0
+                      with os.fdopen(descriptor, 'rb') as stream:
+                          before = os.fstat(stream.fileno())
+                          if (identity(before), before.st_size, before.st_mtime_ns, before.st_nlink) != \
+                             (identity(meta), meta.st_size, meta.st_mtime_ns, 1):
+                              raise RuntimeError('inventory file changed before reading: ' + relative)
+                          while True:
+                              check_time(deadline)
+                              chunk = stream.read(65536)
+                              if not chunk:
+                                  break
+                              size += len(chunk)
+                              if size > expected_file['bytes']:
+                                  raise RuntimeError('inventory file grew: ' + relative)
+                              digest.update(chunk)
+                          after = os.fstat(stream.fileno())
+                      current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                      if any((identity(item), item.st_size, item.st_mtime_ns, item.st_nlink) !=
+                             (identity(meta), meta.st_size, meta.st_mtime_ns, 1) for item in (after, current)) or \
+                         size != expected_file['bytes'] or digest.hexdigest() != expected_file['sha256']:
+                          raise RuntimeError('inventory content or identity changed: ' + relative)
+                  check_time(deadline)
+                  if set(os.listdir(destination)) != root_names or \
+                     (report_fd is not None and set(os.listdir(report_fd)) != report_names):
+                      raise RuntimeError('bundle inventory changed during verification')
+                  if report_fd is not None:
+                      same_child(destination, REPORTS, report_fd)
+          
+          
+          def bundle_fds(root, destination, deadline, check_destination):
+              required, allowed = names()
+              found, errors = [], []
+              copied = 0
+              source_reports = None
+              output_reports = None
+              output_reports_attempted = False
+              safe_path = True
+              with ExitStack() as descriptors:
+                  try:
+                      check_destination()
+                      try:
+                          source_reports = os.open(REPORTS, DIR_FLAGS, dir_fd=root)
+                      except FileNotFoundError:
+                          pass
+                      if source_reports is not None:
+                          descriptors.callback(os.close, source_reports)
+                          directory(source_reports)
+                          for name in os.listdir(source_reports):
+                              check_time(deadline)
+                              if REPORTS + '/' + name not in allowed:
+                                  errors.append('unexpected report entry refused: ' + name)
+                          output_reports_attempted = True
+                          os.mkdir(REPORTS, mode=0o700, dir_fd=destination)
+                          output_reports = os.open(REPORTS, DIR_FLAGS, dir_fd=destination)
+                          descriptors.callback(os.close, output_reports)
+                          empty_directory(output_reports)
+          
+                      def check_directories():
+                          check_destination()
+                          if source_reports is not None:
+                              same_child(root, REPORTS, source_reports)
+                              same_child(destination, REPORTS, output_reports)
+          
+                      for relative in sorted(allowed):
+                          check_time(deadline)
+                          check_directories()
+                          is_report = relative.startswith(REPORTS + '/')
+                          parent = source_reports if is_report else root
+                          target_parent = output_reports if is_report else destination
+                          if parent is None:
+                              continue
+                          name = relative.split('/')[-1]
+                          try:
+                              metadata = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                          except FileNotFoundError:
+                              continue
+                          if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_uid != os.geteuid():
+                              errors.append('nonregular, linked or nonowned evidence refused: ' + relative)
+                              continue
+                          if metadata.st_size > MAX_FILE or copied + metadata.st_size > MAX_TOTAL:
+                              errors.append('oversized evidence refused: ' + relative)
+                              continue
+                          temporary = '.' + name + '.pending'
+                          created = False
+                          digest = hashlib.sha256()
+                          size = 0
+                          try:
+                              descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+                              with os.fdopen(descriptor, 'rb') as reader:
+                                  actual = os.fstat(reader.fileno())
+                                  if (identity(actual), actual.st_size, actual.st_mtime_ns, actual.st_nlink) != \
+                                     (identity(metadata), metadata.st_size, metadata.st_mtime_ns, 1):
+                                      raise RuntimeError('evidence changed before copy: ' + relative)
+                                  output = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                      0o600, dir_fd=target_parent)
+                                  created = True
+                                  with os.fdopen(output, 'wb') as writer:
+                                      while True:
+                                          check_time(deadline)
+                                          chunk = reader.read(65536)
+                                          if not chunk:
+                                              break
+                                          size += len(chunk)
+                                          if size > metadata.st_size or size > MAX_FILE or copied + size > MAX_TOTAL:
+                                              raise RuntimeError('growing evidence refused: ' + relative)
+                                          digest.update(chunk)
+                                          writer.write(chunk)
+                                  after = os.fstat(reader.fileno())
+                                  if size != metadata.st_size or (after.st_size, after.st_mtime_ns) != (metadata.st_size, metadata.st_mtime_ns):
+                                      raise RuntimeError('evidence changed during copy: ' + relative)
+                              check_directories()
+                              os.link(temporary, name, src_dir_fd=target_parent, dst_dir_fd=target_parent, follow_symlinks=False)
+                              copied += size
+                              found.append({'path': relative, 'bytes': size, 'sha256': digest.hexdigest()})
+                          finally:
+                              if created:
+                                  os.unlink(temporary, dir_fd=target_parent)
+                      check_directories()
+                  except (OSError, RuntimeError, TimeoutError) as error:
+                      errors.append(type(error).__name__ + ': ' + str(error))
+                  # Revalidate every named directory even after copy failed. Directory
+                  # substitution suppresses the upload path, not just the success flag.
+                  try:
+                      check_destination()
+                      if output_reports_attempted and output_reports is None:
+                          raise RuntimeError('output reports directory was never anchored')
+                      if source_reports is not None:
+                          same_child(root, REPORTS, source_reports)
+                      if output_reports is not None:
+                          same_child(destination, REPORTS, output_reports)
+                  except (OSError, RuntimeError) as error:
+                      safe_path = False
+                      errors.append('unsafe upload path: ' + str(error))
+              present = {entry['path'] for entry in found}
+              return {'schema': 1, 'files': found, 'bytes': copied, 'errors': errors,
+                  'missing_required_for_success': sorted(required - present),
+                  'absent_optional_diagnostics': sorted((allowed - required) - present),
+                  'complete_for_success': not errors and required <= present,
+                  'safe_upload_path': safe_path,
+                  'reports_directory_created': output_reports is not None,
+                  'scope': 'exact synthetic evidence allowlist only; not product acceptance',
+                  'no_retry_or_gate_relaxation': True}
+          
+          
+          def bundle(root, destination, deadline):
+              # Pure local self-check entry; real CI holds these same fds through setup,
+              # index publication and output publication rather than reopening by path.
+              if Path(destination) != Path(root) / BUNDLE:
+                  raise RuntimeError('unexpected bundle destination')
+              with ExitStack() as descriptors:
+                  root_fd = absolute_directory(root); descriptors.callback(os.close, root_fd)
+                  destination_fd = os.open(BUNDLE, DIR_FLAGS, dir_fd=root_fd); descriptors.callback(os.close, destination_fd)
+                  directory(root_fd); empty_directory(destination_fd)
+                  def check_destination():
+                      same_path(root, root_fd)
+                      same_child(root_fd, BUNDLE, destination_fd)
+                  result = bundle_fds(root_fd, destination_fd, deadline, check_destination)
+                  try:
+                      inventory(destination_fd, result['files'], result['reports_directory_created'], deadline)
+                  except (OSError, RuntimeError) as error:
+                      result['safe_upload_path'] = result['complete_for_success'] = False
+                      result['errors'].append('inventory rejected: ' + str(error))
+                  return result
+          
+          
+          def main():
+              # Eight seconds for copying; two seconds for index/path publication.
+              # Hard stop means no upload path. Missing collection evidence fails closed;
+              # phase diagnostics remain on stdout as the independent second channel.
+              signal.signal(signal.SIGALRM, lambda *_: os._exit(124))
+              signal.alarm(10)
+              try:
+                  root = Path(os.environ['RUNNER_TEMP'])
+                  output = Path(os.environ['GITHUB_OUTPUT'])
+                  if not output.is_absolute() or output.name in ('', '.', '..'):
+                      raise RuntimeError('missing runner output file')
+                  with ExitStack() as descriptors:
+                      root_fd = absolute_directory(root); descriptors.callback(os.close, root_fd); directory(root_fd)
+                      os.mkdir(BUNDLE, mode=0o700, dir_fd=root_fd)
+                      destination_fd = os.open(BUNDLE, DIR_FLAGS, dir_fd=root_fd); descriptors.callback(os.close, destination_fd)
+                      empty_directory(destination_fd)
+                      def check_destination():
+                          same_path(root, root_fd)
+                          same_child(root_fd, BUNDLE, destination_fd)
+                      start = atomic_json(destination_fd, 'collection-start.json', {'started': True, 'complete': False,
+                          'hard_seconds': 10, 'allowlist_files': len(names()[1])})
+                      deadline = time.monotonic() + 8
+                      result = bundle_fds(root_fd, destination_fd, deadline, check_destination)
+                      try:
+                          inventory(destination_fd, result['files'] + [start], result['reports_directory_created'], deadline)
+                      except (OSError, RuntimeError) as error:
+                          result['safe_upload_path'] = result['complete_for_success'] = False
+                          result['errors'].append('inventory rejected: ' + str(error))
+                      index = atomic_json(destination_fd, 'collection-index.json', result)
+                      if result['safe_upload_path']:
+                          # The final index is part of the same exact inventory. This
+                          # second audit still uses the original soft/hard deadline.
+                          inventory(destination_fd, result['files'] + [start, index], result['reports_directory_created'], deadline)
+                          check_destination()
+                          output_parent = absolute_directory(output.parent); descriptors.callback(os.close, output_parent)
+                          descriptor = os.open(output.name, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW, dir_fd=output_parent)
+                          with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
+                              meta = os.fstat(stream.fileno())
+                              if not stat.S_ISREG(meta.st_mode) or meta.st_uid != os.geteuid() or meta.st_nlink != 1:
+                                  raise RuntimeError('runner output is not an owned ordinary file')
+                              print('path=' + str(root / BUNDLE), file=stream)
+                      print(json.dumps({'diagnostic': 'synthetic-evidence-collection', 'files': len(result['files']),
+                          'bytes': result['bytes'], 'complete_for_success': result['complete_for_success'],
+                          'safe_upload_path': result['safe_upload_path'], 'errors': result['errors'],
+                          'missing_required_for_success': result['missing_required_for_success']}, sort_keys=True), flush=True)
+                      return 0 if result['complete_for_success'] else 1
+              finally:
+                  signal.alarm(0)
+          
+          
+          if __name__ == '__main__':
+              sys.exit(main())
+          PYCOLLECT
+      - name: Preserve only synthetic control evidence
+        if: ${{ always() && steps.evidence.outputs.path != '' }}
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dictionary-container-resources-${{ github.run_attempt }}
+          # One already-container-resolved path, never a multiline host string.
+          path: ${{ steps.evidence.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+# Independent acceptance MUST inspect complete runner postStop logs and verify
+# this exact container was deleted with no Docker rm warning. A green job alone
+# is insufficient, particularly when memory.oom.group=0; do not automatically rerun.

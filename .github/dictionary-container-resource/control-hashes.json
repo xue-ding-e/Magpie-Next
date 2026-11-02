@@ -1,0 +1,14 @@
+{
+  ".github/dictionary-container-resource/budget.py": "cc0f2b8bae6a0b97f3f7033e5d3496f6af0e28de9019cfd14b69a3cbd2588c44",
+  ".github/dictionary-container-resource/collect_evidence.py": "deb828d1c89329392990834e68dc316f598213d444ffbb4b08a42c7f2c59f7a3",
+  ".github/dictionary-container-resource/fixtures/localdictionary_offline_test.go": "c074998869fc4e1925dd336f36475756cc07ac71956f99c72ff138c18796259e",
+  ".github/dictionary-container-resource/fixtures/resource_test.go": "824b80891ad6624f4c2a93f2a89d9ca0b9f385853d13fc90cb7fc24ff109f5b2",
+  ".github/dictionary-container-resource/gate.py": "c2c01fabcf1639fd94484b2ab806c4acd7b17ac1788aa58e1154603fff391631",
+  ".github/dictionary-container-resource/native_lifecycle.py": "99d20b279b54aa78fc62c9db567fc4b1b40de154efa429e9057c07cbfed0df5a",
+  ".github/dictionary-container-resource/owned_process.py": "ccc5f62d94b14c4093159ddeb447e44778490e803ec70d6c916866c5531b5e62",
+  ".github/dictionary-container-resource/probe.py": "2e1660556fd5bfc745f48ab30f46be6a45b517efcb9d1db98048af481d8a2d1d",
+  ".github/dictionary-container-resource/runner.py": "ef748b91d053e0a3558fe99b7fc3631a8dd5e38bae1ae2afd980d7a442063b81",
+  ".github/dictionary-container-resource/selftest.py": "2a6fdb5241f496c0898a05dc3bdb3f7774342ca2550a22a65e08aa8cb1e042ac",
+  ".github/dictionary-container-resource/source.json": "6a36e38e7eb48b763b8fdc56e64c0ae90443bc49bbd6d568eaca7df99c046dff",
+  ".github/workflows/local-dictionary-container-resource.yml": "aaea4e3cbd79445d2fa61328102709bdca2dfada21421a621998739a81564833"
+}
