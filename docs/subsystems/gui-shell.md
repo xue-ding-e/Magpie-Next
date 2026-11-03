@@ -7,6 +7,32 @@ with no binding generator and no bundler. `magpie web` serves the same page
 to a browser for a machine with no desktop. Package `internal/gui` hosts all
 three.
 
+## Saved Codex auth.json
+
+A Codex account's `auth.json` action opens `showCodexAuth` in
+[app.js](../../internal/gui/assets/app.js). The first request is a masked preview.
+Reveal, Copy and Export are explicit actions; Hide, closing, replacing the dialog
+or hiding the window clears the displayed snapshot and invalidates pending replies.
+Closing returns to the provider editor. Errors stay generic, without raw response
+bodies or credentials; copying does not use the general raw-text error fallback.
+
+`POST /api/login/auth-json` in
+[codex_auth_export.go](../../internal/gui/codex_auth_export.go) requires JSON and a
+trusted transport context: `ownWindow` for the native webview, or the marker set
+by `webGuard` only after its run-key cookie is verified. It rejects foreign/null
+origins and framed callers. A development TCP handler without either context is
+refused. Responses use `Cache-Control: no-store`. Account selection and the
+snapshot format belong to [Providers and accounts](providers-accounts.md#exporting-a-saved-codex-sign-in).
+
+On desktop, Export writes `auth.json` inside a new `magpie-codex-*` directory in
+Downloads (or the normal home fallback), never to a caller-supplied path or over
+an existing auth.json. `steady.WriteFile` flushes before rename; a failed write
+cleans its temporary file, and cancellation observed before completion removes
+the new export. Once an explicit clipboard write or export has completed, closing
+the dialog does not undo it. Unix directory/file modes are 0700/0600; Windows
+inherits its directory ACL and is not protected by Unix mode bits. In browser mode,
+Export initiates a download on the browser's computer, not on the web server.
+
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |

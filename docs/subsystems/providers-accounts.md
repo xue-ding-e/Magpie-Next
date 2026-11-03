@@ -13,6 +13,26 @@ Plugin ownership of the deprecated built-in subscriptions is in
 [Provider and plugin ownership](provider-plugins.md). How the gateway orders
 keys and accounts per request is in [Gateway routing and fallback](gateway-routing.md).
 
+## Exporting a saved Codex sign-in
+
+`CodexAuthJSON` in [codex_auth_export.go](../../internal/provider/codex_auth_export.go)
+reads an already remembered Codex subscription from the current `logins.json`,
+under the existing credential and account locks. It does not discover an agent's
+live store, refresh a token, switch accounts or write the saved account. A failed
+read or parse refuses export, without using the last-good fallback.
+
+The default preview masks all scalar values, including unknown nested fields,
+and replaces unknown field names. A replaced or refreshed Auth/workspace, even
+under the same user and login ID, requires a new preview. The preview returns
+an opaque SHA-256 `revision` of the complete saved login; revealing or exporting
+requires that same revision as well as the selected user, so a
+replaced account is not exported under an older selection. Explicit disclosure
+preserves the saved `Auth` JSON, including unknown fields and number precision,
+with indentation and a trailing newline. It is a saved snapshot, not a claim that
+the sign-in is current or valid. API-key mode is not an account export: those keys
+remain managed separately under Keys. The GUI interaction is described in
+[GUI app shell](gui-shell.md#saved-codex-authjson).
+
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |
