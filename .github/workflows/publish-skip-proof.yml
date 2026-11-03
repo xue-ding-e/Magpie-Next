@@ -1,0 +1,216 @@
+name: No-publication optional GUI dependency proof
+'on':
+  push:
+    branches:
+    - validation/publish-skip-20261103
+permissions:
+  contents: read
+concurrency:
+  group: magpie-publish-skip-proof
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      dry_publish: ${{ steps.plan.outputs.dry_publish }}
+      source_ref: ${{ steps.plan.outputs.source_ref }}
+      offmain_ref: ${{ steps.plan.outputs.offmain_ref }}
+    steps:
+    - &id001
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 1
+      with:
+        fetch-depth: 2
+        persist-credentials: false
+    - name: Identity and no-publication preflight
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B .github/publish-skip-proof/proof.py gate
+
+        python3 -I -B .github/publish-skip-proof/proof.py selftest'
+    - id: plan
+      name: Synthetic context only; not actual main or a release request
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        printf ''%s\n'' ''publish=true'' ''dry_publish=false'' ''source_ref=refs/heads/main''
+        ''offmain_ref=refs/heads/validation/synthetic'' >> "$GITHUB_OUTPUT"'
+  optional_gui:
+    needs:
+    - plan
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+    - name: Unexpected optional GUI execution
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Unexpected optional GUI execution''
+
+        exit 1'
+  package_sentinel:
+    needs:
+    - plan
+    - optional_gui
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.optional_gui.result
+      == 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+    - name: No-op package admission after an intentionally absent GUI selection
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''No-op package admission after an intentionally absent GUI selection''
+
+        :'
+  legacy_publish_sentinel:
+    needs:
+    - plan
+    - package_sentinel
+    if: needs.plan.outputs.publish == 'true' && github.repository == 'xue-ding-e/Magpie-Next'
+      && needs.plan.outputs.source_ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+    - name: Legacy no-op publication condition unexpectedly admitted
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Legacy no-op publication condition unexpectedly admitted''
+
+        :'
+  fixed_publish_sentinel:
+    needs:
+    - plan
+    - package_sentinel
+    - legacy_publish_sentinel
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.package_sentinel.result
+      == 'success' && needs.plan.outputs.publish == 'true' && github.repository ==
+      'xue-ding-e/Magpie-Next' && needs.plan.outputs.source_ref == 'refs/heads/main'
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+    - name: Explicit-status no-op admission; no release commands
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Explicit-status no-op admission; no release commands''
+
+        :'
+  failed_package_sentinel:
+    needs:
+    - fixed_publish_sentinel
+    if: ${{ always() && !cancelled() && needs.fixed_publish_sentinel.result == 'success'
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+    - name: EXPECTED_PACKAGE_SENTINEL_FAILURE
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''EXPECTED_PACKAGE_SENTINEL_FAILURE''
+
+        exit 1'
+  blocked_publish_sentinel:
+    needs:
+    - plan
+    - failed_package_sentinel
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.failed_package_sentinel.result
+      == 'success' && needs.plan.outputs.publish == 'true' && github.repository ==
+      'xue-ding-e/Magpie-Next' && needs.plan.outputs.source_ref == 'refs/heads/main'
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+    - name: Unexpected publication admission after failed package
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Unexpected publication admission after failed package''
+
+        exit 1'
+  dryrun_publish_sentinel:
+    needs:
+    - plan
+    - package_sentinel
+    - blocked_publish_sentinel
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.package_sentinel.result
+      == 'success' && needs.plan.outputs.dry_publish == 'true' && github.repository
+      == 'xue-ding-e/Magpie-Next' && needs.plan.outputs.source_ref == 'refs/heads/main'
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+    - name: Unexpected publication admission for dry run
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Unexpected publication admission for dry run''
+
+        exit 1'
+  offmain_publish_sentinel:
+    needs:
+    - plan
+    - package_sentinel
+    - dryrun_publish_sentinel
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.package_sentinel.result
+      == 'success' && needs.plan.outputs.publish == 'true' && github.repository ==
+      'xue-ding-e/Magpie-Next' && needs.plan.outputs.offmain_ref == 'refs/heads/main'
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+    - name: Unexpected publication admission for non-main
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Unexpected publication admission for non-main''
+
+        exit 1'
+  audit:
+    needs:
+    - plan
+    - optional_gui
+    - package_sentinel
+    - legacy_publish_sentinel
+    - fixed_publish_sentinel
+    - failed_package_sentinel
+    - blocked_publish_sentinel
+    - dryrun_publish_sentinel
+    - offmain_publish_sentinel
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+    - *id001
+    - name: Verify immutable controls
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B .github/publish-skip-proof/proof.py gate'
+    - name: Audit actual scheduler results, retaining expected failure
+      timeout-minutes: 1
+      shell: bash
+      env:
+        NEEDS_JSON: ${{ toJSON(needs) }}
+      run: 'set -euo pipefail
+
+        python3 -I -B .github/publish-skip-proof/proof.py audit'

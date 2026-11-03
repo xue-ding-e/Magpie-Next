@@ -1,0 +1,10 @@
+[
+  {
+    "path": ".github/publish-skip-proof/proof.py",
+    "sha256": "9c898ccd31b13522c65f3e8f5cb7201763d4a9a0118120b18cafc311b7209d14"
+  },
+  {
+    "path": ".github/workflows/publish-skip-proof.yml",
+    "sha256": "62bc3e8f1cc99f5a44f1097ee6293520fa09e9832145eb06341a26f1574bc4cf"
+  }
+]
