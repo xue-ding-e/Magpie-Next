@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yetone/magpie/internal/gwmw"
+
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -732,13 +734,18 @@ func (s *Server) videosCreate(w http.ResponseWriter, r *http.Request) {
 	var unmask func()
 	prompt := f.Prompt
 	var hits maskHits
-	w, f.Prompt, unmask, hits, err = redactedPromptHits(w, f.Prompt)
+	masker, maskErr := requestMasker()
+	if maskErr != nil {
+		fail(http.StatusServiceUnavailable, maskErr.Error())
+		return
+	}
+	w, f.Prompt, unmask, hits, err = redactedPromptHitsWith(w, f.Prompt, masker)
 	defer unmask()
 	// the fields passed on as they came are masked as the prompt is: a
 	// negative_prompt is the user's text all the same
 	var extra maskHits
 	if err == nil {
-		err = maskStrings(f.Extra, &extra)
+		err = maskStringsWith(f.Extra, &extra, masker)
 	}
 	if err != nil { // fails closed
 		fail(http.StatusServiceUnavailable, err.Error())
@@ -1126,10 +1133,17 @@ func (s *Server) remoteVideoContent(ctx context.Context, w http.ResponseWriter, 
 // prompt is masked, adding what it swapped to h; an error when it can't
 // (fail closed).
 func maskStrings(v any, h *maskHits) error {
+	m, err := requestMasker()
+	if err != nil {
+		return err
+	}
+	return maskStringsWith(v, h, m)
+}
+func maskStringsWith(v any, h *maskHits, m gwmw.Masker) error {
 	one := func(str string) (string, error) {
-		_, m, got, err := maskTextHits(str)
+		_, masked, got, err := maskTextHitsWith(str, m)
 		h.add(got)
-		return m, err
+		return masked, err
 	}
 	var err error
 	switch x := v.(type) {
@@ -1138,7 +1152,7 @@ func maskStrings(v any, h *maskHits) error {
 			if str, ok := e.(string); ok {
 				x[k], err = one(str)
 			} else {
-				err = maskStrings(e, h)
+				err = maskStringsWith(e, h, m)
 			}
 			if err != nil {
 				return err
@@ -1149,7 +1163,7 @@ func maskStrings(v any, h *maskHits) error {
 			if str, ok := e.(string); ok {
 				x[i], err = one(str)
 			} else {
-				err = maskStrings(e, h)
+				err = maskStringsWith(e, h, m)
 			}
 			if err != nil {
 				return err
