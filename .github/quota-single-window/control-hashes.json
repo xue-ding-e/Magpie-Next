@@ -1,0 +1,10 @@
+{
+  ".github/quota-single-window/README.md": "c91a02da1836d3b2e16e40744259c7633f84aad93eeb7720de8e58983ed07162",
+  ".github/quota-single-window/gate.py": "65e048bcd52b3fafcfe6f6a3eef496036d5be14f179bb058a4b09947d3539837",
+  ".github/quota-single-window/offline.cjs": "43bae8cdc5737bb3e7397032ebdd4d45684a061fe143ca02ec375edb7f80d132",
+  ".github/quota-single-window/package-lock.json": "4a89b7aeb34c4beee2dc974e227dddce2d7c73d97e2c27d9da85fac1c33dfa43",
+  ".github/quota-single-window/package.json": "c070188c751622e9715cfc4746e38b76c55b0d0b6d5dea0c0df77307ec32ae25",
+  ".github/quota-single-window/run.py": "c406bd729937a9c2dec9eb9cbe0bddded69ffc4b296c42c2a88d8e1ce7fed52c",
+  ".github/quota-single-window/selftest.py": "59983da10a9441f7c5379c2d0029c2335face3c5e09aa872eb4a9074ff7f9c0e",
+  ".github/quota-single-window/source.json": "3584ae739a177eddb74c9c12229320d064756008d1c9dd755cd54d86bacc21d1"
+}

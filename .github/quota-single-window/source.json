@@ -1,0 +1,75 @@
+{
+  "base": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "base_tree": "bc56abd9c642a1315ea3a3f32a30d9998e15137a",
+  "candidate": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+  "candidate_tree": "9982a08791c91d2c958f3c710ac8b67bbb5c22c5",
+  "branch": "validation/quota-single-window-20261103",
+  "author_name": "Qing Liang",
+  "author_email": "106448173+xue-ding-e@users.noreply.github.com",
+  "files": [
+    {
+      "path": "internal/gui/tests/quota-count-wrap.test.cjs",
+      "sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+      "tests": [
+        "webkit: a stacked count breaks at its ·, never cut",
+        "chromium: a stacked count breaks at its ·, never cut"
+      ]
+    },
+    {
+      "path": "internal/gui/tests/quota-single-window.test.cjs",
+      "sha256": "61f4b8043a4642c59acef4e9ae625ba2329eeabc86ef944a6add33d8363c85c6",
+      "tests": [
+        "webkit/en: one quota fills its row without changing multiple windows",
+        "webkit/zh: one quota fills its row without changing multiple windows",
+        "webkit/zh-TW: one quota fills its row without changing multiple windows",
+        "webkit/ja: one quota fills its row without changing multiple windows",
+        "webkit/de: one quota fills its row without changing multiple windows",
+        "chromium/en: one quota fills its row without changing multiple windows",
+        "chromium/zh: one quota fills its row without changing multiple windows",
+        "chromium/zh-TW: one quota fills its row without changing multiple windows",
+        "chromium/ja: one quota fills its row without changing multiple windows",
+        "chromium/de: one quota fills its row without changing multiple windows"
+      ]
+    },
+    {
+      "path": "internal/gui/tests/quota-families.test.cjs",
+      "sha256": "89f4811d4c3d217efba54dfb77ea0b92cf76ed4ca16cfa0985a92cacc6366dfa",
+      "tests": [
+        "chromium en: Antigravity's allowance one figure a model family",
+        "chromium zh: Antigravity's allowance one figure a model family",
+        "webkit en: Antigravity's allowance one figure a model family",
+        "webkit zh: Antigravity's allowance one figure a model family"
+      ]
+    },
+    {
+      "path": "internal/gui/tests/quota-pools.test.cjs",
+      "sha256": "a5cf3594443e97ea8b904b6baf6a27b53346824bb3e408149b23ec616377de98",
+      "tests": [
+        "chromium en: Antigravity's allowance a row a pool, 5 hours and 7 days",
+        "chromium zh: Antigravity's allowance a row a pool, 5 hours and 7 days",
+        "webkit en: Antigravity's allowance a row a pool, 5 hours and 7 days",
+        "webkit zh: Antigravity's allowance a row a pool, 5 hours and 7 days"
+      ]
+    },
+    {
+      "path": "internal/gui/tests/usage-fold.test.cjs",
+      "sha256": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+      "tests": [
+        "chromium en: several accounts: one in full, the others in brief, each remembered",
+        "chromium zh: several accounts: one in full, the others in brief, each remembered",
+        "chromium: 17 subscriptions and 29 accounts, most on one screen",
+        "webkit en: several accounts: one in full, the others in brief, each remembered",
+        "webkit zh: several accounts: one in full, the others in brief, each remembered",
+        "webkit: 17 subscriptions and 29 accounts, most on one screen"
+      ]
+    }
+  ],
+  "base_css_sha256": "a99f2ff5467b337528268530761b092d5580fb52131ee2d858a76347c8a39ae9",
+  "candidate_css_sha256": "3fe4704e3a47d068ac7020c640ce96d2d1fec82148da41fb2390e845857a9b4b",
+  "prior_test_seconds": 2424.44243178,
+  "prior_job_seconds": 3108,
+  "per_file_seconds": 180,
+  "baseline_seconds": 180,
+  "candidate_seconds": 900,
+  "job_seconds": 2700
+}
