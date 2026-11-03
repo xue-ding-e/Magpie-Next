@@ -23,7 +23,7 @@ jobs:
       with:
         ref: ${{ github.sha }}
         path: control
-        fetch-depth: 2
+        fetch-depth: 3
         persist-credentials: false
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       timeout-minutes: 1
@@ -81,7 +81,7 @@ jobs:
     needs:
     - plan
     - zero_package
-    if: needs.plan.outputs.positive_required == 'true'
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.zero_package.result == 'success' && needs.plan.outputs.positive_required == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 27
     outputs:
@@ -92,7 +92,7 @@ jobs:
       with:
         ref: ${{ github.sha }}
         path: control
-        fetch-depth: 2
+        fetch-depth: 3
         persist-credentials: false
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       timeout-minutes: 1
@@ -190,7 +190,7 @@ jobs:
     needs:
     - plan
     - positive_package
-    if: needs.plan.outputs.positive_required == 'true'
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.positive_package.result == 'success' && needs.plan.outputs.positive_required == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 18
     outputs:
@@ -201,7 +201,7 @@ jobs:
       with:
         ref: ${{ github.sha }}
         path: control
-        fetch-depth: 2
+        fetch-depth: 3
         persist-credentials: false
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       timeout-minutes: 1
@@ -341,7 +341,7 @@ jobs:
       with:
         ref: ${{ github.sha }}
         path: control
-        fetch-depth: 2
+        fetch-depth: 3
         persist-credentials: false
     - name: Verify immutable diagnostic controls
       timeout-minutes: 1

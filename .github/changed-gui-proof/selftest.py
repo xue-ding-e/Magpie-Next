@@ -31,3 +31,21 @@ with tempfile.TemporaryDirectory(prefix='required-gui-proof.') as d:
   if old is None:os.environ.pop('GITHUB_OUTPUT',None)
   else:os.environ['GITHUB_OUTPUT']=old
 print(checks,'actual count/status evidence controls passed; no browser or CI')
+
+# A deliberately skipped ancestor must not activate GitHub's implicit success()
+# for a later independent diagnostic stage. Bind the exact YAML conditions.
+workflow=(Path(__file__).resolve().parents[1]/'workflows/required-gui-proof.yml').read_text()
+for predecessor in ['zero_package','positive_package']:
+ expected="if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs."+predecessor+".result == 'success' && needs.plan.outputs.positive_required == 'true' }}"
+ assert expected in workflow
+ checks+=1
+ def admitted(cancelled,plan,previous,required):return not cancelled and plan=='success' and previous=='success' and required=='true'
+ assert admitted(False,'success','success','true');checks+=1
+ for plan in ['failure','cancelled','skipped']:
+  assert not admitted(False,plan,'success','true');checks+=1
+ for previous in ['failure','cancelled','skipped']:
+  assert not admitted(False,'success',previous,'true');checks+=1
+ for required in ['false','',None]:
+  assert not admitted(False,'success','success',required);checks+=1
+ assert not admitted(True,'success','success','true');checks+=1
+print(checks,'combined evidence and explicit dependency-condition controls passed; scheduler execution remains a CI check')

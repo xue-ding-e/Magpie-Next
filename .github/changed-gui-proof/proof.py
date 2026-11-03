@@ -25,7 +25,8 @@ def gate():
  assert os.environ['GITHUB_REPOSITORY']=='xue-ding-e/Magpie-Next'
  assert os.environ['GITHUB_EVENT_NAME']=='push' and os.environ['GITHUB_REF']==BRANCH
  head=os.environ['GITHUB_SHA'];assert git(root,'rev-parse','HEAD').decode().strip()==head
- assert git(root,'rev-parse','HEAD^').decode().strip()==SOURCE
+ assert git(root,'rev-parse','HEAD^').decode().strip()=='6de54bd1d621612f33eb72e5725d5c821abfcd21'
+ assert git(root,'rev-parse','HEAD^^').decode().strip()==SOURCE
  assert not git(root,'status','--porcelain','--untracked-files=no')
  rows=json.loads((CONTROL/'control-hashes.json').read_text())
  expected=sorted([x['path'] for x in rows]+['.github/changed-gui-proof/control-hashes.json'])
