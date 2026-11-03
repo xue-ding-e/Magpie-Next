@@ -1,0 +1,225 @@
+name: Private auth export Unix regressions
+'on':
+  push:
+    branches:
+    - validation/auth-unix-20261103
+permissions:
+  contents: read
+concurrency:
+  group: magpie-auth-unix-regression
+  cancel-in-progress: false
+env:
+  GOTOOLCHAIN: local
+  GOWORK: 'off'
+  GOMAXPROCS: '2'
+jobs:
+  linux_auth:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 2
+      with:
+        ref: ${{ github.sha }}
+        path: control
+        fetch-depth: 2
+        persist-credentials: false
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 2
+      with:
+        ref: ff997c492a908293dc0de152ee20f83152b88aa9
+        path: source
+        fetch-depth: 2
+        persist-credentials: false
+    - name: Verify fixed source and count controls
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''8094df7df507e52235a15644e014dd20afa77549fd48d4a1fbf313fd75dee343  control/.github/auth-unix-regression/gate.py''
+        | shasum -a 256 -c -
+
+        python3 -I -B control/.github/auth-unix-regression/gate.py
+
+        python3 -I -B control/.github/auth-unix-regression/selftest.py'
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      timeout-minutes: 5
+      with:
+        go-version: 1.26.10
+        cache-dependency-path: source/go.sum
+    - name: Official native GUI headers; no desktop launch
+      timeout-minutes: 15
+      shell: bash
+      run: 'set -euo pipefail
+
+        sudo apt-get update
+
+        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev'
+    - name: Select pinned non-temp Go and isolate test profile
+      timeout-minutes: 2
+      shell: bash
+      run: 'set -euo pipefail
+
+        if command -v where >/dev/null 2>&1; then where go; else echo ''where is unavailable
+        on this Unix runner; enumerate PATH applications''; type -a go; fi
+
+        go_path=$(type -P go)
+
+        case "$go_path" in /*) ;; *) exit 1;; esac
+
+        case "$go_path" in "$RUNNER_TEMP"/*|/tmp/*|/private/tmp/*) exit 1;; esac
+
+        version=$("$go_path" version)
+
+        case "$version" in ''go version go1.26.10 ''*) ;; *) exit 1;; esac
+
+        mkdir -p ../reports
+
+        printf ''%s\n'' "$version" > ../reports/toolchain.txt
+
+        git rev-parse HEAD > ../reports/source.txt
+
+        { echo "AUTH_GO=$go_path"; echo "GOPATH=$("$go_path" env GOPATH)"; echo "GOMODCACHE=$("$go_path"
+        env GOMODCACHE)"; echo "GOCACHE=$("$go_path" env GOCACHE)"; } >> "$GITHUB_ENV"
+
+        python3 -I -B build/ci_home.py create
+
+        python3 -I -B ../control/.github/auth-unix-regression/temp.py'
+      id: test_home
+      working-directory: source
+    - name: Execute full focused auth/export regression selection
+      timeout-minutes: 20
+      shell: bash
+      run: 'set -euo pipefail
+
+        "$AUTH_GO" test -mod=readonly -p 2 -json -count=1 -timeout 2m -tags gtk3 ./internal/provider
+        ./internal/gui -run ''^(TestSavedCodexAuthJSON|TestCodexAuthExport)'' | tee
+        ../reports/auth.jsonl
+
+        python3 -I -B ../control/.github/auth-unix-regression/count.py ../reports/auth.jsonl
+        | tee ../reports/count.json
+
+        git diff --exit-code'
+      working-directory: source
+    - name: Clean only recorded owned test profile
+      timeout-minutes: 2
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B build/ci_home.py cleanup'
+      if: always() && steps.test_home.outputs.record != ''
+      working-directory: source
+      env:
+        MAGPIE_CI_HOME_RECORD: ${{ steps.test_home.outputs.record }}
+    - name: Preserve synthetic test evidence only
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      timeout-minutes: 1
+      with:
+        name: auth-unix-linux-${{ github.sha }}
+        path: reports/
+        if-no-files-found: error
+        retention-days: 7
+  macos_auth:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 2
+      with:
+        ref: ${{ github.sha }}
+        path: control
+        fetch-depth: 2
+        persist-credentials: false
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 2
+      with:
+        ref: ff997c492a908293dc0de152ee20f83152b88aa9
+        path: source
+        fetch-depth: 2
+        persist-credentials: false
+    - name: Verify fixed source and count controls
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''8094df7df507e52235a15644e014dd20afa77549fd48d4a1fbf313fd75dee343  control/.github/auth-unix-regression/gate.py''
+        | shasum -a 256 -c -
+
+        python3 -I -B control/.github/auth-unix-regression/gate.py
+
+        python3 -I -B control/.github/auth-unix-regression/selftest.py'
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      timeout-minutes: 5
+      with:
+        go-version: 1.26.10
+        cache-dependency-path: source/go.sum
+    - name: Select pinned non-temp Go and isolate test profile
+      timeout-minutes: 2
+      shell: bash
+      run: 'set -euo pipefail
+
+        if command -v where >/dev/null 2>&1; then where go; else echo ''where is unavailable
+        on this Unix runner; enumerate PATH applications''; type -a go; fi
+
+        go_path=$(type -P go)
+
+        case "$go_path" in /*) ;; *) exit 1;; esac
+
+        case "$go_path" in "$RUNNER_TEMP"/*|/tmp/*|/private/tmp/*) exit 1;; esac
+
+        version=$("$go_path" version)
+
+        case "$version" in ''go version go1.26.10 ''*) ;; *) exit 1;; esac
+
+        mkdir -p ../reports
+
+        printf ''%s\n'' "$version" > ../reports/toolchain.txt
+
+        git rev-parse HEAD > ../reports/source.txt
+
+        { echo "AUTH_GO=$go_path"; echo "GOPATH=$("$go_path" env GOPATH)"; echo "GOMODCACHE=$("$go_path"
+        env GOMODCACHE)"; echo "GOCACHE=$("$go_path" env GOCACHE)"; } >> "$GITHUB_ENV"
+
+        python3 -I -B build/ci_home.py create
+
+        python3 -I -B ../control/.github/auth-unix-regression/temp.py'
+      id: test_home
+      working-directory: source
+    - name: Execute full focused auth/export regression selection
+      timeout-minutes: 15
+      shell: bash
+      run: 'set -euo pipefail
+
+        "$AUTH_GO" test -mod=readonly -p 2 -json -count=1 -timeout 2m ./internal/provider
+        ./internal/gui -run ''^(TestSavedCodexAuthJSON|TestCodexAuthExport)'' | tee
+        ../reports/auth.jsonl
+
+        python3 -I -B ../control/.github/auth-unix-regression/count.py ../reports/auth.jsonl
+        | tee ../reports/count.json
+
+        git diff --exit-code'
+      working-directory: source
+    - name: Clean only recorded owned test profile
+      timeout-minutes: 2
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B build/ci_home.py cleanup'
+      if: always() && steps.test_home.outputs.record != ''
+      working-directory: source
+      env:
+        MAGPIE_CI_HOME_RECORD: ${{ steps.test_home.outputs.record }}
+    - name: Preserve synthetic test evidence only
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      timeout-minutes: 1
+      with:
+        name: auth-unix-macos-${{ github.sha }}
+        path: reports/
+        if-no-files-found: error
+        retention-days: 7
+    needs:
+    - linux_auth

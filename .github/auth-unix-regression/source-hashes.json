@@ -1,0 +1,94 @@
+[
+  {
+    "path": ".github/workflows/next-windows-package.yml",
+    "sha256": "c84f4ff33b0925380b727ed186cd8aa06f0689dfb9563fee6522dd9a57eb0313"
+  },
+  {
+    "path": "build/next-package-impact.py",
+    "sha256": "3467b9ff3f4daf699ae43b07ff010ea4f0c2235d9a18564460249e8e05115549"
+  },
+  {
+    "path": "build/next-package-impact_test.py",
+    "sha256": "fff8aa62bffebb8c35340e488dbac8cb9b8c079dfdc86bbf3cca2b99364b9e58"
+  },
+  {
+    "path": "build/gui-changes/run.py",
+    "sha256": "1d931a62b3fa45a37e716120028d43253734e4e63afcf8336f6a3b2f701cf1b2"
+  },
+  {
+    "path": "build/gui-changes/selftest.py",
+    "sha256": "d0c78f926299f2567e5036f13db3e6a77d47cfe2c35136eb64e8a923124a0efa"
+  },
+  {
+    "path": "build/gui-changes/offline.cjs",
+    "sha256": "43bae8cdc5737bb3e7397032ebdd4d45684a061fe143ca02ec375edb7f80d132"
+  },
+  {
+    "path": "build/gui-changes/package.json",
+    "sha256": "c070188c751622e9715cfc4746e38b76c55b0d0b6d5dea0c0df77307ec32ae25"
+  },
+  {
+    "path": "build/gui-changes/package-lock.json",
+    "sha256": "4a89b7aeb34c4beee2dc974e227dddce2d7c73d97e2c27d9da85fac1c33dfa43"
+  },
+  {
+    "path": "docs/subsystems/gui-shell.md",
+    "sha256": "d8374407829e369e9e62e6d33d8ff8be113b37b0ac277cf5720f4f5c345e0aa1"
+  },
+  {
+    "path": "docs/subsystems/providers-accounts.md",
+    "sha256": "9c95b377fb46c1f659b58e1c382f24a0d1df973ff150e88c30ca443128bff603"
+  },
+  {
+    "path": "internal/gui/assets/app.js",
+    "sha256": "7ab0312a0e2dbb17bce3fc03837f01f16a544311cd6d294911ddd068f534b1b3"
+  },
+  {
+    "path": "internal/gui/assets/i18n.js",
+    "sha256": "4c0898f7e53b2d5bfa0fadcff74c940037990f82ca8b842270afe95f5db5b8bc"
+  },
+  {
+    "path": "internal/gui/codex_auth_export.go",
+    "sha256": "58d8c5402a1012d15fecda3e377f768f780aab83e14f22ede20d5251900b666b"
+  },
+  {
+    "path": "internal/gui/codex_auth_export_test.go",
+    "sha256": "caf46fbd24487668ea259adaf5ec5370b3bb497bdd1452244485292bee19ce64"
+  },
+  {
+    "path": "internal/gui/providers.go",
+    "sha256": "7f15c7d650e8d8de84c0c39839c5610e7a84c186a418fdf153cc4773d475faac"
+  },
+  {
+    "path": "internal/gui/tests/codex-auth-export-state.test.cjs",
+    "sha256": "70883cc2ec2a0e36442932f18d4e9d91e2dd40e6eb3cbf8d63bacd052a35fcd1"
+  },
+  {
+    "path": "internal/gui/tests/codex-auth-export.test.cjs",
+    "sha256": "3c72e045d88b6a4bbfc2029f4fa5bc169e1fdd06f57ebd86b211ee6942b650f8"
+  },
+  {
+    "path": "internal/gui/web.go",
+    "sha256": "1f2cad8079606b3ab8b48e23b888de24f72d7a53162de2dc8701955333f1e8b5"
+  },
+  {
+    "path": "internal/provider/codex_auth_export.go",
+    "sha256": "552db9354e6a9187c38615ad662b8b71aed790688f1df5328dd62381037c1bfe"
+  },
+  {
+    "path": "internal/provider/codex_auth_export_test.go",
+    "sha256": "324547f2408f3f03e65746d9cb247fc02d675c855fa510404817cf4e5d5efb83"
+  },
+  {
+    "path": "internal/gui/codex_auth_export_unix.go",
+    "sha256": "811447a10b38e4e40d3a847aa4265ef9bb966e57103e122fb25d486d0935dbbc"
+  },
+  {
+    "path": "internal/gui/codex_auth_export_windows.go",
+    "sha256": "34cada7c95cccd549fa14af09c797314790b9f93fb431fd23d3dc343a5e0da12"
+  },
+  {
+    "path": "internal/gui/codex_auth_export_windows_test.go",
+    "sha256": "9460b4890788f89302914393c7a330f925ea041177fbb2c158dd6dff8cfe6e76"
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "path": ".github/auth-unix-regression/count.py",
+    "sha256": "983e8c5a204973ff1a499f48a99ff5c10c0260eb5c2d6626f1f86499404dd972"
+  },
+  {
+    "path": ".github/auth-unix-regression/gate.py",
+    "sha256": "8094df7df507e52235a15644e014dd20afa77549fd48d4a1fbf313fd75dee343"
+  },
+  {
+    "path": ".github/auth-unix-regression/selftest.py",
+    "sha256": "7634574b5a0ad9f87b246a54dcad0310af3f194f8b20e20216cd55607c152715"
+  },
+  {
+    "path": ".github/auth-unix-regression/source-hashes.json",
+    "sha256": "f65aca92bf87904cdc84dd949272cd6f66bf4acefc2843fe89d896c9cb60c742"
+  },
+  {
+    "path": ".github/auth-unix-regression/temp.py",
+    "sha256": "b7e0b705e3eb2f8361a06960e9d7a71918d728d04c16f4949ac3e5032509ba6b"
+  },
+  {
+    "path": ".github/workflows/auth-unix-regression.yml",
+    "sha256": "43574c033d51d11026a3e7823907f319ea6607232a5692d83b458404eafd5540"
+  }
+]
