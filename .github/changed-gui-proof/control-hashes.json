@@ -1,0 +1,18 @@
+[
+  {
+    "path": ".github/workflows/required-gui-proof.yml",
+    "sha256": "cc253aac420e6a05795ad4e710039dde61876a2c16bb4c323de2c9596f27193a"
+  },
+  {
+    "path": ".github/changed-gui-proof/proof.py",
+    "sha256": "42efdbd2006f8c11e7a22fdceefa1cd621d0feaca7f84952c065dd9b56da124e"
+  },
+  {
+    "path": ".github/changed-gui-proof/selftest.py",
+    "sha256": "692a9d46a2afde4492c7c90316b08379f6deb57bf72bbbc24aa2c8ee726980ec"
+  },
+  {
+    "path": ".github/changed-gui-proof/source-hashes.json",
+    "sha256": "f65aca92bf87904cdc84dd949272cd6f66bf4acefc2843fe89d896c9cb60c742"
+  }
+]

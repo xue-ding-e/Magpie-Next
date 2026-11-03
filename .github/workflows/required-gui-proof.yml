@@ -1,0 +1,359 @@
+name: Required changed-GUI artifact-only proof
+'on':
+  push:
+    branches:
+    - validation/required-gui-20261103
+permissions:
+  contents: read
+concurrency:
+  group: magpie-required-gui-proof
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    outputs:
+      zero_required: ${{ steps.impact.outputs.zero_required }}
+      positive_required: ${{ steps.impact.outputs.positive_required }}
+      gui_tests: ${{ steps.impact.outputs.gui_tests }}
+      package: ${{ steps.impact.outputs.package }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 1
+      with:
+        ref: ${{ github.sha }}
+        path: control
+        fetch-depth: 2
+        persist-credentials: false
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 1
+      with:
+        ref: ff997c492a908293dc0de152ee20f83152b88aa9
+        path: source
+        fetch-depth: 4
+        persist-credentials: false
+    - name: Verify immutable diagnostic controls
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py gate'
+    - name: Native-validation dependency sentinel and actual diff plan
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Native validation is a dependency sentinel only, not a native test rerun''
+
+        python3 -I -B control/.github/changed-gui-proof/selftest.py
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py impact source'
+      id: impact
+  zero_gui:
+    needs:
+    - plan
+    if: needs.plan.outputs.zero_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+    - name: Unexpected zero-file execution
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        exit 1'
+  zero_package:
+    needs:
+    - plan
+    - zero_gui
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.package == 'true' && (needs.zero_gui.result == 'success' || (needs.zero_gui.result == 'skipped'
+      && needs.plan.outputs.zero_required == 'false')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+    - name: Artifact-only admission sentinel; no packaging
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Package admission reached; no compiler, binary, signing or publication'''
+  positive_gui:
+    needs:
+    - plan
+    - zero_package
+    if: needs.plan.outputs.positive_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    outputs:
+      verified: ${{ steps.inspect.outputs.verified }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 1
+      with:
+        ref: ${{ github.sha }}
+        path: control
+        fetch-depth: 2
+        persist-credentials: false
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 1
+      with:
+        ref: ff997c492a908293dc0de152ee20f83152b88aa9
+        path: source
+        fetch-depth: 4
+        persist-credentials: false
+    - name: Verify immutable diagnostic controls
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py gate'
+    - name: Create isolated task-owned runtime
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        owned=$(mktemp -d "$RUNNER_TEMP/mgc.XXXXXX")
+
+        chmod 700 "$owned"
+
+        mkdir -m 700 "$owned/install-home"
+
+        echo "GUI_OWNED_ROOT=$owned" >> "$GITHUB_ENV"
+
+        echo "PLAYWRIGHT_BROWSERS_PATH=$owned/browsers" >> "$GITHUB_ENV"'
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      timeout-minutes: 2
+      with:
+        node-version: 22.23.4
+    - name: Install exact official locked dependency
+      timeout-minutes: 2
+      shell: bash
+      run: 'set -euo pipefail
+
+        export HOME="$GUI_OWNED_ROOT/install-home" npm_config_userconfig=/dev/null npm_config_cache="$GUI_OWNED_ROOT/npm-cache"
+
+        npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --prefix source/build/gui-changes'
+    - name: Install official matching Chromium and WebKit
+      timeout-minutes: 7
+      shell: bash
+      run: 'set -euo pipefail
+
+        export HOME="$GUI_OWNED_ROOT/install-home"
+
+        node source/build/gui-changes/node_modules/playwright/cli.js install --with-deps chromium webkit'
+    - name: Execute exact required-GUI runner
+      timeout-minutes: 7
+      shell: bash
+      run: 'set -euo pipefail
+
+        timeout --signal=TERM --kill-after=5s 400s python3 -I -B control/.github/changed-gui-proof/proof.py execute source positive'
+      id: execute
+    - name: Verify exact terminal counts and failure identity
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py inspect source positive'
+      id: inspect
+      if: always()
+    - name: Clean only owned runtime directory
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B source/build/gui-changes/run.py --cleanup'
+      if: ${{ always() && env.GUI_OWNED_ROOT != '' }}
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      timeout-minutes: 1
+      if: always()
+      with:
+        name: required-gui-positive-${{ github.sha }}
+        path: source/reports/gui-changes/
+        if-no-files-found: error
+        retention-days: 7
+  positive_package:
+    needs:
+    - plan
+    - positive_gui
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.package == 'true' && (needs.positive_gui.result == 'success' || (needs.positive_gui.result
+      == 'skipped' && needs.plan.outputs.positive_required == 'false')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+    - name: Artifact-only admission sentinel; no packaging
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Package admission reached; no compiler, binary, signing or publication'''
+  negative_gui:
+    needs:
+    - plan
+    - positive_package
+    if: needs.plan.outputs.positive_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    outputs:
+      verified: ${{ steps.inspect.outputs.verified }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 1
+      with:
+        ref: ${{ github.sha }}
+        path: control
+        fetch-depth: 2
+        persist-credentials: false
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 1
+      with:
+        ref: ff997c492a908293dc0de152ee20f83152b88aa9
+        path: source
+        fetch-depth: 4
+        persist-credentials: false
+    - name: Verify immutable diagnostic controls
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py gate'
+    - name: Create isolated task-owned runtime
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        owned=$(mktemp -d "$RUNNER_TEMP/mgc.XXXXXX")
+
+        chmod 700 "$owned"
+
+        mkdir -m 700 "$owned/install-home"
+
+        echo "GUI_OWNED_ROOT=$owned" >> "$GITHUB_ENV"
+
+        echo "PLAYWRIGHT_BROWSERS_PATH=$owned/browsers" >> "$GITHUB_ENV"'
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      timeout-minutes: 2
+      with:
+        node-version: 22.23.4
+    - name: Install exact official locked dependency
+      timeout-minutes: 2
+      shell: bash
+      run: 'set -euo pipefail
+
+        export HOME="$GUI_OWNED_ROOT/install-home" npm_config_userconfig=/dev/null npm_config_cache="$GUI_OWNED_ROOT/npm-cache"
+
+        npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --prefix source/build/gui-changes'
+    - name: Create isolated local assertion-negative fixture
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py negative source'
+    - name: Execute exact required-GUI runner
+      timeout-minutes: 4
+      shell: bash
+      run: 'set -euo pipefail
+
+        timeout --signal=TERM --kill-after=5s 200s python3 -I -B control/.github/changed-gui-proof/proof.py execute source negative'
+      id: execute
+    - name: Verify exact terminal counts and failure identity
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py inspect source negative'
+      id: inspect
+      if: always()
+    - name: Clean only owned runtime directory
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B source/build/gui-changes/run.py --cleanup'
+      if: ${{ always() && env.GUI_OWNED_ROOT != '' }}
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      timeout-minutes: 1
+      if: always()
+      with:
+        name: required-gui-negative-${{ github.sha }}
+        path: source/reports/gui-changes/
+        if-no-files-found: error
+        retention-days: 7
+  negative_package:
+    needs:
+    - plan
+    - negative_gui
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.package == 'true' && (needs.negative_gui.result == 'success' || (needs.negative_gui.result
+      == 'skipped' && needs.plan.outputs.positive_required == 'false')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+    - name: Artifact-only admission sentinel; no packaging
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Package admission reached; no compiler, binary, signing or publication'''
+  required_skip:
+    needs:
+    - negative_gui
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+    - name: Injected required job skipped
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        exit 1'
+  skip_package:
+    needs:
+    - plan
+    - required_skip
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.package == 'true' && (needs.required_skip.result == 'success' || (needs.required_skip.result
+      == 'skipped' && needs.plan.outputs.positive_required == 'false')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+    - name: Artifact-only admission sentinel; no packaging
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo ''Package admission reached; no compiler, binary, signing or publication'''
+  audit:
+    needs:
+    - plan
+    - zero_gui
+    - zero_package
+    - positive_gui
+    - positive_package
+    - negative_gui
+    - negative_package
+    - required_skip
+    - skip_package
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 1
+      with:
+        ref: ${{ github.sha }}
+        path: control
+        fetch-depth: 2
+        persist-credentials: false
+    - name: Verify immutable diagnostic controls
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py gate'
+    - name: Audit actual GitHub needs states
+      timeout-minutes: 1
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -I -B control/.github/changed-gui-proof/proof.py audit'
+      env:
+        NEEDS_JSON: ${{ toJSON(needs) }}
