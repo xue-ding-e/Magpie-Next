@@ -33,7 +33,7 @@
   },
   {
     "path": "docs/subsystems/gui-shell.md",
-    "sha256": "420ceca57a3f5e2f2e393c3914e6136e98dccca38e86f08a594bdd3d3bd08b52"
+    "sha256": "d8374407829e369e9e62e6d33d8ff8be113b37b0ac277cf5720f4f5c345e0aa1"
   },
   {
     "path": "docs/subsystems/providers-accounts.md",
@@ -49,7 +49,7 @@
   },
   {
     "path": "internal/gui/codex_auth_export.go",
-    "sha256": "bb2e2e1f1de211c03e9ebde53256dc22227b5ffb1ceeb3e674c69a3c798d0a01"
+    "sha256": "58d8c5402a1012d15fecda3e377f768f780aab83e14f22ede20d5251900b666b"
   },
   {
     "path": "internal/gui/codex_auth_export_test.go",
@@ -78,5 +78,17 @@
   {
     "path": "internal/provider/codex_auth_export_test.go",
     "sha256": "324547f2408f3f03e65746d9cb247fc02d675c855fa510404817cf4e5d5efb83"
+  },
+  {
+    "path": "internal/gui/codex_auth_export_unix.go",
+    "sha256": "811447a10b38e4e40d3a847aa4265ef9bb966e57103e122fb25d486d0935dbbc"
+  },
+  {
+    "path": "internal/gui/codex_auth_export_windows.go",
+    "sha256": "34cada7c95cccd549fa14af09c797314790b9f93fb431fd23d3dc343a5e0da12"
+  },
+  {
+    "path": "internal/gui/codex_auth_export_windows_test.go",
+    "sha256": "9460b4890788f89302914393c7a330f925ea041177fbb2c158dd6dff8cfe6e76"
   }
 ]

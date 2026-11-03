@@ -1,15 +1,15 @@
 [
   {
     "path": ".github/workflows/auth-windows-security.yml",
-    "sha256": "38082c9c1dac5c4a1d4eced92b3a39e04fc02db7be1d03a0930c249e9fa58eb5"
+    "sha256": "d4658be2a071e496133b67664c7a0d7a66a9d54d3eca2c9dd29498d988aded32"
   },
   {
     "path": ".github/auth-windows-probe/gate.py",
-    "sha256": "0ac7a427491c0b7d938280bd23cae2893c26a1e4d272b7205b585b480b5bfad2"
+    "sha256": "45960ec658c7e2cdf431f1ac12b9c84963c094ccde94363d618af38497ddbbee"
   },
   {
     "path": ".github/auth-windows-probe/run.ps1",
-    "sha256": "3fb1087c9091ea5284cb8e428bea238f6247317f3101a1936bf074ca5a87ea42"
+    "sha256": "8667f69008408448731df692cee9912e753a097140ef9ec21a410980c182285a"
   },
   {
     "path": ".github/auth-windows-probe/cleanup.ps1",
@@ -21,15 +21,15 @@
   },
   {
     "path": ".github/auth-windows-probe/audit.py",
-    "sha256": "66a0761675bb8a8e0ff626e46a2ad66b3949421965b1023303d60eed7f6c6c0e"
+    "sha256": "cb55c55eb8d9cb7d45d1ea7523fb550df7385ee165d994fcbfe52d9ad29e99d1"
   },
   {
     "path": ".github/auth-windows-probe/selftest.py",
-    "sha256": "89e513932d0f4abde1352977d042fa81822d932762a62c0772ebd16f3b0cf4bf"
+    "sha256": "bd63d27b2f42952b848e1be984dd8b2bb92e2c709d72b7b4181046340cc93bda"
   },
   {
     "path": ".github/auth-windows-probe/source-hashes.json",
-    "sha256": "88d655ea5e116fa277a91d1c29556f2778d8015d93ddfd3b920fa7e175da07f8"
+    "sha256": "f65aca92bf87904cdc84dd949272cd6f66bf4acefc2843fe89d896c9cb60c742"
   },
   {
     "path": ".github/auth-windows-probe/overlay/internal/gui/codex_auth_windows_acl_probe_test.go",

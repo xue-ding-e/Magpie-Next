@@ -22,14 +22,14 @@ jobs:
       with:
         ref: ${{ github.sha }}
         path: control
-        fetch-depth: 5
+        fetch-depth: 6
         persist-credentials: false
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       timeout-minutes: 2
       with:
-        ref: a27f0957427b4ba86f7c140fa38068922adcc9ea
+        ref: ff997c492a908293dc0de152ee20f83152b88aa9
         path: source
-        fetch-depth: 1
+        fetch-depth: 2
         persist-credentials: false
     - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
       timeout-minutes: 3

@@ -2,6 +2,8 @@ $ErrorActionPreference='Stop'
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows') { throw 'Hosted disposable Windows runner required' }
 $control=Split-Path -Parent $MyInvocation.MyCommand.Path
 $source=[IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'source'))
+$sourceHead=(& git -C $source rev-parse HEAD)
+if ($LASTEXITCODE -ne 0 -or $sourceHead -isnot [string] -or $sourceHead -cne 'ff997c492a908293dc0de152ee20f83152b88aa9') {throw 'Candidate source HEAD mismatch'}
 $report=Join-Path $env:GITHUB_WORKSPACE 'auth-windows-evidence'
 New-Item -ItemType Directory -Path $report | Out-Null
 . (Join-Path $control 'toolchain.ps1')
@@ -31,10 +33,10 @@ $env:GOTOOLCHAIN='local';$env:GOWORK='off';$env:GOMAXPROCS='2';$env:MAGPIE_AUTH_
 $stdout=Join-Path $report 'go.jsonl';$stderr=Join-Path $report 'go.stderr'
 $process=$null;$reaped=$false;$timedOut=$false;$code=125
 try {
- $args=@('test','-mod=readonly','-count=1','-timeout=3m','-json','-run','^(TestCodexAuthExportWindowsACLProbe|TestCodexAuthWindowsClipboardAdapterProbe|TestCodexAuthWindowsACLMaskControls)$','./internal/gui')
+ $args=@('test','-mod=readonly','-count=1','-timeout=3m','-json','-run','^(TestCodexAuthExportWindowsACLProbe|TestCodexAuthWindowsClipboardAdapterProbe|TestCodexAuthWindowsACLMaskControls|TestCodexAuthExportAtomicFailureAndMode|TestCodexAuthExportCancelDuringFlush|TestCodexAuthExportWindowsPrivateAtCreation|TestCodexAuthExportWindowsCreationFailure)$','./internal/gui')
  $process=Start-Process -FilePath $go -ArgumentList $args -WorkingDirectory $source -RedirectStandardOutput $stdout -RedirectStandardError $stderr -NoNewWindow -PassThru
  $started=$process.StartTime.ToUniversalTime()
- [ordered]@{pid=$process.Id;started=$started.ToString('o');toolchain=$version;source='a27f0957427b4ba86f7c140fa38068922adcc9ea';nativeUI=$false} | ConvertTo-Json | Set-Content (Join-Path $report 'process.json')
+ [ordered]@{pid=$process.Id;started=$started.ToString('o');toolchain=$version;source=$sourceHead;nativeUI=$false} | ConvertTo-Json | Set-Content (Join-Path $report 'process.json')
  if (!$process.WaitForExit(1200000)) {
   $timedOut=$true
   $live=Get-Process -Id $process.Id -ErrorAction SilentlyContinue

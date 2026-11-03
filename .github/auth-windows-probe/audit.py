@@ -1,6 +1,9 @@
 import json,re,sys
 from pathlib import Path
-TOP=['TestCodexAuthExportWindowsACLProbe','TestCodexAuthWindowsClipboardAdapterProbe','TestCodexAuthWindowsACLMaskControls']
+TOP=['TestCodexAuthExportWindowsACLProbe','TestCodexAuthWindowsClipboardAdapterProbe','TestCodexAuthWindowsACLMaskControls','TestCodexAuthExportAtomicFailureAndMode','TestCodexAuthExportCancelDuringFlush','TestCodexAuthExportWindowsPrivateAtCreation','TestCodexAuthExportWindowsCreationFailure']
+SOURCE='ff997c492a908293dc0de152ee20f83152b88aa9'
+def source_matches(metadata):
+ return metadata.get('source')==SOURCE and metadata.get('nativeUI') is False
 SUB=[TOP[0]+'/normal-inheritance',TOP[0]+'/broad-synthetic-parent']
 def classify(events,process):
  if process.get('timedOut') or process.get('reaped') is not True:return 'timeout-or-unreaped'
@@ -30,7 +33,8 @@ def classify(events,process):
  return 'other-test-or-environment-failure'
 if __name__=='__main__':
  report=Path(sys.argv[1]);events=[json.loads(line) for line in (report/'go.jsonl').read_text(encoding='utf-8-sig').splitlines() if line.strip()];process=json.loads((report/'process-outcome.json').read_text(encoding='utf-8-sig'))
- status=classify(events,process)
- outcome={'status':status,'expected_top':3,'expected_sub':2,'native_UI_covered':False,'actual_clipboard_scope':'host.Copy adapter only','full_GUI_passed':False,'vulnerability_proven':False}
+ metadata=json.loads((report/'process.json').read_text(encoding='utf-8-sig'))
+ status=classify(events,process) if source_matches(metadata) else 'source-identity-mismatch'
+ outcome={'source':SOURCE,'status':status,'expected_top':7,'expected_sub':2,'native_UI_covered':False,'actual_clipboard_scope':'host.Copy adapter only','full_GUI_passed':False,'vulnerability_proven':False}
  (report/'audit.json').write_text(json.dumps(outcome,indent=2)+'\n');print(json.dumps(outcome))
  if status!='focused-probes-passed':raise SystemExit(1)
