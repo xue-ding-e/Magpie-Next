@@ -17,7 +17,7 @@ jobs:
         timeout-minutes: 2
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         timeout-minutes: 2
@@ -31,8 +31,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '0286e26ba4e8c59162692ae8f950fbb47d1b59ec73d5a4ca5684410d01eace27  .github/gui-batch004/gate.py' | sha256sum -c -
-          echo 'ba8af098d6772989b60f4587512b3769e4bc942707e951646c6570bd4377fcc3  .github/gui-batch004/control-hashes.json' | sha256sum -c -
+          echo 'a452db71741a48daa50ed75c612dbd3f237137596e62a32323f930a3dac4a207  .github/gui-batch004/gate.py' | sha256sum -c -
+          echo '388d86be9df11c85ead7e7a205caa9ddaf70e2c5b2198976c849705a089c3f3d  .github/gui-batch004/control-hashes.json' | sha256sum -c -
           python3 -I -B .github/gui-batch004/gate.py
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         timeout-minutes: 3

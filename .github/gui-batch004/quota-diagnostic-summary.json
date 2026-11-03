@@ -1,0 +1,29 @@
+{
+  "instrumented_diagnostic": true,
+  "acceptance": false,
+  "state": "controller-error",
+  "assertion_evidence": false,
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "original_sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+  "prior_test_seconds": 1785.886794511,
+  "prior_job_seconds": 2344,
+  "job_elapsed_status": "pending official completed-job receipt",
+  "instrumented_sha256": "f1c95bbbd2142439b39fa3d2ca66196d2d5465c6ffed43fc29adff1e39ff56cc",
+  "exit": 1,
+  "timeout": false,
+  "interrupted": false,
+  "process_reaped": true,
+  "elapsed_seconds": 16.387983831,
+  "terminal_summary": true,
+  "counts": {
+    "tests": 2,
+    "pass": 0,
+    "fail": 2,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "error": "JSONDecodeError(\"Expecting ',' delimiter: line 1 column 1897 (char 1896)\")",
+  "restored_sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+  "source_restored": true
+}

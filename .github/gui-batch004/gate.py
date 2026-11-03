@@ -22,6 +22,19 @@ def git(*args, cwd=ROOT):
     return subprocess.check_output(['git', *args], cwd=cwd, text=True).strip()
 
 
+
+def verify_control_chain(source, expected_changes, fixup):
+    """One receipt-only fixup above the already frozen v1, then exact product."""
+    v1 = '84b500a3e1b3dd985fcdab8e693950b4356500b8'
+    assert fixup['v1_commit'] == v1 and fixup['product'] == source['source']
+    assert git('rev-parse', 'HEAD') == os.environ['GITHUB_SHA']
+    assert git('rev-parse', 'HEAD^') == v1
+    assert git('rev-parse', 'HEAD^^') == source['source']
+    for revision in ('HEAD', 'HEAD^'):
+        assert len(git('rev-list', '--parents', '-n', '1', revision).split()) == 2
+    assert set(git('diff', '--name-only', 'HEAD^^', 'HEAD').splitlines()) == expected_changes
+    assert set(git('diff', '--name-only', 'HEAD^', 'HEAD').splitlines()) == set(fixup['changed_paths'])
+
 def validate():
     assert os.environ['GITHUB_REPOSITORY'] == 'xue-ding-e/Magpie-Next'
     assert os.environ['GITHUB_EVENT_NAME'] == 'push'
@@ -34,11 +47,9 @@ def validate():
     for path, digest in controls.items():
         assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest, path
     source = json.loads((CONTROL / 'source.json').read_text())
-    assert git('rev-parse', 'HEAD') == os.environ['GITHUB_SHA']
-    assert git('rev-parse', 'HEAD^') == source['source']
-    assert len(git('rev-list', '--parents', '-n', '1', 'HEAD').split()) == 2
     expected_changes = set(controls) | {PREFIX + 'control-hashes.json', '.github/workflows/gui-batch004.yml'}
-    assert set(git('diff', '--name-only', 'HEAD^', 'HEAD').splitlines()) == expected_changes
+    fixup = json.loads((CONTROL / 'fixup-changes.json').read_text())
+    verify_control_chain(source, expected_changes, fixup)
     checkout = ROOT / 'source'
     assert git('rev-parse', 'HEAD', cwd=checkout) == source['source']
     assert git('rev-parse', 'HEAD^', cwd=checkout) == source['parent']

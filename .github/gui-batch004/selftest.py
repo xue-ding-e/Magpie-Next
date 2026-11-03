@@ -78,12 +78,19 @@ finally:
 print('PASS: same-source31pass/1fail retained;795not_run; old24 history only; stale runtime/source, failure erasure and rerun selection rejected')
 
 actual_budget = budget.admitted_budget(manifest)
-assert actual_budget['spent_test_seconds'] == 1785.886794511
-assert actual_budget['spent_job_seconds'] == 2344
+assert actual_budget['spent_test_seconds'] == 1802.274778342
+assert actual_budget['spent_job_seconds'] == 2432
+assert actual_budget['quota_diagnostic_test_seconds'] == 16.387983831
+assert actual_budget['quota_diagnostic_job_seconds'] == 88
+assert actual_budget['quota_diagnostic_acceptance'] is False
 assert actual_budget['no_op_scheduling_test_seconds'] == 0 and actual_budget['no_op_scheduling_job_seconds'] == 35
 original_load = budget.load
 mutations = [('cumulative-receipt.json', 'spent_test_seconds', 1045.758023034),
-             ('cumulative-receipt.json', 'spent_job_seconds', 2309),
+             ('cumulative-receipt.json', 'spent_job_seconds', 2344),
+             ('quota-diagnostic-summary.json', 'acceptance', True),
+             ('quota-diagnostic-summary.json', 'assertion_evidence', True),
+             ('quota-diagnostic-summary.json', 'source_restored', False),
+             ('quota-diagnostic-summary.json', 'process_reaped', False),
              ('cumulative-receipt.json', 'prior_run', 0),
              ('cumulative-receipt.json', 'source', migration.OLD_SOURCE)]
 for value in [None, -1, float('nan'), True, 28800]:
@@ -102,7 +109,50 @@ try:
         reject(lambda: budget.admitted_budget(invalid))
 finally:
     budget.load = original_load
-print('PASS: actual740.128771477/797 GUI plus separate0/35 sentinel; cumulative1785.886794511/2344; debt reset/NaN/ceiling extension rejected')
+print('PASS: prior GUI + sentinel + quota controller-error16.387983831/88, cumulative1802.274778342/2432; nonacceptance retained; debt reset/NaN/ceiling extension rejected')
+
+gate = module('gate')
+fixup = json.loads((CONTROL / 'fixup-changes.json').read_text())
+source = json.loads((CONTROL / 'source.json').read_text())
+expected_paths = {str(p.relative_to(CONTROL.parents[1])) for p in CONTROL.parents[0].rglob('*') if p.is_file()}
+original_git = gate.git
+old_sha = os.environ.get('GITHUB_SHA')
+head, v1 = 'a' * 40, '84b500a3e1b3dd985fcdab8e693950b4356500b8'
+os.environ['GITHUB_SHA'] = head
+responses = {
+    ('rev-parse', 'HEAD'): head,
+    ('rev-parse', 'HEAD^'): v1,
+    ('rev-parse', 'HEAD^^'): source['source'],
+    ('rev-list', '--parents', '-n', '1', 'HEAD'): head + ' ' + v1,
+    ('rev-list', '--parents', '-n', '1', 'HEAD^'): v1 + ' ' + source['source'],
+    ('diff', '--name-only', 'HEAD^^', 'HEAD'): '\n'.join(sorted(expected_paths)),
+    ('diff', '--name-only', 'HEAD^', 'HEAD'): '\n'.join(fixup['changed_paths']),
+}
+try:
+    gate.git = lambda *args, **kwargs: responses[args]
+    gate.verify_control_chain(source, expected_paths, fixup)
+    for key, value in [
+        (('rev-parse', 'HEAD^'), 'b' * 40),
+        (('rev-parse', 'HEAD^^'), migration.OLD_SOURCE),
+        (('rev-list', '--parents', '-n', '1', 'HEAD'), head + ' ' + v1 + ' ' + source['source']),
+        (('rev-list', '--parents', '-n', '1', 'HEAD^'), v1 + ' ' + source['source'] + ' ' + migration.OLD_SOURCE),
+        (('diff', '--name-only', 'HEAD^^', 'HEAD'), '\n'.join(expected_paths | {'internal/gui/assets/app.js'})),
+        (('diff', '--name-only', 'HEAD^', 'HEAD'), '\n'.join(fixup['changed_paths'][:-1])),
+    ]:
+        old_value = responses[key]
+        responses[key] = value
+        reject(lambda: gate.verify_control_chain(source, expected_paths, fixup))
+        responses[key] = old_value
+finally:
+    gate.git = original_git
+    if old_sha is None:
+        os.environ.pop('GITHUB_SHA', None)
+    else:
+        os.environ['GITHUB_SHA'] = old_sha
+workflow = (CONTROL.parents[1] / '.github/workflows/gui-batch004.yml').read_text()
+assert [line.strip() for line in workflow.splitlines() if 'fetch-depth:' in line] == ['fetch-depth: 3', 'fetch-depth: 2']
+assert not {'.github/gui-batch004/run.py', '.github/gui-batch004/offline.cjs', '.github/gui-batch004/migration.py'} & set(fixup['changed_paths'])
+print('PASS: exact v2->v1->product single-parent control chain; merge/wrongparent/productdelta/missing-fixup rejection; checkout depths3/2')
 
 original_command, original_popen = runner.command_for, runner.subprocess.Popen
 original_validate_temp = runner.validate_temp

@@ -1,8 +1,8 @@
-# Full GUI recovery batch004: local draft
+# Full GUI recovery batch004 v2: receipt-only fixup
 
 Validation controls only. No CI, browser, product compilation, product source
 change or external write has been performed while preparing this draft. Only the
-24 text paths explicitly listed in the generated `STAGING-PATHS.txt` are
+28 text paths explicitly listed in the generated `STAGING-PATHS.txt` are
 candidates for staging; use its exact list, not a guessed glob. The parent
 must review the frozen result before a separately authorized activation.
 
@@ -94,9 +94,16 @@ records include anomalous negative timestamp pairs; they remain raw and contribu
 no execution time. The sentinel is separately classified, and its pending review
 status is not a new product acceptance claim.
 
-The frozen admission total is therefore **1785.886794511 test /2344 job seconds**.
+The pre-quota total is **1785.886794511 test /2344 job seconds**. Instrumented
+quota diagnostic41603192722 subsequently consumed16.387983831 controller seconds
+and88 official job seconds. Its TAP JSON decoder failed on the logged font value;
+state remains controller-error, acceptance/assertion_evidence false. The process
+was reaped and the original fixture hash restored. No new product acceptance or
+coverage is inferred from that diagnostic, and the inherited quota failure stays.
+
+The v2 frozen admission total is **1802.274778342 test /2432 job seconds**.
 The original8h/12h ceilings remain **28800 /43200**. Available before batch004 is
-**27014.113205489 test /40856 job seconds**. This one batch reserves1800/3300.
+**26997.725221658 test /40768 job seconds**. This one batch reserves1800/3300.
 
 Batch test cost means controller wall time, not summed concurrent file/CPU/browser
 time. The historical requiredGUI conservative32-second charge remains included
@@ -127,6 +134,10 @@ Run `python3 -I -B .github/gui-batch004/selftest.py`, then
 `python3 -I -B .github/gui-batch004/freeze.py`. The latter binds the exact text
 controls and workflow hash pins, writes local `FROZEN-LOCAL.json`, and produces
 `STAGING-PATHS.txt`. Those root receipts/logs are not staged. Any receipt/control
-change requires new tests and freeze. Activation requires one validation-only
-single-parent commit directly above the exact product source. No main/release
+change requires new tests and freeze. Activation requires the exact linear chain: v2 receipt-only fixup HEAD, then
+v1 `84b500a3e1b3dd985fcdab8e693950b4356500b8`, then the exact ff997 product.
+Both validation commits must have one parent. Control checkout fetch-depth is3;
+source checkout stays2. The gate checks the aggregate product-to-v2 controls and
+the exact v1-to-v2 whitelist in `fixup-changes.json`. Runner, offline guard,
+selected32 files, prior failure and source inventory identities are unchanged. No main/release
 operation is part of this draft.

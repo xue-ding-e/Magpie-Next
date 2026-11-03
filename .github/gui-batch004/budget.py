@@ -74,10 +74,33 @@ def admitted_budget(manifest):
     sentinel_job = job_seconds(sjobs, 41600206909, sentinel['head'])
     assert sentinel_test == soutcome['test_seconds'] == 0
     assert sentinel_job == sentinel['job_seconds'] == soutcome['official_job_seconds'] == 35
+    test_before_quota, job_before_quota = test_after + sentinel_test, job_after + sentinel_job
+    assert test_before_quota == receipt['before_quota_diagnostic_test_seconds'] == 1785.886794511
+    assert job_before_quota == receipt['before_quota_diagnostic_job_seconds'] == 2344
+    quota = receipt['quota_diagnostic']
+    assert digest('quota-diagnostic-outcome.json') == quota['outcome_sha256'] == '5294f898ac38ac219bc910aaa8c4d088cb3ec5823856d4c9eb824d9b6ae87f73'
+    assert digest('quota-diagnostic-summary.json') == quota['summary_sha256'] == '4b034a33648ef5e29f64dbdb9ce720c8fe3272d1dfb150195a854248a5dfa4e9'
+    assert digest('quota-diagnostic-jobs.json') == quota['jobs_sha256'] == 'dc7070130f0ab79affae248e717288a597b28e4e2f4f528cad7fb5ff5c62ec40'
+    qoutcome, qsummary, qjobs = load('quota-diagnostic-outcome.json'), load('quota-diagnostic-summary.json'), load('quota-diagnostic-jobs.json')
+    assert quota['run'] == qoutcome['run'] == 41603192722
+    assert quota['head'] == qoutcome['head'] == '7e31c76e2091c001db9556a858d46d844be5e818'
+    assert quota['source'] == qoutcome['source'] == qsummary['source'] == receipt['source']
+    assert qoutcome['summary'] == qsummary
+    assert quota['acceptance'] is qsummary['acceptance'] is False
+    assert qsummary['instrumented_diagnostic'] is True and qsummary['assertion_evidence'] is False
+    assert qsummary['state'] == 'controller-error' and qsummary['error'].startswith('JSONDecodeError(')
+    assert qsummary['source_restored'] is True and qsummary['process_reaped'] is True
+    assert qsummary['original_sha256'] == qsummary['restored_sha256'] == '3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6'
+    assert qsummary['prior_test_seconds'] == test_before_quota and qsummary['prior_job_seconds'] == job_before_quota
+    assert qsummary['counts'] == {'tests': 2, 'pass': 0, 'fail': 2, 'cancelled': 0, 'skipped': 0, 'todo': 0}
+    quota_test = seconds(qsummary['elapsed_seconds'])
+    quota_job = job_seconds(qjobs, 41603192722, quota['head'])
+    assert quota_test == quota['test_seconds'] == 16.387983831
+    assert quota_job == quota['job_seconds'] == qoutcome['official_job_seconds'] == 88
     budget = manifest['flow_budget']
-    test_total, job_total = test_after + sentinel_test, job_after + sentinel_job
-    assert test_total == budget['spent_test_seconds'] == receipt['spent_test_seconds'] == 1785.886794511
-    assert job_total == budget['spent_job_seconds'] == receipt['spent_job_seconds'] == 2344
+    test_total, job_total = test_before_quota + quota_test, job_before_quota + quota_job
+    assert test_total == budget['spent_test_seconds'] == receipt['spent_test_seconds'] == qoutcome['cumulative_test_seconds'] == 1802.274778342
+    assert job_total == budget['spent_job_seconds'] == receipt['spent_job_seconds'] == qoutcome['cumulative_job_seconds'] == 2432
     assert budget['maximum_test_seconds'] == receipt['maximum_test_seconds'] == 28800
     assert budget['maximum_job_seconds'] == receipt['maximum_job_seconds'] == 43200
     assert test_total + manifest['batch_seconds'] <= 28800, '8h test budget exhausted'
@@ -87,5 +110,7 @@ def admitted_budget(manifest):
             'remaining_job_seconds_before_batch': 43200 - job_total,
             'prior_gui_run': 41598441535, 'prior_batch_controller_seconds': actual_test,
             'no_op_scheduling_run': 41600206909, 'no_op_scheduling_test_seconds': 0,
-            'no_op_scheduling_job_seconds': 35, 'batch_reservation_test_seconds': 1800,
+            'no_op_scheduling_job_seconds': 35, 'quota_diagnostic_run': 41603192722,
+            'quota_diagnostic_test_seconds': quota_test, 'quota_diagnostic_job_seconds': quota_job,
+            'quota_diagnostic_acceptance': False, 'batch_reservation_test_seconds': 1800,
             'batch_reservation_job_seconds': 3300}

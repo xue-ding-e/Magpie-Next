@@ -1,0 +1,52 @@
+{
+  "run": 41603192722,
+  "head": "7e31c76e2091c001db9556a858d46d844be5e818",
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "summary": {
+    "instrumented_diagnostic": true,
+    "acceptance": false,
+    "state": "controller-error",
+    "assertion_evidence": false,
+    "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+    "original_sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+    "prior_test_seconds": 1785.886794511,
+    "prior_job_seconds": 2344,
+    "job_elapsed_status": "pending official completed-job receipt",
+    "instrumented_sha256": "f1c95bbbd2142439b39fa3d2ca66196d2d5465c6ffed43fc29adff1e39ff56cc",
+    "exit": 1,
+    "timeout": false,
+    "interrupted": false,
+    "process_reaped": true,
+    "elapsed_seconds": 16.387983831,
+    "terminal_summary": true,
+    "counts": {
+      "tests": 2,
+      "pass": 0,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "error": "JSONDecodeError(\"Expecting ',' delimiter: line 1 column 1897 (char 1896)\")",
+    "restored_sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+    "source_restored": true
+  },
+  "official_job_seconds": 88.0,
+  "cumulative_test_seconds": 1802.274778342,
+  "cumulative_job_seconds": 2432.0,
+  "classification": "diagnostic parser failure; original 2 tests failed, raw evidence preserved; not acceptance",
+  "sha256": {
+    "artifact.zip": "13da053931a331c218085a965c3ab60291fd9b81898527e4a418c4061e27275f",
+    "files/control-hashes.json": "930396ad1e4ecc71c8806ed851faee4575f49ce5af02e869ce5ee7707b56240e",
+    "files/summary.json": "4b034a33648ef5e29f64dbdb9ce720c8fe3272d1dfb150195a854248a5dfa4e9",
+    "files/offline.cjs": "43bae8cdc5737bb3e7397032ebdd4d45684a061fe143ca02ec375edb7f80d132",
+    "files/browser-revisions.json": "f306eed529599b1eaf2f8a85db9de2b23e1a3fe36c2b66434b7c9434fb627a99",
+    "files/quota-cut-webkit-1100.png": "73966c8a0c2bbc347654d589b26516dc66838d9d804da94f3958e336617faa98",
+    "files/result.tap": "6d03b8bf4e9c97fc1e8c8acd22e0dad18426a5d2ca941f4242716e9cd508f02b",
+    "files/instrumented.test.cjs": "f1c95bbbd2142439b39fa3d2ca66196d2d5465c6ffed43fc29adff1e39ff56cc",
+    "files/source.json": "112f5fa2eed406ba33d97a591527f861d784f1dc8965880a090e1c5012cd3730",
+    "files/quota-cut-chromium-1100.png": "11c68ebc0fa74ce50c4952bbe583885d6364385a8da7c076b3417a11b36d4af0",
+    "files/prepare.py": "6b0592f6aefff31e39b2c0d730e6f33fca9215fb2db1dd165e2ad9d372e594a4",
+    "files/loaded/5871b560385d139541510e336eb799f61548c79a9a1788a42fb5513fd6a12e82.json": "82848519f13a10b2e8bfe230dbf04ce07ffde56083bb895af5870f2d6041fc8b"
+  }
+}

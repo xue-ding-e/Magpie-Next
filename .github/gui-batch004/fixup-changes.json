@@ -1,0 +1,19 @@
+{
+  "v1_commit": "84b500a3e1b3dd985fcdab8e693950b4356500b8",
+  "product": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "purpose": "Immutable quota diagnostic receipts and cumulative budget only; exact linear control chain/fetch depth update required for this fixup. No runner, guard, test selection or acceptance changes.",
+  "changed_paths": [
+    ".github/gui-batch004/README.md",
+    ".github/gui-batch004/budget.py",
+    ".github/gui-batch004/control-hashes.json",
+    ".github/gui-batch004/cumulative-receipt.json",
+    ".github/gui-batch004/fixup-changes.json",
+    ".github/gui-batch004/gate.py",
+    ".github/gui-batch004/inventory.json",
+    ".github/gui-batch004/quota-diagnostic-jobs.json",
+    ".github/gui-batch004/quota-diagnostic-outcome.json",
+    ".github/gui-batch004/quota-diagnostic-summary.json",
+    ".github/gui-batch004/selftest.py",
+    ".github/workflows/gui-batch004.yml"
+  ]
+}

@@ -21,8 +21,22 @@
     "job_seconds": 35,
     "independent_review_status": "pending parent receipt review; resource charge conservative and not an acceptance claim"
   },
-  "spent_test_seconds": 1785.886794511,
-  "spent_job_seconds": 2344,
+  "spent_test_seconds": 1802.274778342,
+  "spent_job_seconds": 2432,
   "maximum_test_seconds": 28800,
-  "maximum_job_seconds": 43200
+  "maximum_job_seconds": 43200,
+  "before_quota_diagnostic_test_seconds": 1785.886794511,
+  "before_quota_diagnostic_job_seconds": 2344,
+  "quota_diagnostic": {
+    "run": 41603192722,
+    "head": "7e31c76e2091c001db9556a858d46d844be5e818",
+    "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+    "outcome_sha256": "5294f898ac38ac219bc910aaa8c4d088cb3ec5823856d4c9eb824d9b6ae87f73",
+    "summary_sha256": "4b034a33648ef5e29f64dbdb9ce720c8fe3272d1dfb150195a854248a5dfa4e9",
+    "jobs_sha256": "dc7070130f0ab79affae248e717288a597b28e4e2f4f528cad7fb5ff5c62ec40",
+    "test_seconds": 16.387983831,
+    "job_seconds": 88,
+    "acceptance": false,
+    "classification": "Instrumented diagnostic controller JSONDecodeError; process reaped and source restored. Resource debt only; original quota failure and whole827 coverage are unchanged."
+  }
 }

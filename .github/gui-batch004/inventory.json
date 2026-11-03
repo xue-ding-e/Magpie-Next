@@ -6660,12 +6660,12 @@
   "max_report_bytes": 314572800,
   "minimum_free_bytes": 1073741824,
   "flow_budget": {
-    "spent_test_seconds": 1785.886794511,
-    "spent_job_seconds": 2344,
+    "spent_test_seconds": 1802.274778342,
+    "spent_job_seconds": 2432,
     "maximum_test_seconds": 28800,
     "maximum_job_seconds": 43200,
     "receipt": "cumulative-receipt.json",
-    "note": "Prior GUI batch003 actual controller740.128771477 seconds and official job797 seconds retained. Separate no-op scheduling sentinel41600206909 charges0 test and35 executed-job seconds, including intentional failed sentinel. No test reset, automatic retry or ceiling extension."
+    "note": "Prior GUI batch003 actual controller740.128771477 seconds and official job797 seconds retained. Separate no-op scheduling sentinel41600206909 charges0 test and35 executed-job seconds, including intentional failed sentinel. No test reset, automatic retry or ceiling extension. Quota diagnostic41603192722 adds16.387983831 test/88 job seconds despite controller error; no acceptance or coverage credit."
   },
   "outer_seconds": 1860,
   "job_ceiling_seconds": 3300,
