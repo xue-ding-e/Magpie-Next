@@ -1,0 +1,10 @@
+{
+  ".github/quota-fold-pair/README.md": "bfadaee2c0fd80ec9e5e89b57cbb61cc262fb23a1becde25cc35f767546749e8",
+  ".github/quota-fold-pair/gate.py": "106d3951e63903d75d1a0b1da9fe9ba1320bef123e27ad1f9d6fdf11d42c5ecb",
+  ".github/quota-fold-pair/offline.cjs": "43bae8cdc5737bb3e7397032ebdd4d45684a061fe143ca02ec375edb7f80d132",
+  ".github/quota-fold-pair/package-lock.json": "4a89b7aeb34c4beee2dc974e227dddce2d7c73d97e2c27d9da85fac1c33dfa43",
+  ".github/quota-fold-pair/package.json": "c070188c751622e9715cfc4746e38b76c55b0d0b6d5dea0c0df77307ec32ae25",
+  ".github/quota-fold-pair/run.py": "49b0a2ec5d62485893ca25cfe853fb2975f96aa895325ba02529f7c12e6f3f21",
+  ".github/quota-fold-pair/selftest.py": "1e175a3a2ab66b59f8d4207d6d4dc8eb320760b308d4e0fc82b12bd43ce799f9",
+  ".github/quota-fold-pair/source.json": "aa2491792e737a7a725269ea5e6954740d3ae49eb6bd15ec22c1d3ee775d2158"
+}

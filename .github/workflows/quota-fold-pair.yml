@@ -1,0 +1,87 @@
+name: Usage-fold unchanged-fixture base candidate pair
+on:
+  push:
+    branches: [validation/quota-fold-pair-20261103]
+permissions:
+  contents: read
+concurrency:
+  group: auth-independent-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  quota_fold_pair:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ff997c492a908293dc0de152ee20f83152b88aa9
+          path: base
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: d076db4c3cfaf85fc1def65efbe40936d2c7bf02
+          path: candidate
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Frozen source, parent, identity and unchanged fixture gate
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '106d3951e63903d75d1a0b1da9fe9ba1320bef123e27ad1f9d6fdf11d42c5ecb  .github/quota-fold-pair/gate.py' | sha256sum -c -
+          echo 'fbd181002bac85614e7a0e87f4ee5d9ae20e5b8f329e80e56fb2e00d9e04a17e  .github/quota-fold-pair/control-hashes.json' | sha256sum -c -
+          python3 -I -B .github/quota-fold-pair/gate.py
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        timeout-minutes: 3
+        with:
+          node-version: 22.23.4
+      - name: Install locked Playwright without scripts
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/quota-fold-pair-install-home"
+          export HOME="$RUNNER_TEMP/quota-fold-pair-install-home" npm_config_userconfig=/dev/null
+          export npm_config_cache="$HOME/npm-cache"
+          npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --prefix .github/quota-fold-pair
+      - name: Install official matched Chromium and WebKit
+        timeout-minutes: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/quota-fold-pair-install-home"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/quota-fold-pair-browsers"
+          node .github/quota-fold-pair/node_modules/playwright/cli.js install --with-deps chromium webkit
+          echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+      - name: Lightweight positive and negative controls
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = v22.23.4
+          python3 -I -B .github/quota-fold-pair/selftest.py
+      - name: Sequential base and candidate usage-fold comparison
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=30s 420s python3 -I -B .github/quota-fold-pair/run.py
+      - name: Preserve every completed or partial original fixture result
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: quota-fold-pair-${{ github.sha }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7

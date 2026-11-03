@@ -1,0 +1,34 @@
+{
+  "base": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "base_tree": "bc56abd9c642a1315ea3a3f32a30d9998e15137a",
+  "candidate": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+  "candidate_tree": "9982a08791c91d2c958f3c710ac8b67bbb5c22c5",
+  "branch": "validation/quota-fold-pair-20261103",
+  "author_name": "Qing Liang",
+  "author_email": "106448173+xue-ding-e@users.noreply.github.com",
+  "files": [
+    {
+      "path": "internal/gui/tests/usage-fold.test.cjs",
+      "sha256": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+      "tests": [
+        "chromium en: several accounts: one in full, the others in brief, each remembered",
+        "chromium zh: several accounts: one in full, the others in brief, each remembered",
+        "chromium: 17 subscriptions and 29 accounts, most on one screen",
+        "webkit en: several accounts: one in full, the others in brief, each remembered",
+        "webkit zh: several accounts: one in full, the others in brief, each remembered",
+        "webkit: 17 subscriptions and 29 accounts, most on one screen"
+      ]
+    }
+  ],
+  "base_css_sha256": "a99f2ff5467b337528268530761b092d5580fb52131ee2d858a76347c8a39ae9",
+  "candidate_css_sha256": "3fe4704e3a47d068ac7020c640ce96d2d1fec82148da41fb2390e845857a9b4b",
+  "prior_test_seconds": 2551.335441069,
+  "prior_job_seconds": 3311,
+  "per_file_seconds": 180,
+  "baseline_seconds": 180,
+  "candidate_seconds": 180,
+  "job_seconds": 2100,
+  "pair_seconds": 360,
+  "prior_run": "41621675336",
+  "prior_outcome_sha256": "22c4264e4d6baf2472a7113404d54710d0ea36824c6f728f3f9c7f5d48bd3ffe"
+}
