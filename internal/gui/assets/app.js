@@ -21785,6 +21785,7 @@ function renderRedact(s, keep) {
   i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save(); else if (e.key === "Escape") { i.value = words; i.blur(); } };
   i.onblur = save;
   row(t("Masked words"), t("Your own words to keep from vendors, separated by commas"), i);
+  if (typeof renderLocalDictionary === "function") renderLocalDictionary(row);
   renderRedactRules(s, row);
   // how it is found: the rules on every request that masks anything, and
   // the local model on top of them, for what no pattern can tell

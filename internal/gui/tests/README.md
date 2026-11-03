@@ -2472,3 +2472,9 @@ does. Both engines, at 440px. The reckoning itself is covered by
 `TestHistoricalWindowHoldsUsesEachWindowsOwnReading`,
 `TestWindowHoldsResetBeforeRefillReading` and
 `TestWindowHoldsDryAgainAfterReset`.
+
+`local-dictionary.test.cjs` covers the Next local-only literal dictionary editor
+with synthetic API data: explicit save/cancel, exact comma/Unicode preservation,
+opt-in reveal, stale-revision errors retaining the draft, and Escape. It requires
+the repository-pinned Playwright browsers; passing Node syntax checks does not
+replace browser execution. No real passwords or user config are read.
