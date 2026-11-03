@@ -848,6 +848,8 @@ body.window .field.solo { grid-column: auto; }
    its one column is the window's width, which a long count would
    otherwise stretch past the card's edge */
 .quota-windows .quota { display: grid; grid-row: span 3; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); row-gap: 0; }
+/* A single window uses the whole card, rather than an empty second column. */
+.quota-windows > .quota:only-child { grid-column: 1 / -1; }
 .quota-windows .quota-track { align-self: start; }
 /* a narrow card puts the count under the window's name rather than
    squeezing the name a character a line and the count past the edge;
