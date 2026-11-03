@@ -1,0 +1,91 @@
+"""Bound exact prior GUI costs plus separately classified no-op scheduling costs."""
+import datetime as dt
+import hashlib
+import json
+import math
+from pathlib import Path
+
+CONTROL = Path(__file__).resolve().parent
+
+
+def load(name):
+    return json.loads((CONTROL / name).read_text())
+
+
+def digest(name):
+    return hashlib.sha256((CONTROL / name).read_bytes()).hexdigest()
+
+
+def seconds(value):
+    assert isinstance(value, (int, float)) and not isinstance(value, bool)
+    assert math.isfinite(value) and value >= 0
+    return value
+
+
+def job_seconds(payload, run, head):
+    assert payload['total_count'] == len(payload['jobs']) > 0
+    seen, total = set(), 0
+    for job in payload['jobs']:
+        assert job['run_id'] == run and job['head_sha'] == head and job['id'] not in seen
+        seen.add(job['id'])
+        assert job['status'] == 'completed' and job['conclusion'] is not None
+        # Skipped records sometimes have negative GitHub timestamp pairs. No
+        # execution occurred; retain official bytes without inventing duration.
+        if job['conclusion'] == 'skipped':
+            continue
+        started = dt.datetime.fromisoformat(job['started_at'].replace('Z', '+00:00'))
+        ended = dt.datetime.fromisoformat(job['completed_at'].replace('Z', '+00:00'))
+        total += seconds((ended - started).total_seconds())
+    return total
+
+
+def admitted_budget(manifest):
+    receipt = load('cumulative-receipt.json')
+    assert receipt['source'] == manifest['product'] == 'ff997c492a908293dc0de152ee20f83152b88aa9'
+    assert digest('prior-ledger.json') == receipt['prior_ledger_sha256'] == '186c852350cf25b6eefd15f840b0e29ae70fefb7fa6a9b9c85bfc4a814580661'
+    assert digest('prior-outcome.json') == receipt['prior_outcome_sha256'] == '4d36fed543eacba7f23451016ad9c6926d1ecf51ed3eaa3b1402e5dadbb66c33'
+    assert digest('prior-job.json') == receipt['prior_jobs_sha256']
+    prior, outcome, jobs = load('prior-ledger.json'), load('prior-outcome.json'), load('prior-job.json')
+    assert receipt['prior_run'] == outcome['run'] == 41598441535
+    assert receipt['prior_head'] == outcome['head'] == 'f2ccdbd931b038baa87a66b4fcfe8745cd13a915'
+    assert prior['source'] == outcome['source'] == receipt['source']
+    assert prior['cumulative_before_batch']['spent_test_seconds'] == receipt['before_prior_batch_test_seconds'] == 1045.758023034
+    assert prior['cumulative_before_batch']['spent_job_seconds'] == receipt['before_prior_batch_job_seconds'] == 1512
+    actual_test = seconds(prior['elapsed_seconds'])
+    actual_job = job_seconds(jobs, 41598441535, receipt['prior_head'])
+    assert actual_test == receipt['prior_batch_controller_seconds'] == outcome['test_seconds'] == 740.1287714770001
+    assert actual_job == receipt['prior_batch_job_seconds'] == outcome['official_job_seconds'] == 797
+    test_after = receipt['before_prior_batch_test_seconds'] + actual_test
+    job_after = receipt['before_prior_batch_job_seconds'] + actual_job
+    assert test_after == receipt['after_prior_batch_test_seconds'] == outcome['cumulative_test_seconds'] == prior['cumulative_test_seconds'] == 1785.886794511
+    assert job_after == receipt['after_prior_batch_job_seconds'] == outcome['cumulative_job_seconds'] == 2309
+    sentinel = receipt['sentinel']
+    assert digest('sentinel-outcome.json') == sentinel['outcome_sha256'] == '1fb45e7e16c2cf9bc2f8bc43b934812b7685d9c712b1432cee5da1375a0b20d5'
+    assert digest('sentinel-jobs.json') == sentinel['jobs_sha256'] == 'c8f23e247a6b8aad783d543a730cebc33704ede2c567bdd1fa8d1a15f5675fb3'
+    sjobs, soutcome = load('sentinel-jobs.json'), load('sentinel-outcome.json')
+    assert sentinel['run'] == soutcome['run'] == 41600206909
+    assert sentinel['head'] == soutcome['head'] == 'bdb3b893b0b8a3db298343e206bedafcf8473cda'
+    assert soutcome['source'] == receipt['source']
+    assert {j['name']: j['conclusion'] for j in sjobs['jobs']} == soutcome['results']
+    assert soutcome['results']['optional_gui'] == 'skipped'
+    assert soutcome['results']['failed_package_sentinel'] == 'failure'
+    assert soutcome['purpose'] == 'No-op scheduling evidence; no publisher or build execution'
+    sentinel_test = seconds(sentinel['test_seconds'])
+    sentinel_job = job_seconds(sjobs, 41600206909, sentinel['head'])
+    assert sentinel_test == soutcome['test_seconds'] == 0
+    assert sentinel_job == sentinel['job_seconds'] == soutcome['official_job_seconds'] == 35
+    budget = manifest['flow_budget']
+    test_total, job_total = test_after + sentinel_test, job_after + sentinel_job
+    assert test_total == budget['spent_test_seconds'] == receipt['spent_test_seconds'] == 1785.886794511
+    assert job_total == budget['spent_job_seconds'] == receipt['spent_job_seconds'] == 2344
+    assert budget['maximum_test_seconds'] == receipt['maximum_test_seconds'] == 28800
+    assert budget['maximum_job_seconds'] == receipt['maximum_job_seconds'] == 43200
+    assert test_total + manifest['batch_seconds'] <= 28800, '8h test budget exhausted'
+    assert job_total + manifest['job_ceiling_seconds'] <= 43200, '12h job budget exhausted'
+    return {'spent_test_seconds': test_total, 'spent_job_seconds': job_total,
+            'remaining_test_seconds_before_batch': 28800 - test_total,
+            'remaining_job_seconds_before_batch': 43200 - job_total,
+            'prior_gui_run': 41598441535, 'prior_batch_controller_seconds': actual_test,
+            'no_op_scheduling_run': 41600206909, 'no_op_scheduling_test_seconds': 0,
+            'no_op_scheduling_job_seconds': 35, 'batch_reservation_test_seconds': 1800,
+            'batch_reservation_job_seconds': 3300}

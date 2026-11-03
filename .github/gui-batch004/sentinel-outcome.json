@@ -1,0 +1,30 @@
+{
+  "run": 41600206909,
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "head": "bdb3b893b0b8a3db298343e206bedafcf8473cda",
+  "results": {
+    "plan": "success",
+    "package_sentinel": "success",
+    "optional_gui": "skipped",
+    "fixed_publish_sentinel": "success",
+    "legacy_publish_sentinel": "skipped",
+    "failed_package_sentinel": "failure",
+    "blocked_publish_sentinel": "skipped",
+    "audit": "success",
+    "dryrun_publish_sentinel": "skipped",
+    "offmain_publish_sentinel": "skipped"
+  },
+  "official_job_seconds": 35.0,
+  "test_seconds": 0,
+  "purpose": "No-op scheduling evidence; no publisher or build execution",
+  "overall": "expected failure",
+  "hashes": {
+    "magpie-publish-skip-41600206909-audit.log": "d5f2422c00ecdcdd4c760ed17a9bd2c32e17648213959d4aff17be4d1b415421",
+    "magpie-publish-skip-41600206909-run.json": "69466d03e5d05c6adda63275bebd94db238835382715ee690f0f071568bf366f",
+    "magpie-publish-skip-41600206909-jobs.json": "c8f23e247a6b8aad783d543a730cebc33704ede2c567bdd1fa8d1a15f5675fb3",
+    "magpie-publish-skip-41600206909-failed_package_sentinel.log": "d543ade7ab90ad1dc68de73186a7b66fd71a234312a882651484df927349be13",
+    "magpie-publish-skip-41600206909-plan.log": "5dd026427cca38ff0ff0ed86ccc4ad6ccd2a0ee1f6b85a64b74cb729faad1cd8",
+    "magpie-publish-skip-41600206909-fixed_publish_sentinel.log": "9446eb6a288f71a64b365a63d8bb130abd36f0cfcce90716980e858976b55b7d",
+    "magpie-publish-skip-41600206909-package_sentinel.log": "7af9b5a3a2c6f4c60f5b6ae216c4e8f4b48da0222c273a554d58e79b14f188be"
+  }
+}

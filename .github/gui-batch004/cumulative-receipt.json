@@ -1,0 +1,28 @@
+{
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "prior_run": 41598441535,
+  "prior_head": "f2ccdbd931b038baa87a66b4fcfe8745cd13a915",
+  "prior_ledger_sha256": "186c852350cf25b6eefd15f840b0e29ae70fefb7fa6a9b9c85bfc4a814580661",
+  "prior_outcome_sha256": "4d36fed543eacba7f23451016ad9c6926d1ecf51ed3eaa3b1402e5dadbb66c33",
+  "prior_jobs_sha256": "e5789a9ff3ccac5d5f0bbcc8fd7979673ffad7aaac84c00355017db2d24c38dd",
+  "before_prior_batch_test_seconds": 1045.758023034,
+  "before_prior_batch_job_seconds": 1512,
+  "prior_batch_controller_seconds": 740.1287714770001,
+  "prior_batch_job_seconds": 797,
+  "after_prior_batch_test_seconds": 1785.886794511,
+  "after_prior_batch_job_seconds": 2309,
+  "sentinel": {
+    "run": 41600206909,
+    "head": "bdb3b893b0b8a3db298343e206bedafcf8473cda",
+    "purpose": "no-op scheduling controls; not browser/product coverage",
+    "outcome_sha256": "1fb45e7e16c2cf9bc2f8bc43b934812b7685d9c712b1432cee5da1375a0b20d5",
+    "jobs_sha256": "c8f23e247a6b8aad783d543a730cebc33704ede2c567bdd1fa8d1a15f5675fb3",
+    "test_seconds": 0,
+    "job_seconds": 35,
+    "independent_review_status": "pending parent receipt review; resource charge conservative and not an acceptance claim"
+  },
+  "spent_test_seconds": 1785.886794511,
+  "spent_job_seconds": 2344,
+  "maximum_test_seconds": 28800,
+  "maximum_job_seconds": 43200
+}

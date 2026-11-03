@@ -1,0 +1,37 @@
+{
+  "prior_full_tree_migration": {
+    "sha256": "cfadbdf644c9010641087ba19d7783362b1330a16bdc36299e92168b67b76878",
+    "local_archive": "magpie-auth-gui-batch003-v1-20261103/.github/gui-batch003/source-migration.json",
+    "not_replicated_in_git": false
+  },
+  "prior_old_full_tree_metadata": {
+    "sha256": "ebb8afc78b080acd3aca34f231225810d3d807cfd10b66a5d7e0084e35e33dee",
+    "local_archive": "magpie-auth-gui-batch003-v1-20261103/.github/gui-batch003/old-source-tree.json",
+    "not_replicated_in_git": true
+  },
+  "prior_current_full_tree_metadata": {
+    "sha256": "63e544bbc3bd2c04d26fb538c5dd6def265e9f05417c580f3e46a16508495d8c",
+    "local_archive": "magpie-auth-gui-batch003-v1-20261103/.github/gui-batch003/current-source-tree.json",
+    "not_replicated_in_git": true
+  },
+  "prior_control_freeze": {
+    "sha256": "6ba729bceea7c5640679ad9005ef334eb59b1455e4c6b97b8cb9c50125ad8b09",
+    "local_archive": "magpie-auth-gui-batch003-v1-20261103/FROZEN-LOCAL.json",
+    "not_replicated_in_git": true
+  },
+  "old_partial_105_observations": {
+    "sha256": "fd1061fe0ab5a6033ab874d2aa014cc4f5517007d32f347207a241d229aba6a8",
+    "local_archive": "magpie-auth-gui-batch003-v1-20261103/.github/gui-batch003/old-partial-observations.json",
+    "not_replicated_in_git": true
+  },
+  "prior_artifact_members": {
+    "sha256": "6313b64cc555ccd553eeb126edc50673ec85fa473612bc217bbe95d7f65cafeb",
+    "local_archive": "magpie-gui-batch003-artifact-41598441535/members.json",
+    "not_replicated_in_git": true
+  },
+  "required_gui_resource_and_external_witnesses": {
+    "sha256": "d695bcbe7efeb6c7cacc5ae6e044f5abe291f35873a4b6590ea30e2c105a1aaa",
+    "local_archive": "magpie-required-gui-artifact-41584865002/outcome.json",
+    "not_replicated_in_git": true
+  }
+}

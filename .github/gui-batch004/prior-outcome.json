@@ -1,0 +1,72 @@
+{
+  "run": 41598441535,
+  "head": "f2ccdbd931b038baa87a66b4fcfe8745cd13a915",
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "zip_sha256": "80eb12fc0a3a6fca5099e1f43d773f6fedc81ed453fe8f30509751ea744c4c40",
+  "ledger_sha256": "186c852350cf25b6eefd15f840b0e29ae70fefb7fa6a9b9c85bfc4a814580661",
+  "log_sha256": "879f81cfb8c07d4db6afaaebe4631b11a68f8a09015c9acd1efec2484ee044cc",
+  "members_sha256": "6313b64cc555ccd553eeb126edc50673ec85fa473612bc217bbe95d7f65cafeb",
+  "member_count": 562,
+  "counts": {
+    "tests": 557,
+    "pass": 555,
+    "fail": 2,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "executed": 32,
+  "passed_files": 31,
+  "not_run": 795,
+  "failed_files": {
+    "internal/gui/tests/quota-count-wrap.test.cjs": {
+      "state": "failed",
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+      "executed_in_batch": true,
+      "previous_state": "not-loaded",
+      "old_source_provenance": {
+        "source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+        "ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+        "ledger_run": 41544763327,
+        "state": "not_run",
+        "evidence": {
+          "state": "not_run",
+          "historical_state": "not-loaded",
+          "sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+          "executed_in_batch": false
+        },
+        "accepted_on_current_source": false
+      },
+      "report": "2500666c1ea51bdd",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "internal/gui/tests/quota-count-wrap.test.cjs"
+      ],
+      "counts": {
+        "tests": 2,
+        "pass": 0,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "terminal_summary": true,
+      "counts_consistent": true,
+      "passed": false,
+      "exit": 1,
+      "process_reaped": true,
+      "elapsed_seconds": 10.675507174000018,
+      "file_sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6"
+    }
+  },
+  "all_reaped": true,
+  "test_seconds": 740.1287714770001,
+  "official_job_seconds": 797.0,
+  "cumulative_test_seconds": 1785.886794511,
+  "cumulative_job_seconds": 2309.0,
+  "full_suite_gate": "RED"
+}
