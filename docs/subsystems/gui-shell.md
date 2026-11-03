@@ -26,11 +26,17 @@ snapshot format belong to [Providers and accounts](providers-accounts.md#exporti
 
 On desktop, Export writes `auth.json` inside a new `magpie-codex-*` directory in
 Downloads (or the normal home fallback), never to a caller-supplied path or over
-an existing auth.json. `steady.WriteFile` flushes before rename; a failed write
+an existing auth.json. The platform writer flushes before rename; a failed write
 cleans its temporary file, and cancellation observed before completion removes
 the new export. Once an explicit clipboard write or export has completed, closing
 the dialog does not undo it. Unix directory/file modes are 0700/0600; Windows
-inherits its directory ACL and is not protected by Unix mode bits. In browser mode,
+creates the directory and temporary file with explicit owner and protected DACLs
+for the process user, SYSTEM and Administrators. The actual descriptors are checked
+before any credential bytes are written; unsupported filesystems fail closed.
+The directory handle rejects reparse points and denies delete sharing during the
+export. No ACL on an existing profile or Downloads directory is changed.
+This does not protect credentials from the owning user, administrators, or a
+malicious filesystem/ancestor owner. In browser mode,
 Export initiates a download on the browser's computer, not on the web server.
 
 ## Responsibilities and sources of truth

@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 
 	"github.com/yetone/magpie/internal/provider"
-	"github.com/yetone/magpie/internal/steady"
 )
 
 // Set only after webGuard verifies its run-key cookie; a network header
@@ -105,16 +104,19 @@ func saveCodexAuthExport(ctx context.Context, dir string, b []byte) (string, err
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	dir, err := os.MkdirTemp(dir, "magpie-codex-")
+	dir, release, err := makeCodexAuthExportDirectory(dir)
 	if err != nil {
 		return "", err
 	}
+	defer release()
 	path := filepath.Join(dir, "auth.json")
 	if err := ctx.Err(); err != nil {
+		release()
 		_ = os.Remove(dir)
 		return "", err
 	}
-	if err := steady.WriteFile(path, b, 0o600); err != nil {
+	if err := writeCodexAuthExport(path, b); err != nil {
+		release()
 		_ = os.Remove(dir)
 		return "", err
 	}
@@ -122,6 +124,7 @@ func saveCodexAuthExport(ctx context.Context, dir string, b []byte) (string, err
 		if removeErr := os.Remove(path); removeErr != nil {
 			return "", removeErr
 		}
+		release()
 		_ = os.Remove(dir)
 		return "", err
 	}
