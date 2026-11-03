@@ -1,0 +1,12 @@
+{
+  ".github/quota-cut/README.md": "c44cf51cad77eaf05eea2bf2bd5cd355a9b32f934606f440ab2a548f60ceda3a",
+  ".github/quota-cut/gate.py": "448d55501462fcf7fbe87d7ed27f001928af5c097d2a3175cb10dd2fced434c5",
+  ".github/quota-cut/mock-test.cjs": "265b419f8afa7470c86ba07b18629ab0853839515025d7ef75fb2121f321a8e0",
+  ".github/quota-cut/offline.cjs": "43bae8cdc5737bb3e7397032ebdd4d45684a061fe143ca02ec375edb7f80d132",
+  ".github/quota-cut/package-lock.json": "4a89b7aeb34c4beee2dc974e227dddce2d7c73d97e2c27d9da85fac1c33dfa43",
+  ".github/quota-cut/package.json": "c070188c751622e9715cfc4746e38b76c55b0d0b6d5dea0c0df77307ec32ae25",
+  ".github/quota-cut/prepare.py": "6b0592f6aefff31e39b2c0d730e6f33fca9215fb2db1dd165e2ad9d372e594a4",
+  ".github/quota-cut/run.py": "fafae4767e89c59b2d311d5371bd04ab4e5ac28ed57d8a980cfef47ca602ca1d",
+  ".github/quota-cut/selftest.py": "6991ee99a65f9d05270a600cdb557ed5e89e900e9748acedb362df9605f5ee52",
+  ".github/quota-cut/source.json": "112f5fa2eed406ba33d97a591527f861d784f1dc8965880a090e1c5012cd3730"
+}

@@ -1,0 +1,11 @@
+// No Playwright, browser or network. Execute diagnostic with harmless fake engines.
+const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict');
+const [file,mode]=process.argv.slice(2),tests=[],logs=[],widths=[],waits=[];
+let closes=0,captures=0;
+const engine={launch:async()=>({newContext:async({viewport:{width}})=>({newPage:async()=>({setDefaultTimeout(){},route:async()=>{},goto:async()=>{},locator:()=>({nth:()=>({waitFor:async()=>{}})}),waitForTimeout:async(ms)=>{waits.push(ms)},evaluate:async()=>{widths.push(width);return Array.from({length:3},(_,i)=>({text:'synthetic count '+i,cut:mode!=='pass'&&width===1100&&i===0,diagnostic:{synthetic:true}}))},screenshot:async()=>{captures++;if(mode==='reject')throw Error('fake capture rejected');if(mode==='hang')return new Promise(()=>{});return Buffer.from('fake')},close:async()=>{}})}),close:async()=>{closes++}})};
+const fakeProcess={env:{AUTH_FULL_REPORTS:'/synthetic'},exitCode:0};
+vm.runInNewContext(fs.readFileSync(file,'utf8'),{require:n=>n==='node:test'?{test:(name,fn)=>tests.push({name,fn})}:n==='playwright'?{chromium:engine,webkit:engine}:require(n),__dirname:'/synthetic/internal/gui/tests',console:{log:s=>logs.push(s)},process:fakeProcess,setTimeout:(fn,ms)=>{assert.equal(ms,1500);return setTimeout(fn,5)},clearTimeout});
+(async()=>{assert.equal(tests.length,2);let failures=[];for(const t of tests){try{await t.fn()}catch(e){failures.push(e)}}assert.equal(closes,2);assert.deepEqual(widths,[600,980,990,1000,1010,1100,600,980,990,1000,1010,1100]);assert.ok(waits.every(ms=>ms===300));assert.equal(waits.length,12);
+if(mode==='pass'){assert.equal(failures.length,0);assert.equal(captures,0)}else{assert.equal(failures.length,2);assert.ok(failures.every(e=>e.code==='ERR_ASSERTION'&&e.message.includes('1100px: "synthetic count 0" is cut')));assert.equal(captures,2);assert.equal(logs.filter(s=>s.startsWith('QUOTA_CUT_DIAGNOSTIC ')).length,2)}
+if(mode==='reject'||mode==='hang'){assert.equal(fakeProcess.exitCode,1);assert.equal(logs.filter(s=>s.startsWith('QUOTA_DIAGNOSTIC_CAPTURE_FAILED ')).length,2)}else assert.equal(fakeProcess.exitCode,0);
+console.log('PASS mocked '+mode+': original assertions/engines/viewports/wait and cleanup preserved');})().catch(e=>{console.error(e);process.exitCode=1});

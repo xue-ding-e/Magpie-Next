@@ -1,0 +1,15 @@
+# Instrumented quota-cut diagnostic, not acceptance
+
+Prepared locally only. No CI, browser, Go or remote action is performed by preparing this directory.
+
+Stage only `.github/quota-cut/*` and `.github/workflows/quota-cut.yml` as one new single-parent commit on `validation/auth-quota-cut-diagnostic-20261103`, parent `ff997c492a908293dc0de152ee20f83152b88aa9`. The workflow denies any other repository/ref/event/source tree or control set. Existing workflows outside this exact branch must be independently checked before any push; this package does not authorize remote execution.
+
+The separate immutable-source checkout is verified before execution. Its one original test file is replaced temporarily by a hash-bound diagnostic copy and restored in `finally`, with before/after hashes and clean Git status checked. No CSS, thresholds, assertions, engines, six viewport values or original 300ms wait are changed. No new wait is added except a screenshot deadline raced against a hung capture. Per-engine original assertions remain fail-fast, as upstream.
+
+At each original evaluate, the diagnostic records quota-n, children/spans, labels, quota and quota-windows rectangles, client/scroll/offset sizes, computed styles and actual `.quota-windows.stacked` membership. On cut it logs those observations and captures a synthetic fixture screenshot. Capture rejection or hang is separately marked and never replaces the original assertion. A missing/invalid PNG, incomplete two-test TAP summary, interruption or timeout makes assertion evidence unavailable. Even a complete diagnostic is not an unchanged-fixture acceptance run or whole-suite pass.
+
+The exact batch003 package/lock and offline guard are preserved byte-for-byte. Tests inherit only PATH/LANG/TZ/browser location, with private HOME/XDG/APPDATA/TMP and no real credentials. Browser HTTP/WebSocket traffic is mocked or denied by the unchanged guard. Only owned process groups are killed and reaped; temporary directories are deleted only by their owning TemporaryDirectory. Reports survive any test/runner failure. SIGKILL/host loss can prevent finally and leave restoration/terminal evidence unavailable; never infer a result from such a run.
+
+Budgets: one Node process at most 120s; outer GNU timeout sends TERM at 145s and KILL after 5s (150s hard envelope). Job cap 25 minutes. Step caps total 24 minutes: checkouts 2+2, gate 1, Node setup 3, locked npm install 2, official matched browsers/deps 7, local controls 1, bounded runner 3, upload 3. Thus 15 minutes is not an honest worst-case budget. No retry or matrix. Prior costs only: 1785.886794511 test seconds and 2344 job seconds; this preparation adds no executed test/browser/CI claim. New job cost awaits official completed receipt.
+
+Lightweight test: `python3 -I -B .github/quota-cut/selftest.py /path/to/original/quota-count-wrap.test.cjs`. It runs only mocked fixtures and harmless Python children, including positive, cut, screenshot rejection/hang, preserved original assertions, exact source controls, hash tampering, timeout/reaping and incomplete summaries. It is not browser evidence.

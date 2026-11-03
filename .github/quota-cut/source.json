@@ -1,0 +1,15 @@
+{
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "tree": "bc56abd9c642a1315ea3a3f32a30d9998e15137a",
+  "fixture": "internal/gui/tests/quota-count-wrap.test.cjs",
+  "fixture_sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+  "branch": "validation/auth-quota-cut-diagnostic-20261103",
+  "instrumented_diagnostic": true,
+  "prior_test_seconds": 1785.886794511,
+  "prior_job_seconds": 2344,
+  "new_cost": "not executed; pending official receipt",
+  "process_seconds": 120,
+  "outer_seconds": 150,
+  "job_ceiling_seconds": 1500,
+  "instrumented_sha256": "f1c95bbbd2142439b39fa3d2ca66196d2d5465c6ffed43fc29adff1e39ff56cc"
+}
