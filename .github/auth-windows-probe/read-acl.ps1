@@ -1,5 +1,11 @@
 param([ValidateSet('Read','GrantSyntheticParentRead')][string]$Mode='Read')
 $ErrorActionPreference='Stop'
+# Preserve the actual loader exception if the matching built-in module still
+# cannot import. This is per-process only; no machine/user module setting changes.
+try { Import-Module Microsoft.PowerShell.Security -ErrorAction Stop }
+catch { throw ('AUTH_ACL_SECURITY_IMPORT_FAILED: '+$_.Exception.ToString()) }
+$securityModule=Get-Module Microsoft.PowerShell.Security
+if (!$securityModule) {throw 'AUTH_ACL_SECURITY_MODULE_MISSING'}
 $root=[IO.Path]::GetFullPath($env:AUTH_ACL_ROOT)
 $target=[IO.Path]::GetFullPath($env:AUTH_ACL_TARGET)
 if (!$root -or !$target.StartsWith($root + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Target outside owned synthetic root' }
@@ -23,4 +29,4 @@ $raw=[Security.AccessControl.RawSecurityDescriptor]::new($acl.GetSecurityDescrip
 $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | ForEach-Object {
  [ordered]@{SID=$_.IdentityReference.Value;Type=$_.AccessControlType.ToString();Rights=[int64]$_.FileSystemRights;Inherited=$_.IsInherited;Inheritance=$_.InheritanceFlags.ToString();Propagation=$_.PropagationFlags.ToString();AppliesHere=(($_.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -eq 0)}
 })
-[ordered]@{OwnerSID=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value;CurrentSID=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;Protected=$acl.AreAccessRulesProtected;NullDacl=($null -eq $raw.DiscretionaryAcl);SDDL=$acl.Sddl;Rules=$rules} | ConvertTo-Json -Depth 6 -Compress
+[ordered]@{PowerShellVersion=$PSVersionTable.PSVersion.ToString();SecurityModulePath=$securityModule.Path;OwnerSID=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value;CurrentSID=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;Protected=$acl.AreAccessRulesProtected;NullDacl=($null -eq $raw.DiscretionaryAcl);SDDL=$acl.Sddl;Rules=$rules} | ConvertTo-Json -Depth 6 -Compress

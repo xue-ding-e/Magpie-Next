@@ -37,7 +37,7 @@ func TestCodexAuthExportWindowsACLProbe(t *testing.T) {
 				defer cancel()
 				cmd := exec.CommandContext(ctx, filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-NonInteractive", "-File", helper, "-Mode", mode)
 				cmd.WaitDelay = 2 * time.Second
-				cmd.Env = append(os.Environ(), "AUTH_ACL_ROOT="+root, "AUTH_ACL_TARGET="+target)
+				cmd.Env = aclProbeEnvironment(os.Environ(), root, target)
 				b, err := cmd.CombinedOutput()
 				if err != nil {
 					t.Fatalf("ACL helper failed (%s): %v: %s", mode, err, b)
@@ -160,4 +160,31 @@ func TestCodexAuthWindowsACLMaskControls(t *testing.T) {
 			t.Fatal("malformed access mask accepted")
 		}
 	}
+	for _, input := range [][]string{
+		{"PATH=synthetic-path", "PSModulePath=synthetic-ps7", "HOME=synthetic-home"},
+		{"PATH=synthetic-path", "psmodulepath=synthetic-ps7", "PSMODULEPATH=duplicate", "AUTH_ACL_ROOT=old", "auth_acl_target=old", "HOME=synthetic-home"},
+		{"PATH=synthetic-path", "HOME=synthetic-home"},
+	} {
+		got := aclProbeEnvironment(input, "synthetic-root", "synthetic-target")
+		want := "PATH=synthetic-path|HOME=synthetic-home|AUTH_ACL_ROOT=synthetic-root|AUTH_ACL_TARGET=synthetic-target"
+		if strings.Join(got, "|") != want {
+			t.Fatal("child environment did not isolate Windows PowerShell module resolution")
+		}
+	}
+
+}
+
+// Windows PowerShell launched through an intermediate Go process otherwise
+// inherits PowerShell7 module paths. Clear only this child variable so the
+// unchanged Windows PowerShell host builds its matching default module paths.
+func aclProbeEnvironment(base []string, root, target string) []string {
+	out := make([]string, 0, len(base)+2)
+	for _, entry := range base {
+		key, _, _ := strings.Cut(entry, "=")
+		if strings.EqualFold(key, "PSModulePath") || strings.EqualFold(key, "AUTH_ACL_ROOT") || strings.EqualFold(key, "AUTH_ACL_TARGET") {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return append(out, "AUTH_ACL_ROOT="+root, "AUTH_ACL_TARGET="+target)
 }

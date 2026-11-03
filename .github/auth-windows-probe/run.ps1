@@ -34,7 +34,7 @@ try {
  $args=@('test','-mod=readonly','-count=1','-timeout=3m','-json','-run','^(TestCodexAuthExportWindowsACLProbe|TestCodexAuthWindowsClipboardAdapterProbe|TestCodexAuthWindowsACLMaskControls)$','./internal/gui')
  $process=Start-Process -FilePath $go -ArgumentList $args -WorkingDirectory $source -RedirectStandardOutput $stdout -RedirectStandardError $stderr -NoNewWindow -PassThru
  $started=$process.StartTime.ToUniversalTime()
- [ordered]@{pid=$process.Id;started=$started.ToString('o');toolchain=$version;source='a27f0957427b4ba86f7c140fa38068922adcc9ea';nativeUI=false} | ConvertTo-Json | Set-Content (Join-Path $report 'process.json')
+ [ordered]@{pid=$process.Id;started=$started.ToString('o');toolchain=$version;source='a27f0957427b4ba86f7c140fa38068922adcc9ea';nativeUI=$false} | ConvertTo-Json | Set-Content (Join-Path $report 'process.json')
  if (!$process.WaitForExit(1200000)) {
   $timedOut=$true
   $live=Get-Process -Id $process.Id -ErrorAction SilentlyContinue
@@ -48,7 +48,7 @@ try {
   if ($live -and $live.StartTime.ToUniversalTime() -eq $started) { & "$env:SystemRoot/System32/taskkill.exe" /PID $process.Id /T /F | Out-Null }
   $reaped=$process.WaitForExit(10000)
  }
- [ordered]@{exit=$code;timedOut=$timedOut;reaped=$reaped;nativeUI=false;scope='Real exporter DACL and host.Copy adapter only'} | ConvertTo-Json | Set-Content (Join-Path $report 'process-outcome.json')
+ [ordered]@{exit=$code;timedOut=$timedOut;reaped=$reaped;nativeUI=$false;scope='Real exporter DACL and host.Copy adapter only'} | ConvertTo-Json | Set-Content (Join-Path $report 'process-outcome.json')
 }
 if ($timedOut -or !$reaped) {exit 124}
 exit $code
