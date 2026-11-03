@@ -1,0 +1,12 @@
+{
+  "head": "336f2fe4d5b4d6c5070d1136c08fa9bbb0d543a6",
+  "before": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "raw_sha256": "2f4797c33f2f1fe93616dddd749f5e5443d997520c730b50cb80c5cbe0086c9d",
+  "files": [
+    {
+      "path": "internal/gui/tests/required-gui-negative.test.cjs",
+      "git_blob": "01ce0b606306a38d058d8dc4653dd80b02868db1",
+      "sha256": "fbae15a2abb516cbcc9d2f38118f300e91d65b91a7de1343307ad570af925fe8"
+    }
+  ]
+}

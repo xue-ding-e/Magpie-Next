@@ -1,0 +1,24 @@
+{
+  "prior_outcome_sha256": "32d35f52f4d976b1a4065e6771d89b1a44e7d76a8e7ddbd84b02387edc696591",
+  "prior_ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+  "prior_cumulative_test_seconds": 1013.758023034,
+  "prior_cumulative_job_seconds": 1274,
+  "required_gui_attempt1": {
+    "run_id": 41584387550,
+    "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+    "jobs_sha256": "e944f74c09ad2a190b104207b368c386c89588f935dac344fb1ad1f2338992dc",
+    "test_elapsed_seconds": 0,
+    "job_elapsed_seconds": 26,
+    "executed_job_ids": [
+      125746366899,
+      125746457633,
+      125746487511
+    ],
+    "skipped_jobs_note": "No execution charged; official skipped timestamps include negative intervals, retained unchanged. All positive/negative GUI jobs skipped, no browser run."
+  },
+  "known_spent_test_seconds": 1013.758023034,
+  "known_spent_job_seconds": 1300,
+  "latest_required_gui_receipt": "required-gui-receipt.json",
+  "spent_test_seconds": 1045.758023034,
+  "spent_job_seconds": 1512
+}

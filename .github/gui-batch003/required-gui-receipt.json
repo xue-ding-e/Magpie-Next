@@ -1,0 +1,13 @@
+{
+  "status": "verified_terminal",
+  "run_id": 41584865002,
+  "head_sha": "fb99fa33a5f56174bc279098deec43d9ea84ed1c",
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "test_elapsed_seconds": 30.638664386000016,
+  "charged_test_seconds": 32,
+  "job_elapsed_seconds": 212,
+  "official_jobs_sha256": "62a75db75ca26e346067933ca0c0722fa74ead1e4e579587d07f58e1c6477cee",
+  "test_evidence_sha256": "af3a78878a55dabb93630234b44843989641902300e3f9f1a4be0dcb5a8a0f67",
+  "outcome_sha256": "d695bcbe7efeb6c7cacc5ae6e044f5abe291f35873a4b6590ea30e2c105a1aaa",
+  "acceptance": "Terminal resource/accounting evidence. Parent reports independent requiredGUI proof review passed; no whole-suite acceptance or imported827 coverage."
+}

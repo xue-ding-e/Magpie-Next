@@ -1,0 +1,12 @@
+{
+  "positive/artifact.zip": {
+    "sha256": "170d08f3c0419979f6d8b6b5d6c7a5c3056e8ade53d2199f957fe40cba95208a",
+    "bytes": 3102,
+    "disposition": "Original complete artifact retained outside this Git draft; only verified digest is staged."
+  },
+  "negative/artifact.zip": {
+    "sha256": "ce82a6059bc122e34173c088db0b316969d237c9c544a67fd188170777db2d44",
+    "bytes": 2244,
+    "disposition": "Original complete artifact retained outside this Git draft; only verified digest is staged."
+  }
+}

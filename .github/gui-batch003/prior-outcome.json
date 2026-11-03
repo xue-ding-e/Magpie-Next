@@ -1,0 +1,294 @@
+{
+  "run": 41544763327,
+  "job": 125617521709,
+  "head": "3ab8bac751af707b4fbd67c3fd9aee82ceb2bdd5",
+  "source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+  "zip_sha256": "0bc517bc3208c64cbf48ea8fb28c658f0f3d0c6b0bca3511ff5e64429f21d136",
+  "ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+  "log_sha256": "5b5c174e02f0973190a0b1fad25955ad2714fedb22fd319aedc38286049cca93",
+  "states": {
+    "not_run": 803,
+    "passed_prior": 8,
+    "passed": 12,
+    "failed": 4
+  },
+  "new_execution_totals": {
+    "tests": 218,
+    "pass": 214,
+    "fail": 4,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "rows": [
+    {
+      "file": "internal/gui/tests/provider-concurrency.test.cjs",
+      "state": "passed",
+      "report": "ef80791b74f3f527",
+      "counts": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 71.53558894399998,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-curl-paste.test.cjs",
+      "state": "passed",
+      "report": "c4f563191b93c625",
+      "counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 29.073054696000014,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-detect-draft.test.cjs",
+      "state": "failed",
+      "report": "b0b8e988805115dc",
+      "counts": {
+        "tests": 20,
+        "pass": 19,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 119.24557239799998,
+      "exit": 1,
+      "errors": [
+        "'Each picked model with no models moved 333 to 332.140625'"
+      ]
+    },
+    {
+      "file": "internal/gui/tests/provider-detect-models.test.cjs",
+      "state": "passed",
+      "report": "763676a5dd301017",
+      "counts": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 21.733809965000006,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-detect.test.cjs",
+      "state": "passed",
+      "report": "7b9530ff2022825a",
+      "counts": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 27.927588660999987,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-discovery.test.cjs",
+      "state": "passed",
+      "report": "a50ab1e2a9e9c5e6",
+      "counts": {
+        "tests": 26,
+        "pass": 26,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 62.874754709,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-draft-picks.test.cjs",
+      "state": "failed",
+      "report": "a9431ac14e36390d",
+      "counts": {
+        "tests": 10,
+        "pass": 9,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 93.995291124,
+      "exit": 1,
+      "errors": [
+        "|-\n    locator.click: Timeout 5000ms exceeded.\n    Call log:\n      - waiting for locator('#modal:not([hidden]) .editor').getByRole('button', { name: 'Free only', exact: true })\n        - locator resolved to <button class=\"text action\" title=\"Pick only the free models (those the filter shows), unpicking the others\">Free only</button>\n      - attempting click action\n        - waiting for element to be visible, enabled and stable\n    "
+      ]
+    },
+    {
+      "file": "internal/gui/tests/provider-fetch-again.test.cjs",
+      "state": "passed",
+      "report": "c9e0ebbd76e67821",
+      "counts": {
+        "tests": 14,
+        "pass": 14,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 52.943125606999956,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-file-error.test.cjs",
+      "state": "passed",
+      "report": "af4f58bd560fc389",
+      "counts": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 11.001096831999973,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-find.test.cjs",
+      "state": "passed",
+      "report": "eb38c8eee2f5c064",
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 28.096534770000005,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-gemini.test.cjs",
+      "state": "failed",
+      "report": "9f0d313916e163e6",
+      "counts": {
+        "tests": 8,
+        "pass": 7,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 58.89354852600002,
+      "exit": 1,
+      "errors": [
+        "'900px: the thumb is 1.01531982421875px off the API picked'"
+      ]
+    },
+    {
+      "file": "internal/gui/tests/provider-insecure-tls.test.cjs",
+      "state": "passed",
+      "report": "614cb1149f537de8",
+      "counts": {
+        "tests": 60,
+        "pass": 60,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 199.372858382,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-levels-save.test.cjs",
+      "state": "failed",
+      "report": "2c0b8e4ec586483e",
+      "counts": {
+        "tests": 4,
+        "pass": 3,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 29.55578167699997,
+      "exit": 1,
+      "errors": [
+        "|-\n    locator.click: Timeout 5000ms exceeded.\n    Call log:\n      - waiting for getByRole('button', { name: 'Names & levels', exact: true })\n        - locator resolved to <button class=\"text action\" title=\"Rename the models agents see, or offer fewer of their reasoning levels\">Names & levels</button>\n      - attempting click action\n        - waiting for element to be visible, enabled and stable\n    "
+      ]
+    },
+    {
+      "file": "internal/gui/tests/provider-levels-scroll.test.cjs",
+      "state": "passed",
+      "report": "b3dd7543b8a6103e",
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 10.992305251000005,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-many-keys-proxy.test.cjs",
+      "state": "passed",
+      "report": "ce26fbe5863f5a1e",
+      "counts": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 21.999941057999933,
+      "exit": 0,
+      "errors": []
+    },
+    {
+      "file": "internal/gui/tests/provider-many-keys.test.cjs",
+      "state": "passed",
+      "report": "08b1a0ec39bcca52",
+      "counts": {
+        "tests": 16,
+        "pass": 16,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "elapsed_seconds": 60.77437721699994,
+      "exit": 0,
+      "errors": []
+    }
+  ],
+  "test_elapsed": 472.021900551,
+  "job_elapsed": 532,
+  "cumulative_test_seconds": 1013.758023034,
+  "cumulative_job_seconds": 1274,
+  "full_gui_passed": false
+}

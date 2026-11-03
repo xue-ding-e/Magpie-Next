@@ -1,0 +1,145 @@
+{
+  "total_count": 1,
+  "jobs": [
+    {
+      "id": 125617521709,
+      "run_id": 41544763327,
+      "workflow_name": "Full GUI recovery batch002 - sixteen unexecuted files",
+      "head_branch": "validation/auth-gui-batch002-20261102",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41544763327",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdP2NELQ",
+      "head_sha": "3ab8bac751af707b4fbd67c3fd9aee82ceb2bdd5",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125617521709",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41544763327/job/125617521709",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-11-02T23:21:13Z",
+      "started_at": "2026-11-02T23:21:26Z",
+      "completed_at": "2026-11-02T23:30:18Z",
+      "name": "gui_pilot",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-11-02T23:21:26Z",
+          "completed_at": "2026-11-02T23:21:27Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-11-02T23:21:27Z",
+          "completed_at": "2026-11-02T23:21:32Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-11-02T23:21:32Z",
+          "completed_at": "2026-11-02T23:21:36Z"
+        },
+        {
+          "name": "Frozen controls, product and complete 827-file inventory",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-11-02T23:21:36Z",
+          "completed_at": "2026-11-02T23:21:36Z"
+        },
+        {
+          "name": "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-11-02T23:21:36Z",
+          "completed_at": "2026-11-02T23:21:36Z"
+        },
+        {
+          "name": "Install integrity-locked README-tested Playwright without scripts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-11-02T23:21:36Z",
+          "completed_at": "2026-11-02T23:21:37Z"
+        },
+        {
+          "name": "Install official matched Chromium and WebKit on ephemeral runner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-11-02T23:21:37Z",
+          "completed_at": "2026-11-02T23:22:21Z"
+        },
+        {
+          "name": "Classifier preflight",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-11-02T23:22:21Z",
+          "completed_at": "2026-11-02T23:22:21Z"
+        },
+        {
+          "name": "Bounded two-file concurrency, full original engine/language loops",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 9,
+          "started_at": "2026-11-02T23:22:21Z",
+          "completed_at": "2026-11-02T23:30:13Z"
+        },
+        {
+          "name": "Preserve complete and incomplete synthetic file evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-11-02T23:30:13Z",
+          "completed_at": "2026-11-02T23:30:16Z"
+        },
+        {
+          "name": "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 18,
+          "started_at": "2026-11-02T23:30:16Z",
+          "completed_at": "2026-11-02T23:30:16Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-11-02T23:30:16Z",
+          "completed_at": "2026-11-02T23:30:16Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2026-11-02T23:30:16Z",
+          "completed_at": "2026-11-02T23:30:16Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-11-02T23:30:16Z",
+          "completed_at": "2026-11-02T23:30:16Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125617521709",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000004716,
+      "runner_name": "GitHub Actions 1000004716",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ]
+}

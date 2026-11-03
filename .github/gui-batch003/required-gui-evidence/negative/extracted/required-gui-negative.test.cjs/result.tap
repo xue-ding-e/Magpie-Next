@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: required GUI deliberate negative
+not ok 1 - required GUI deliberate negative
+  ---
+  duration_ms: 0.719936
+  type: 'test'
+  location: '/home/runner/work/Magpie-Next/Magpie-Next/source/internal/gui/tests/required-gui-negative.test.cjs:1:78'
+  failureType: 'testCodeFailure'
+  error: 'REQUIRED_GUI_EXPECTED_ASSERTION'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  operator: 'fail'
+  stack: |-
+    TestContext.<anonymous> (/home/runner/work/Magpie-Next/Magpie-Next/source/internal/gui/tests/required-gui-negative.test.cjs:1:129)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 267.573938

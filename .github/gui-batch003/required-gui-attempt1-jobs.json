@@ -1,0 +1,414 @@
+{
+  "total_count": 10,
+  "jobs": [
+    {
+      "id": 125746366899,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxFJsw",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746366899",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746366899",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-03T05:31:19Z",
+      "started_at": "2026-11-03T05:31:22Z",
+      "completed_at": "2026-11-03T05:31:36Z",
+      "name": "plan",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-11-03T05:31:23Z",
+          "completed_at": "2026-11-03T05:31:24Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-11-03T05:31:24Z",
+          "completed_at": "2026-11-03T05:31:28Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-11-03T05:31:28Z",
+          "completed_at": "2026-11-03T05:31:33Z"
+        },
+        {
+          "name": "Verify immutable diagnostic controls",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-11-03T05:31:33Z",
+          "completed_at": "2026-11-03T05:31:33Z"
+        },
+        {
+          "name": "Native-validation dependency sentinel and actual diff plan",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-11-03T05:31:33Z",
+          "completed_at": "2026-11-03T05:31:34Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-11-03T05:31:34Z",
+          "completed_at": "2026-11-03T05:31:34Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-11-03T05:31:34Z",
+          "completed_at": "2026-11-03T05:31:34Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-11-03T05:31:34Z",
+          "completed_at": "2026-11-03T05:31:34Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746366899",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000004757,
+      "runner_name": "GitHub Actions 1000004757",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 125746457633,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxKsIQ",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746457633",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746457633",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-11-03T05:31:37Z",
+      "started_at": "2026-11-03T05:31:39Z",
+      "completed_at": "2026-11-03T05:31:42Z",
+      "name": "zero_package",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-11-03T05:31:40Z",
+          "completed_at": "2026-11-03T05:31:40Z"
+        },
+        {
+          "name": "Artifact-only admission sentinel; no packaging",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-11-03T05:31:40Z",
+          "completed_at": "2026-11-03T05:31:40Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-11-03T05:31:40Z",
+          "completed_at": "2026-11-03T05:31:40Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746457633",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000004758,
+      "runner_name": "GitHub Actions 1000004758",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 125746458641,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxKwEQ",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746458641",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746458641",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-11-03T05:31:37Z",
+      "started_at": "2026-11-03T05:31:37Z",
+      "completed_at": "2026-11-03T05:31:36Z",
+      "name": "zero_gui",
+      "steps": [],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746458641",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": null,
+      "runner_name": null,
+      "runner_group_id": null,
+      "runner_group_name": null
+    },
+    {
+      "id": 125746487076,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxMfJA",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746487076",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746487076",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-11-03T05:31:42Z",
+      "started_at": "2026-11-03T05:31:42Z",
+      "completed_at": "2026-11-03T05:31:42Z",
+      "name": "positive_gui",
+      "steps": [],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746487076",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": null,
+      "runner_name": null,
+      "runner_group_id": null,
+      "runner_group_name": null
+    },
+    {
+      "id": 125746487511,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxMg1w",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746487511",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746487511",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-11-03T05:31:42Z",
+      "started_at": "2026-11-03T05:31:45Z",
+      "completed_at": "2026-11-03T05:31:54Z",
+      "name": "audit",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-11-03T05:31:46Z",
+          "completed_at": "2026-11-03T05:31:46Z"
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-11-03T05:31:46Z",
+          "completed_at": "2026-11-03T05:31:50Z"
+        },
+        {
+          "name": "Verify immutable diagnostic controls",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-11-03T05:31:50Z",
+          "completed_at": "2026-11-03T05:31:51Z"
+        },
+        {
+          "name": "Audit actual GitHub needs states",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 4,
+          "started_at": "2026-11-03T05:31:51Z",
+          "completed_at": "2026-11-03T05:31:51Z"
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-11-03T05:31:51Z",
+          "completed_at": "2026-11-03T05:31:51Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-11-03T05:31:51Z",
+          "completed_at": "2026-11-03T05:31:52Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746487511",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000004759,
+      "runner_name": "GitHub Actions 1000004759",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 125746487784,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxMh6A",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746487784",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746487784",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-11-03T05:31:42Z",
+      "started_at": "2026-11-03T05:31:42Z",
+      "completed_at": "2026-11-03T05:31:42Z",
+      "name": "negative_gui",
+      "steps": [],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746487784",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": null,
+      "runner_name": null,
+      "runner_group_id": null,
+      "runner_group_name": null
+    },
+    {
+      "id": 125746487932,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxMifA",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746487932",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746487932",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-11-03T05:31:42Z",
+      "started_at": "2026-11-03T05:31:42Z",
+      "completed_at": "2026-11-03T05:31:42Z",
+      "name": "negative_package",
+      "steps": [],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746487932",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": null,
+      "runner_name": null,
+      "runner_group_id": null,
+      "runner_group_name": null
+    },
+    {
+      "id": 125746487995,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxMiuw",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746487995",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746487995",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-11-03T05:31:42Z",
+      "started_at": "2026-11-03T05:31:42Z",
+      "completed_at": "2026-11-03T05:31:42Z",
+      "name": "positive_package",
+      "steps": [],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746487995",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": null,
+      "runner_name": null,
+      "runner_group_id": null,
+      "runner_group_name": null
+    },
+    {
+      "id": 125746488164,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxMjZA",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746488164",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746488164",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-11-03T05:31:42Z",
+      "started_at": "2026-11-03T05:31:42Z",
+      "completed_at": "2026-11-03T05:31:42Z",
+      "name": "required_skip",
+      "steps": [],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746488164",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": null,
+      "runner_name": null,
+      "runner_group_id": null,
+      "runner_group_name": null
+    },
+    {
+      "id": 125746488925,
+      "run_id": 41584387550,
+      "workflow_name": "Required changed-GUI artifact-only proof",
+      "head_branch": "validation/required-gui-20261103",
+      "run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/runs/41584387550",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOVSS0W88AAAAdRxMmXQ",
+      "head_sha": "6de54bd1d621612f33eb72e5725d5c821abfcd21",
+      "url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/actions/jobs/125746488925",
+      "html_url": "https://github.com/xue-ding-e/Magpie-Next/actions/runs/41584387550/job/125746488925",
+      "status": "completed",
+      "conclusion": "skipped",
+      "created_at": "2026-11-03T05:31:43Z",
+      "started_at": "2026-11-03T05:31:43Z",
+      "completed_at": "2026-11-03T05:31:42Z",
+      "name": "skip_package",
+      "steps": [],
+      "check_run_url": "https://api.github.com/repos/xue-ding-e/Magpie-Next/check-runs/125746488925",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": null,
+      "runner_name": null,
+      "runner_group_id": null,
+      "runner_group_name": null
+    }
+  ]
+}

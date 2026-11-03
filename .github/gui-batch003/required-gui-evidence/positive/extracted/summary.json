@@ -1,0 +1,53 @@
+{
+  "source": {
+    "head": "ff997c492a908293dc0de152ee20f83152b88aa9",
+    "before": "d2b0e0eaaab4c363d422a719cd7ddf429e7388ff",
+    "raw_sha256": "7b9331aa2f7134678eff9caa75a747b1ccb850d90105ea752753ed7cf1f585b5",
+    "files": [
+      {
+        "path": "internal/gui/tests/codex-auth-export-state.test.cjs",
+        "git_blob": "e18a13b77e3268a46a78a4d7e0c16142e1b846c7",
+        "sha256": "70883cc2ec2a0e36442932f18d4e9d91e2dd40e6eb3cbf8d63bacd052a35fcd1"
+      },
+      {
+        "path": "internal/gui/tests/codex-auth-export.test.cjs",
+        "git_blob": "b999edc022088dae33136325311985fc327423b1",
+        "sha256": "3c72e045d88b6a4bbfc2029f4fa5bc169e1fdd06f57ebd86b211ee6942b650f8"
+      }
+    ]
+  },
+  "results": [
+    {
+      "counts": {
+        "tests": 9,
+        "pass": 9,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "passed": true,
+      "exit": 0,
+      "file": "internal/gui/tests/codex-auth-export-state.test.cjs",
+      "elapsed_seconds": 0.8708471129999964,
+      "process_reaped": true
+    },
+    {
+      "counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "passed": true,
+      "exit": 0,
+      "file": "internal/gui/tests/codex-auth-export.test.cjs",
+      "elapsed_seconds": 29.25222594600001,
+      "process_reaped": true
+    }
+  ],
+  "full_gui_suite_passed": false,
+  "scope": "All cases in each changed GUI file only; complete827 requirements remain independent."
+}

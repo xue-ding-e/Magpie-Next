@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: chromium en: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 1 - chromium en: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 1713.479005
+  type: 'test'
+  ...
+# Subtest: chromium zh: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 2 - chromium zh: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 1631.863942
+  type: 'test'
+  ...
+# Subtest: chromium zh-TW: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 3 - chromium zh-TW: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 1475.456367
+  type: 'test'
+  ...
+# Subtest: chromium ja: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 4 - chromium ja: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 1500.384009
+  type: 'test'
+  ...
+# Subtest: chromium de: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 5 - chromium de: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 1503.320103
+  type: 'test'
+  ...
+# Subtest: webkit en: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 6 - webkit en: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 8330.936626
+  type: 'test'
+  ...
+# Subtest: webkit zh: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 7 - webkit zh: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 3901.893288
+  type: 'test'
+  ...
+# Subtest: webkit zh-TW: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 8 - webkit zh-TW: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 2466.211606
+  type: 'test'
+  ...
+# Subtest: webkit ja: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 9 - webkit ja: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 2869.059103
+  type: 'test'
+  ...
+# Subtest: webkit de: saved auth is masked, revealed explicitly and cleared on dismissal
+ok 10 - webkit de: saved auth is masked, revealed explicitly and cleared on dismissal
+  ---
+  duration_ms: 3040.975233
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 28857.12231

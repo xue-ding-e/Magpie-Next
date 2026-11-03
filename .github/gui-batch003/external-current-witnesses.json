@@ -1,0 +1,55 @@
+{
+  "status": "terminal_positive_original_witnesses_uncredited_to_full_suite",
+  "run_id": 41584865002,
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "accepted_into_suite": false,
+  "files": {
+    "internal/gui/tests/codex-auth-export-state.test.cjs": {
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "file_sha256": "70883cc2ec2a0e36442932f18d4e9d91e2dd40e6eb3cbf8d63bacd052a35fcd1",
+      "git_blob": "e18a13b77e3268a46a78a4d7e0c16142e1b846c7",
+      "original_fixture": true,
+      "intentional_negative": false,
+      "accepted_into_suite": false,
+      "counts": {
+        "tests": 9,
+        "pass": 9,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "process_reaped": true,
+      "elapsed_seconds": 0.8708471129999964,
+      "node": "v22.23.4",
+      "playwright": "1.62.1",
+      "runtime_evidence_status": "separate proof controls/job evidence; not independently promoted by batch003",
+      "artifact_summary_sha256": "a1efb4854f5982534093eb1357635c5558abd01f42f5b7babe9f236f4e636b9e"
+    },
+    "internal/gui/tests/codex-auth-export.test.cjs": {
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "file_sha256": "3c72e045d88b6a4bbfc2029f4fa5bc169e1fdd06f57ebd86b211ee6942b650f8",
+      "git_blob": "b999edc022088dae33136325311985fc327423b1",
+      "original_fixture": true,
+      "intentional_negative": false,
+      "accepted_into_suite": false,
+      "counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "process_reaped": true,
+      "elapsed_seconds": 29.25222594600001,
+      "node": "v22.23.4",
+      "playwright": "1.62.1",
+      "runtime_evidence_status": "separate proof controls/job evidence; not independently promoted by batch003",
+      "artifact_summary_sha256": "a1efb4854f5982534093eb1357635c5558abd01f42f5b7babe9f236f4e636b9e"
+    }
+  },
+  "note": "2 genuine current-source positive original-file executions retained outside827 coverage. Parent reports proof independently reviewed. Negative fixture excluded; cross-runner full-suite credit is not granted by this draft."
+}

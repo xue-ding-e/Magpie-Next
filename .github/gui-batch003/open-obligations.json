@@ -1,0 +1,26 @@
+{
+  "full_suite_gate": "RED",
+  "whole_suite_required": true,
+  "mandatory_current_source_files": 827,
+  "current_source_inherited_passes": 0,
+  "old_recovery_not_run": 803,
+  "old_recovery_executed": 24,
+  "unresolved_latest_failures": [
+    "internal/gui/tests/provider-detect-draft.test.cjs",
+    "internal/gui/tests/provider-draft-picks.test.cjs",
+    "internal/gui/tests/provider-gemini.test.cjs",
+    "internal/gui/tests/provider-levels-save.test.cjs"
+  ],
+  "latest_failures_proven_baseline": false,
+  "old_partial_run": 41438741797,
+  "old_partial_observed_top_level_failures": 105,
+  "old_partial_terminal_summary": false,
+  "old_partial_counts_are_complete_suite_totals": false,
+  "masked_preview_visual_cases_required": 10,
+  "unresolved_10px_visual_issue": true,
+  "old_or_partial_evidence_never_waives_current_source_or_visual_acceptance": true,
+  "excluded_css_commits": [
+    "2c53077ebb6bd8f34d34880a7ead19e18e54147b",
+    "75953a1f3da2e82a62c1b33559b8749a9cd5c20b"
+  ]
+}

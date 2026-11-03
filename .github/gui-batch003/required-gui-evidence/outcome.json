@@ -1,0 +1,31 @@
+{
+  "run": 41584865002,
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "status": "expected-negative-failure-with-successful-audit",
+  "positive_tests": 19,
+  "positive_pass": 19,
+  "negative_tests": 1,
+  "negative_expected_fail": 1,
+  "job_seconds": 212.0,
+  "test_seconds": 30.638664386000016,
+  "full_gui_passed": false,
+  "native_modal_UI_covered": false,
+  "files": {
+    "negative/artifact.zip": "ce82a6059bc122e34173c088db0b316969d237c9c544a67fd188170777db2d44",
+    "negative/extracted/browser-revisions.json": "f306eed529599b1eaf2f8a85db9de2b23e1a3fe36c2b66434b7c9434fb627a99",
+    "negative/extracted/required-gui-negative.test.cjs/result.tap": "9be4dea670a3fb1e2ab4afa38162da20fd8f10a8c0d91e0af3767b73c477e716",
+    "negative/extracted/source-proof.json": "05800af5fa846617fbde45d6cf5e03bbc1caad95fc73bf0302cf9e21d3150de6",
+    "negative/extracted/summary.json": "a5f157feb5ec9aee6e12c8be1b9b769dad2ef5b1325c246306d15088a283b01e",
+    "positive/artifact.zip": "170d08f3c0419979f6d8b6b5d6c7a5c3056e8ade53d2199f957fe40cba95208a",
+    "positive/extracted/browser-revisions.json": "f306eed529599b1eaf2f8a85db9de2b23e1a3fe36c2b66434b7c9434fb627a99",
+    "positive/extracted/codex-auth-export-state.test.cjs/result.tap": "7c0307d59f6a722a6e503a0fbf887621849e88807055a1f5a9cfdc1240a825ce",
+    "positive/extracted/codex-auth-export.test.cjs/result.tap": "a98bb1e6824855c2c308c8ba5ff13487ab10a1e47e699aa89f0b7278ce70f32f",
+    "positive/extracted/source-proof.json": "ee4ed78f3578b0de1d044ce8a2792a4127f607f00241cc2b5a3cc497315d2a97",
+    "positive/extracted/summary.json": "a1efb4854f5982534093eb1357635c5558abd01f42f5b7babe9f236f4e636b9e"
+  },
+  "observed_total_test_seconds": 1044.39668742,
+  "charged_test_seconds": 32,
+  "budget_spent_test_seconds": 1045.758023034,
+  "budget_spent_job_seconds": 1512.0,
+  "budget_note": "Positive official execution step31s plus rounded-up actual negative process1s; original first attempt26job/0test retained."
+}

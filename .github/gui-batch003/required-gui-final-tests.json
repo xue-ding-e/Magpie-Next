@@ -1,0 +1,36 @@
+{
+  "run_id": 41584865002,
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "actual_elapsed_verified": true,
+  "timing_scope": "sum_of_actual_gui_process_wall_seconds",
+  "complete_run_accounting": true,
+  "processes": [
+    {
+      "file": "internal/gui/tests/codex-auth-export-state.test.cjs",
+      "elapsed_seconds": 0.8708471129999964,
+      "purpose": "original_product",
+      "execution_source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "evidence": "required-gui-evidence/positive/extracted/summary.json#results[0]"
+    },
+    {
+      "file": "internal/gui/tests/codex-auth-export.test.cjs",
+      "elapsed_seconds": 29.25222594600001,
+      "purpose": "original_product",
+      "execution_source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "evidence": "required-gui-evidence/positive/extracted/summary.json#results[1]"
+    },
+    {
+      "file": "internal/gui/tests/required-gui-negative.test.cjs",
+      "elapsed_seconds": 0.5155913270000099,
+      "purpose": "intentional_negative_control",
+      "execution_source": "336f2fe4d5b4d6c5070d1136c08fa9bbb0d543a6",
+      "evidence": "required-gui-evidence/negative/extracted/summary.json#results[0]"
+    }
+  ],
+  "actual_gui_process_elapsed_seconds": 30.638664386000016,
+  "charged_test_seconds": 32,
+  "charge_policy": "ceil_positive_official_execute_step_seconds_plus_ceil_negative_process_seconds",
+  "positive_official_execute_step_seconds": 31,
+  "negative_actual_process_seconds": 0.5155913270000099,
+  "note": "Actual30.638664386 process seconds are separate from conservative32 budget charge. Negative assertion is control-only and never product827 evidence."
+}
