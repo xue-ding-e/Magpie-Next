@@ -20,13 +20,38 @@ for p in m.CI:
 for p in [b'main.go',b'internal/gui/web.go',b'internal/gui/assets/app.js',b'build/windows/winres.json',b'go.mod',b'go.sum',b'LICENSE']:
  expect(raw(p),(True,True))
 expect(raw(b'internal/new.go',b'A',b'000000'),(True,True));expect(raw(b'internal/old.go',b'D',after=b'000000'),(True,True))
-for p in [b'README.md',b'build/unknown.py',b'.github/workflows/other.yml',b'internal/gui/tests/reader.cjs',b'internal/gui/tests/a.test.cjs/evil',b'internal/gui/tests/a.test.cjs.extra',b'internal/unknown_test.go']:
+for p in [b'README.md',b'build/unknown.py',b'.github/workflows/other.yml',b'internal/gui/tests/reader.cjs',b'internal/gui/tests/a.test.cjs/evil',b'internal/gui/tests/a.test.cjs.extra']:
  reject(raw(p))
+# Go regressions are build inputs, but never authorize publication alone.
+for status,before,after in [(b'M',b'100644',b'100644'),(b'A',b'000000',b'100644'),(b'D',b'100644',b'000000')]:
+ regression=raw(b'internal/gateway/codex_input_numbers_test.go',status,before,after)
+ expect(regression,(True,False))
+ expect(regression+raw(b'internal/gateway/codex_backend.go'),(True,True))
+for p in [b'internal/test.go.extra',b'internal/foo_test.go/evil',b'internal//foo_test.go']:
+ reject(raw(p))
+reject(raw(b'internal/gateway/a_test.go',after=b'100755'))
 for data in [raw(b'internal/gui/tests/a.test.cjs',b'A',b'000000'),raw(b'internal/gui/tests/a.test.cjs',b'D',after=b'000000'),raw(b'internal/gui/tests/a.test.cjs',after=b'100755'),raw(b'main.go',b'T',after=b'120000'),b'bad',raw(b'a',status=b'R'),raw(b'a\nb'),raw(b''),raw(b'internal/../secret.go')]:reject(data)
 with tempfile.TemporaryDirectory(prefix='impact-git.') as d:
  def git(*args):return subprocess.check_output(['git',*args],cwd=d,stderr=subprocess.PIPE)
  git('init','-q');p=Path(d)/'internal/gui/tests/a.test.cjs';p.parent.mkdir(parents=True);p.write_text('old\n');git('add','.');before=git('write-tree').decode().strip();p.write_text('new\n');git('add','.');after=git('write-tree').decode().strip();expect(git('diff','--raw','--no-abbrev','-z','--no-renames',before,after,'--'),(False,False))
  p=Path(d)/'go.mod';p.write_text('module synthetic\n');git('add','.');after=git('write-tree').decode().strip();expect(git('diff','--raw','--no-abbrev','-z','--no-renames',before,after,'--'),(True,True))
+# Directory embeds consume test-looking filenames as product bytes. Exercise
+# real Git M/A/D evidence, alone and mixed with a genuine regression input.
+with tempfile.TemporaryDirectory(prefix='impact-embed-git.') as d:
+ def git(*args):return subprocess.check_output(['git',*args],cwd=d,stderr=subprocess.PIPE)
+ git('init','-q')
+ for root in ['internal/gui/assets','internal/omarchy/widget']:
+  for status in ['M','A','D']:
+   p=Path(d)/root/(status+'_test.go');p.parent.mkdir(parents=True,exist_ok=True)
+   if status!='A':p.write_text('old resource bytes\n')
+   git('add','.');before=git('write-tree').decode().strip()
+   if status=='D':p.unlink()
+   else:p.write_text('new resource bytes\n')
+   git('add','.');after=git('write-tree').decode().strip()
+   delta=git('diff','--raw','--no-abbrev','-z','--no-renames',before,after,'--')
+   expect(delta,(True,True))
+   expect(delta+raw(b'internal/gateway/numbers_test.go',b'A',b'000000'),(True,True))
+   expect(delta+test,(True,True))
 # Exercise real main output semantics against synthetic git evidence, no repository credentials.
 with tempfile.TemporaryDirectory(prefix='impact-main.') as d:
  oldenv=dict(os.environ);realgit=m.git;head='b'*40

@@ -1,18 +1,20 @@
 """Only verified regular GUI-test modifications may omit a redundant package.
+Go regression inputs require packaging, but do not authorize publication alone.
 All unknown/invalid diff evidence fails the impact job, blocking packaging.
 Validation is a separate job and is never path-filtered by this script.
 """
 import os,re,subprocess
 SHA=re.compile(r'[0-9a-f]{40}\Z')
 TEST=re.compile(rb'internal/gui/tests/[A-Za-z0-9_-]+\.test\.cjs\Z')
+GO_TEST=re.compile(rb'internal/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_]+_test\.go\Z')
 CI={b'.github/workflows/next-windows-package.yml',b'build/next-package-impact.py',b'build/next-package-impact_test.py'}
 def product_path(path):
  # Only identified inputs consumed by the existing native package build.
- return path in {b'main.go',b'go.mod',b'go.sum',b'LICENSE'} or (path.startswith(b'internal/') and path.endswith(b'.go') and not path.endswith(b'_test.go')) or path.startswith(b'internal/gui/assets/') or path.startswith(b'build/windows/')
+ return path in {b'main.go',b'go.mod',b'go.sum',b'LICENSE'} or (path.startswith(b'internal/') and path.endswith(b'.go') and not path.endswith(b'_test.go')) or path.startswith((b'internal/gui/assets/',b'internal/omarchy/widget/')) or path.startswith(b'build/windows/')
 def classify(raw):
  if not raw:return False,False,'unchanged-tree'
  fields=raw.split(b'\0');assert fields[-1]==b'' and len(fields)%2==1,'Malformed raw diff'
- ci_changed=False;product_changed=False
+ ci_changed=False;product_changed=False;go_tests_changed=False
  for i in range(0,len(fields)-1,2):
   meta,path=fields[i],fields[i+1]
   match=re.fullmatch(rb':([0-7]{6}) ([0-7]{6}) ([0-9a-f]{40}) ([0-9a-f]{40}) ([MADT])',meta)
@@ -27,11 +29,16 @@ def classify(raw):
    ci_changed=True
   elif TEST.fullmatch(path):
    assert regular,'Adding/deleting/renaming tests needs separate review'
+  # Directory embeds may contain Go-test-looking resource names. Product
+  # inputs must win over the test-only classification.
   elif product_path(path):
    product_changed=True
+  elif GO_TEST.fullmatch(path):
+   go_tests_changed=True
   else:raise AssertionError('Unclassified changed path; no package/publication decision')
  if product_changed:return True,True,'identified-product-input'
  if ci_changed:return True,False,'reviewed-ci-controls-only'
+ if go_tests_changed:return True,False,'go-regression-inputs-only'
  return False,False,'regular-gui-test-only'
 def git(*args):return subprocess.check_output(['git',*args],stderr=subprocess.PIPE)
 def main():
