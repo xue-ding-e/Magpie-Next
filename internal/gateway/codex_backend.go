@@ -1830,7 +1830,11 @@ func codexInputAs(body []byte, magpieModel, native bool) (_ []byte, compact bool
 		return body, false
 	}
 	var items []map[string]any
-	if json.Unmarshal(q["input"], &items) != nil {
+	// Preserve every nested number while keeping the existing map rewrite
+	// semantics (including duplicate-member normalization and key ordering).
+	decoder := json.NewDecoder(bytes.NewReader(q["input"]))
+	decoder.UseNumber()
+	if decoder.Decode(&items) != nil {
 		return body, false
 	}
 	changed := false
