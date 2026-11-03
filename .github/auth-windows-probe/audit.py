@@ -4,14 +4,19 @@ TOP=['TestCodexAuthExportWindowsACLProbe','TestCodexAuthWindowsClipboardAdapterP
 SUB=[TOP[0]+'/normal-inheritance',TOP[0]+'/broad-synthetic-parent']
 def classify(events,process):
  if process.get('timedOut') or process.get('reaped') is not True:return 'timeout-or-unreaped'
- terminal={};output='';dacl=[]
+ terminal={};output='';dacl=[];streams={}
  for e in events:
   output+=e.get('Output','')
+  key=(e.get('Package',''),e.get('Test',''));streams[key]=streams.get(key,'')+e.get('Output','')
   if e.get('Test') and e.get('Action') in ('pass','fail','skip'):
    name=e['Test']
    if name in terminal:return 'duplicate-terminal'
    terminal[name]=e['Action']
-  for match in re.finditer(r'AUTH_EXPORT_DACL_EVIDENCE (\{[^\n]+\})',e.get('Output','')):dacl.append(json.loads(match.group(1)))
+ for stream in streams.values():
+  for line in stream.splitlines():
+   if 'AUTH_EXPORT_DACL_EVIDENCE ' in line:
+    try:dacl.append(json.loads(line.split('AUTH_EXPORT_DACL_EVIDENCE ',1)[1]))
+    except (ValueError,TypeError):return 'malformed-acl-evidence'
  if set(terminal)!=set(TOP+SUB) or 'skip' in terminal.values():return 'missing-or-skipped-tests'
  if len(dacl)!=2 or {x['scenario'] for x in dacl}!={'normal-inheritance','broad-synthetic-parent'}:return 'missing-acl-evidence'
  for x in dacl:

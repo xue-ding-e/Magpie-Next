@@ -6,9 +6,10 @@ def verify():
  assert os.environ['GITHUB_REPOSITORY']=='xue-ding-e/Magpie-Next' and os.environ['GITHUB_EVENT_NAME']=='push' and os.environ['GITHUB_REF']==BRANCH
  assert os.environ['RUNNER_ENVIRONMENT']=='github-hosted' and os.environ['RUNNER_OS']=='Windows' and os.environ['GITHUB_ACTIONS']=='true'
  assert git(CONTROL,'rev-parse','HEAD').decode().strip()==os.environ['GITHUB_SHA']
- assert git(CONTROL,'rev-parse','HEAD^').decode().strip()=='f58ac8cdb82697400ea6869c5253506a26eff5d5'
- assert git(CONTROL,'rev-parse','HEAD^^').decode().strip()=='6fc16851143a70490f2062ba169357781b10e4a3'
- assert git(CONTROL,'rev-parse','HEAD^^^').decode().strip()==SOURCE
+ assert git(CONTROL,'rev-parse','HEAD^').decode().strip()=='4c558f326e239870f3248969edc1c2b53d29ee99'
+ assert git(CONTROL,'rev-parse','HEAD^^').decode().strip()=='f58ac8cdb82697400ea6869c5253506a26eff5d5'
+ assert git(CONTROL,'rev-parse','HEAD^^^').decode().strip()=='6fc16851143a70490f2062ba169357781b10e4a3'
+ assert git(CONTROL,'rev-parse','HEAD^^^^').decode().strip()==SOURCE
  rows=json.loads((HERE/'control-hashes.json').read_text());paths=sorted([r['path'] for r in rows]+['.github/auth-windows-probe/control-hashes.json'])
  assert sorted(git(CONTROL,'diff','--name-only',SOURCE,'HEAD','--').decode().splitlines())==paths
  for r in rows:
