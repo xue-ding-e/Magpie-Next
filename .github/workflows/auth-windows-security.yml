@@ -1,0 +1,72 @@
+name: Auth Windows security and clipboard adapter probes
+'on':
+  push:
+    branches:
+    - validation/auth-windows-security-20261103
+permissions:
+  contents: read
+concurrency:
+  group: magpie-auth-windows-security
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+      GOMAXPROCS: '2'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 2
+      with:
+        ref: ${{ github.sha }}
+        path: control
+        fetch-depth: 2
+        persist-credentials: false
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 2
+      with:
+        ref: a27f0957427b4ba86f7c140fa38068922adcc9ea
+        path: source
+        fetch-depth: 1
+        persist-credentials: false
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      timeout-minutes: 3
+      with:
+        go-version: 1.26.10
+        cache: false
+    - name: Verify hosted runner, source and test-only overlays
+      timeout-minutes: 1
+      shell: pwsh
+      run: "$ErrorActionPreference='Stop'\npython -I -B control/.github/auth-windows-probe/selftest.py\nif ($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}\n\
+        python -I -B control/.github/auth-windows-probe/gate.py prepare source\nif ($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}\nforeach ($file\
+        \ in @('run.ps1','cleanup.ps1','read-acl.ps1')) {\n $tokens=$null;$errors=$null\n [Management.Automation.Language.Parser]::ParseFile((Join-Path\
+        \ $PWD \"control/.github/auth-windows-probe/$file\"),[ref]$tokens,[ref]$errors) | Out-Null\n if ($errors.Count) {throw 'PowerShell control\
+        \ parse failure'}\n}\n& ./control/.github/auth-windows-probe/assert-controls.ps1\n"
+    - name: Run real exporter ACL and native clipboard adapter probes
+      timeout-minutes: 22
+      shell: pwsh
+      run: '& ./control/.github/auth-windows-probe/run.ps1
+
+        exit $LASTEXITCODE'
+    - name: Classify exact terminal evidence without hiding test failure
+      if: always()
+      timeout-minutes: 1
+      shell: pwsh
+      run: 'python -I -B control/.github/auth-windows-probe/audit.py auth-windows-evidence
+
+        exit $LASTEXITCODE'
+    - name: Remove only owned synthetic profile and temp
+      if: always()
+      timeout-minutes: 2
+      shell: pwsh
+      run: '& ./control/.github/auth-windows-probe/cleanup.ps1'
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      timeout-minutes: 2
+      with:
+        name: auth-windows-security-${{ github.sha }}
+        path: auth-windows-evidence/
+        if-no-files-found: error
+        retention-days: 7
