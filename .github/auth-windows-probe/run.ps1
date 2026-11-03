@@ -4,9 +4,15 @@ $control=Split-Path -Parent $MyInvocation.MyCommand.Path
 $source=[IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'source'))
 $report=Join-Path $env:GITHUB_WORKSPACE 'auth-windows-evidence'
 New-Item -ItemType Directory -Path $report | Out-Null
-$go=(Get-Command go -CommandType Application).Source
+. (Join-Path $control 'toolchain.ps1')
+$whereGo=@(& "$env:SystemRoot/System32/where.exe" go)
+if ($LASTEXITCODE -ne 0 -or !$whereGo.Count) {throw 'where go could not locate a toolchain'}
+$go=Select-GoApplicationPath @(Get-Command go -CommandType Application)
+if ($whereGo -notcontains $go) {throw 'Resolved Go is absent from where go evidence'}
+[ordered]@{whereGo=$whereGo;selected=$go} | ConvertTo-Json | Set-Content (Join-Path $report 'toolchain-selection.json')
+if (!(Test-Path -LiteralPath $go -PathType Leaf)) {throw 'Resolved Go application is missing'}
 $version=(& $go version | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $version -notmatch '^go version go1\.26\.10 windows/amd64$') { throw 'Unexpected Go toolchain' }
+Assert-PinnedGoVersion $version $LASTEXITCODE
 foreach ($name in @('GOPATH','GOMODCACHE','GOCACHE')) {
  $value=(& $go env $name | Out-String).Trim();if ($LASTEXITCODE -ne 0 -or !$value) {throw 'Cannot fix Go cache paths'}
  [Environment]::SetEnvironmentVariable($name,$value,'Process')
