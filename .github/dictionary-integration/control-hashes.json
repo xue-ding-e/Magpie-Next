@@ -1,0 +1,11 @@
+{
+  ".github/dictionary-integration/gate.py": "11a56a3681c3396c6b83074ffa2f27afefee76cad6fc869563178aba09bffd07",
+  ".github/dictionary-integration/owned-selftest.py": "ee21291f3c1f7cfd515d220c46c9f5bdf980e570de5c79c3d455b7868f79ed51",
+  ".github/dictionary-integration/owned_process.py": "ef1988a78a18c03105acfba48351de6fb838ae5edff52630bc7b44423d2680ad",
+  ".github/dictionary-integration/package-lock.json": "2b5b9ba01d0c2f7d19770db20fba9620b492e615823d19bd782fc5928124eb4c",
+  ".github/dictionary-integration/package.json": "62dec65e00c2ec96390edddfe40061a1b30c1d3e90a87df79c6c32c07ba275ba",
+  ".github/dictionary-integration/prepare-env.sh": "e476e4f1dcfb50c3b7b21d51caee8186a30621fd09d66e6ad5740d733bc8322b",
+  ".github/dictionary-integration/run.py": "3c4d15eb74c8a7be520ce47efcda3a904a78bbf49891829b440e41a42985d575",
+  ".github/dictionary-integration/windows-selftest.py": "30f546c7ca36566617a7743ed8a53fcefa0fd83163cd710c854b39d3e47c5264",
+  ".github/workflows/local-dictionary-integration.yml": "63f56100660b70ae50acd467e0f1e22f26dc4bbd927c326a5298539982a13e1d"
+}
