@@ -1,4 +1,4 @@
-.local-dictionary { width: min(700px, calc(100vw - 40px)); max-height: calc(100vh - 60px); overflow: auto; box-sizing: border-box; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.local-dictionary { position: fixed; inset: 0; margin: auto; width: min(700px, calc(100vw - 40px)); max-height: calc(100vh - 60px); overflow: auto; box-sizing: border-box; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
 .local-dictionary::backdrop { background: #0008; }
 .local-dictionary textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 12px; resize: vertical; min-height: 140px; font: inherit; background: var(--card); color: inherit; }
 .local-dictionary fieldset, .local-dictionary input { margin: 6px 8px 6px 0; max-width: 100%; }

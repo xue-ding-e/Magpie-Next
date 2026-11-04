@@ -12,11 +12,40 @@ const languages = ['en', 'zh', 'zh-TW', 'ja', 'de'];
 const captions = ['Manage local dictionary', 'Save', 'Cancel', 'Reveal entries', 'Hide entries',
   'Previous', 'Next', 'Reload', 'Discard', 'Could not read UTF-8 file; no changes saved'];
 
+async function backdropPoint(dialog) {
+  return dialog.evaluate((d) => {
+    const r = d.getBoundingClientRect(), width = innerWidth, height = innerHeight;
+    const middleX = Math.max(1, Math.min(width - 1, (r.left + r.right) / 2));
+    const middleY = Math.max(1, Math.min(height - 1, (r.top + r.bottom) / 2));
+    // The global margin reset can put a native dialog at (0,0). Never assume
+    // that a fixed corner is its backdrop: derive and verify a real outer point.
+    const candidates = [
+      { x: (r.right + width) / 2, y: middleY },
+      { x: r.left / 2, y: middleY },
+      { x: middleX, y: r.top / 2 },
+      { x: middleX, y: (r.bottom + height) / 2 },
+    ];
+    const point = candidates.find(({ x, y }) => x > 0 && x < width && y > 0 && y < height
+      && (x < r.left || x > r.right || y < r.top || y > r.bottom));
+    if (!point) throw new Error('dictionary dialog leaves no visible backdrop');
+    return { ...point, rect: r.toJSON(), width, height };
+  });
+}
+
 async function fixture(t, engine, lang) {
   const browser = await (engine === 'webkit' ? webkit.launch() : chromium.launch({ channel: 'chromium' }));
-  t.after(() => browser.close());
+  let page;
+  // Register immediately after launch, including for a later setup failure.
+  // Closing the context first is graceful teardown, not proof against orphans.
+  t.after(async () => {
+    const started = performance.now();
+    t.diagnostic(`dictionary teardown ${engine} ${lang} started`);
+    try { await page?.context().close(); }
+    finally { await browser.close(); }
+    t.diagnostic(`dictionary teardown ${engine} ${lang} succeeded elapsed_ms=${Math.round(performance.now() - started)}`);
+  });
   const theme = lang === 'de' ? 'dark' : 'light';
-  const page = await browser.newPage({ viewport: { width: 640, height: 1000 }, reducedMotion: 'reduce' });
+  page = await browser.newPage({ viewport: { width: 640, height: 1000 }, reducedMotion: 'reduce' });
   page.setDefaultTimeout(5000);
   const state = { revision: 'new', words: [], posts: [], reads: [], externalWrites: 0 };
   const errors = [], externalRequests = [];
@@ -233,17 +262,42 @@ for (const engine of engines) {
       await page.waitForFunction(() => window.innerWidth === 360);
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       assert.equal(await dialog.evaluate((d) => d.scrollWidth <= d.clientWidth), true, 'narrow translated dialog must not overflow');
+      const geometry = await dialog.evaluate((d) => ({ rect: d.getBoundingClientRect().toJSON(), width: innerWidth, height: innerHeight }));
+      assert(Math.abs((geometry.rect.left + geometry.rect.right) / 2 - geometry.width / 2) <= 1,
+        `native dictionary dialog must stay horizontally centered despite the global margin reset: ${JSON.stringify(geometry)}`);
+      assert(geometry.rect.top >= 1 && geometry.rect.bottom <= geometry.height - 1,
+        `native dictionary dialog must leave visible vertical backdrop: ${JSON.stringify(geometry)}`);
       await input.fill('drag synthetic draft');
       await input.scrollIntoViewIfNeeded();
       const box = await input.boundingBox();
+      await dialog.evaluate((d) => {
+        window.__dictionaryPointerEvents = [];
+        for (const type of ['pointerdown', 'pointerup', 'click']) d.addEventListener(type, (event) => {
+          const r = d.getBoundingClientRect();
+          window.__dictionaryPointerEvents.push({ type, trusted: event.isTrusted, targetIsDialog: event.target === d,
+            x: event.clientX, y: event.clientY,
+            outside: event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom });
+        }, true);
+      });
+      const dragEnd = await backdropPoint(dialog);
       await page.mouse.move(box.x + 12, box.y + 12);
       await page.mouse.down();
-      await page.mouse.move(2, 2);
+      await page.mouse.move(dragEnd.x, dragEnd.y);
       await page.mouse.up();
+      const dragEvents = await page.evaluate(() => window.__dictionaryPointerEvents);
+      assert(dragEvents.some((event) => event.type === 'pointerdown' && event.trusted && !event.outside), 'drag begins inside the editor');
+      assert(dragEvents.some((event) => event.type === 'pointerup' && event.trusted && event.outside),
+        `drag must really end outside the dialog: ${JSON.stringify({ dragEnd, dragEvents })}`);
       assert.equal(await dialog.isVisible(), true, 'dragging from the editor into the backdrop must not close it');
       assert.equal(await input.inputValue(), 'drag synthetic draft');
       const writesBeforeDismiss = state.posts.length;
-      await page.mouse.click(2, 2);
+      const outside = await backdropPoint(dialog);
+      await page.evaluate(() => { window.__dictionaryPointerEvents = []; });
+      await page.mouse.click(outside.x, outside.y);
+      const clickEvents = await page.evaluate(() => window.__dictionaryPointerEvents);
+      t.diagnostic('dictionary backdrop evidence ' + JSON.stringify({ outside, clickEvents }));
+      for (const type of ['pointerdown', 'pointerup', 'click']) assert(clickEvents.some((event) => event.type === type
+        && event.trusted && event.targetIsDialog && event.outside), `real backdrop ${type} must reach the native dialog`);
       await dialog.waitFor({ state: 'detached' });
       assert.equal(state.posts.length, writesBeforeDismiss, 'backdrop dismissal never saves');
       await open();
