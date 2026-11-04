@@ -36,6 +36,7 @@ import (
 	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/source"
 	"github.com/yetone/magpie/internal/update/nextrelease"
+	"github.com/yetone/magpie/internal/webview2env"
 )
 
 // Feed is where the newest release is described. Upstream builds may override it
@@ -726,6 +727,11 @@ func InstallBinaryAsAdmin(staged, exe string) error {
 func RelaunchBinary(exe, old string, window bool, view string) error {
 	args := RelaunchArgs(window, view)
 	env := append(os.Environ(), "MAGPIE_REPLACES="+strconv.Itoa(os.Getpid()))
+	// Wails clears this variable after startup. Keep the user's captured
+	// browser arguments for the next Windows window or tray process too.
+	if runtime.GOOS == "windows" && webview2env.Args != "" {
+		env = append(env, webview2env.Name+"="+webview2env.Args)
+	}
 	if old != "" {
 		return startChecked(exe, old, args, env)
 	}
