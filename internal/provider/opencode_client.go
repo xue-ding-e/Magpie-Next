@@ -193,18 +193,22 @@ var openCodeIDRe = regexp.MustCompile(`^[a-z]{3}_[0-9a-f]{12}[0-9A-Za-z]{14}$`)
 
 const base62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
-// openCodeIDs is the clock and counter ids are made with, and the session
-// id made for each conversation.
+// openCodeIDs is the clock and counter ids are made with, the session id
+// made for each conversation, and the recently issued sessions recognized
+// without guessing from their counters.
 var openCodeIDs = struct {
 	sync.Mutex
 	last, counter int64
 	sessions      map[string]*list.Element // seed → its element in order
 	order         *list.List               // of openCodeKept, the least recently used first
-}{sessions: map[string]*list.Element{}, order: list.New()}
+	issued        map[string]*list.Element // id → its element in issuedOrder
+	issuedOrder   *list.List               // of session ids, the least recently used first
+}{sessions: map[string]*list.Element{}, order: list.New(), issued: map[string]*list.Element{}, issuedOrder: list.New()}
 
 type openCodeKept struct{ seed, id string }
 
-// openCodeKeep is how many conversations' session ids are kept.
+// openCodeKeep bounds both the conversation cache and the issued-session
+// registry, whose entries can also come from stateless calls.
 const openCodeKeep = 1000
 
 // openCodeNewID is an id as OpenCode makes one (packages/schema/src/
@@ -231,19 +235,62 @@ func openCodeNewID(prefix string, descending bool, now time.Time) string {
 	for _, c := range b {
 		id = append(id, base62[int(c)%len(base62)])
 	}
-	return string(id)
+	complete := string(id)
+	if prefix == "ses" && descending {
+		openCodeIDs.Lock()
+		openCodeRememberSession(complete)
+		openCodeIDs.Unlock()
+	}
+	return complete
 }
 
 // openCodeRealSession says whether id is a session id OpenCode could have
-// made: of its shape, with a small count in its low 12 bits (inverted).
+// made: of its shape, and either recently issued here or with a small
+// count in its low 12 bits (inverted). Our native counter can exceed that
+// heuristic during a burst; an unknown id still has to satisfy it.
 // Zen's free tier answers 403 FreeTierError to one that isn't, a hash cut
 // to the same shape among them (c9cu on Discord).
 func openCodeRealSession(id string) bool {
 	if !strings.HasPrefix(id, "ses_") || !openCodeIDRe.MatchString(id) {
 		return false
 	}
+	openCodeIDs.Lock()
+	if e, ok := openCodeIDs.issued[id]; ok {
+		openCodeIDs.issuedOrder.MoveToBack(e)
+		openCodeIDs.Unlock()
+		return true
+	}
+	openCodeIDs.Unlock()
 	low, err := strconv.ParseUint(id[13:16], 16, 16)
 	return err == nil && 0xfff-low < 16
+}
+
+// openCodeRememberSession registers or touches an id issued here. The
+// caller holds openCodeIDs; no random bytes are made under that lock.
+func openCodeRememberSession(id string) {
+	if e, ok := openCodeIDs.issued[id]; ok {
+		openCodeIDs.issuedOrder.MoveToBack(e)
+		return
+	}
+	if openCodeIDs.issuedOrder.Len() >= openCodeKeep {
+		oldest := openCodeIDs.issuedOrder.Front()
+		openCodeIDs.issuedOrder.Remove(oldest)
+		delete(openCodeIDs.issued, oldest.Value.(string))
+	}
+	openCodeIDs.issued[id] = openCodeIDs.issuedOrder.PushBack(id)
+}
+
+// openCodeCachedSession reuses a conversation's session and keeps it in
+// the issued registry even after stateless calls displaced it. The caller
+// holds openCodeIDs.
+func openCodeCachedSession(seed string) string {
+	if e, ok := openCodeIDs.sessions[seed]; ok {
+		openCodeIDs.order.MoveToBack(e)
+		id := e.Value.(openCodeKept).id
+		openCodeRememberSession(id)
+		return id
+	}
+	return ""
 }
 
 // openCodeSession is the session id sent for the conversation seed names:
@@ -258,12 +305,17 @@ func openCodeSession(seed string) string {
 	if seed == "" {
 		return openCodeNewID("ses", true, time.Now())
 	}
-	id := openCodeNewID("ses", true, time.Now()) // made first: it takes the lock
+	openCodeIDs.Lock()
+	if id := openCodeCachedSession(seed); id != "" {
+		openCodeIDs.Unlock()
+		return id
+	}
+	openCodeIDs.Unlock()
+	id := openCodeNewID("ses", true, time.Now()) // outside the cache lock
 	openCodeIDs.Lock()
 	defer openCodeIDs.Unlock()
-	if e, ok := openCodeIDs.sessions[seed]; ok {
-		openCodeIDs.order.MoveToBack(e)
-		return e.Value.(openCodeKept).id
+	if kept := openCodeCachedSession(seed); kept != "" {
+		return kept
 	}
 	if openCodeIDs.order.Len() >= openCodeKeep {
 		oldest := openCodeIDs.order.Front()
@@ -271,5 +323,7 @@ func openCodeSession(seed string) string {
 		delete(openCodeIDs.sessions, oldest.Value.(openCodeKept).seed)
 	}
 	openCodeIDs.sessions[seed] = openCodeIDs.order.PushBack(openCodeKept{seed, id})
+	// Concurrent issuance may have displaced it since openCodeNewID.
+	openCodeRememberSession(id)
 	return id
 }

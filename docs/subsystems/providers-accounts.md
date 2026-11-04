@@ -287,6 +287,18 @@ and `TestHistoricalWindowHoldsUsesEachWindowsOwnReading`.
 - A usage cap is kept per account (`AccountCaps`, 1–99) and, beside it, per window (`AccountWindowCaps`, by the account and the window's `capId`, its name in lower case: `WindowCapID`). A window's own share wins over the account's; 100 is no cap on that window. `CapsOf` gives both (`WindowCaps`), `CapHeld` and `capReached` judge each window by its own, and `SetWindowCap` (GUI `provider/windowcap`, `magpie provider account-cap <id> <account> --window <name>`) sets one. A config without window caps reads as before.
 - A window whose reset time has passed has started again, whatever share it was read at (`resetPassed`). That holds for a reading kept from before (`AsOf`) and for a fresh one: Claude Code's `/usage` gives a reset to the minute and can lag it, so a run just after a reset can still say 100% with that reset. `claudeWindows` hands such a window back empty on every path, and `usedPast`, `usedUp`, `BackAt` and `capReached` leave it out when they judge an account spent, for Codex, Claude Code and `magpie quota wait` alike. A card can still show a kept reading as it was read (`reported`, for a Claude card while `/usage` is unavailable); that changes what it shows, never which account is used. A reset `/usage` gives as a time alone ("resets 3pm") can be read as its next one, a day on (`claudeResetTime`), and is then not seen as passed here.
 
+OpenCode session ids retain its native timestamp, 12-bit counter and random
+suffix. [`opencode_client.go`](../../internal/provider/opencode_client.go)
+keeps up to `openCodeKeep` (1000) recently issued descending session ids in
+an LRU under the existing id mutex. Recognition checks the shape first,
+then recognizes and touches an id issued here even when a burst takes its
+counter past 15. Unknown ids keep the existing small-counter heuristic,
+including rejection of the old hash-shaped fixture. Reusing a conversation
+also refreshes its issued id, restoring it if stateless calls displaced it.
+The native counter and random generation stay unchanged; random bytes are
+made outside the mutex. The regressions are in
+[`opencode_client_test.go`](../../internal/provider/opencode_client_test.go).
+
 ## Verification
 
 ```sh
