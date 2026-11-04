@@ -20,7 +20,8 @@ const baseRef = process.env.BASE_REF || "origin/main";
 const base = execFileSync("git", ["rev-parse", "--verify", `${baseRef}^{commit}`], {
   cwd: path.resolve(assets, "../../.."), windowsHide: true, encoding: "utf8",
 }).trim();
-const { chromium, webkit } = require("playwright");
+const playwright = require("playwright");
+const { chromium, webkit } = playwright;
 const { reach } = require("./reader.cjs");
 const { PNG } = require("playwright-core/lib/utilsBundle");
 const baseline = new Map();
@@ -132,13 +133,47 @@ async function open(browser, lang, width, { original = false, touch = true, open
   }, at);
   await page.route("http://magpie.test/**", server(lang, original, opened));
   await page.goto("http://magpie.test/");
+  await foreground(page);
   await page.locator("#nav button").first().waitFor();
   return page;
+}
+
+// A phone being used is visible and active. Windows WebKit can retain its
+// native inactive override while bringToFront succeeds; no animation frames
+// then arrive for Playwright's ordinary actionability check. Reassert the
+// exact native command used by this pinned SDK's page initialization. This
+// only configures our isolated headless page; clicks and their checks stay real.
+async function foreground(page) {
+  await page.bringToFront();
+  if (process.platform === "win32" && page.context().browser().browserType().name() === "webkit") {
+    assert.equal(require("playwright/package.json").version, "1.61.1", "recheck WebKit's native activity contract when updating Playwright");
+    const wk = playwright._connection.toImpl(page).delegate;
+    await wk._pageProxySession.send("Emulation.setActiveAndFocused", { active: true });
+  }
+  await page.waitForFunction(() => document.visibilityState === "visible" && document.hasFocus(), null, { polling: 50 });
+}
+
+async function failureState(page) {
+  let timer;
+  try {
+    return await Promise.race([
+      page.evaluate(() => new Promise(resolve => {
+        let painted = false;
+        requestAnimationFrame(() => { painted = true; });
+        setTimeout(() => resolve({ visibility: document.visibilityState, focus: document.hasFocus(),
+          painted, animations: document.getAnimations().length, viewTransition: !!document.activeViewTransition,
+          view: document.querySelector('.view:not([hidden])')?.id, popHidden: document.querySelector('#pop')?.hidden }), 100);
+      })),
+      new Promise(resolve => { timer = setTimeout(() => resolve({ captureTimedOut: true }), 500); }),
+    ]);
+  } catch (error) { return { captureError: error.message.split("\n")[0] }; }
+  finally { clearTimeout(timer); }
 }
 
 async function go(page, view) {
   // Playwright scrolls each real navigation button into sight before clicking;
   // this exercises the phone's horizontal navigation strip too.
+  await foreground(page);
   await page.locator(view === "settings" ? "#prefs" : `#nav [data-view="${view}"]`).click();
   await page.locator(`#view-${view}`).waitFor();
   if (view === "library") await page.locator("#view-library .lib-more:not(:disabled)").waitFor();
@@ -191,8 +226,10 @@ async function agentsFit(page) {
     await row.waitFor();
     // opened, its pickers in the row; the last row opened can push this one
     // out of sight, so it is wheeled to once that one has slid open
+    await foreground(page);
     await page.waitForFunction(() => !document.getAnimations().length);
     await reach(page, row.locator(".ag-link"));
+    await foreground(page);
     await row.locator(".ag-link").click();
     await row.locator(".ag-exp").waitFor();
     const bad = await row.evaluate(row => {
@@ -212,8 +249,10 @@ async function agentsFit(page) {
     for (const key of keys) {
       try {
         const field = row.locator(`.field[data-key="${key}"]`);
+        await foreground(page);
         await page.waitForFunction(() => !document.getAnimations().length);
         await reach(page, field);
+        await foreground(page);
         await field.click();
         await page.locator("#pop").waitFor();
       } catch (e) { throw new Error(`${agent.id} ${key} open: ${e.message.split("\n")[0]}`); }
@@ -285,7 +324,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
                 ]);
                 assert.deepEqual(opened, [{ path: "/test/library" }], "Library folder must be reachable");
               }
-              } catch (e) { failures.push(view + ": " + e.message); }
+              } catch (e) { failures.push(view + ": " + e.message + "\npage state: " + JSON.stringify(await failureState(page))); }
             }
             assert.deepEqual(errors, []);
             assert.deepEqual(failures, []);

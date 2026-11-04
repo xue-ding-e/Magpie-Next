@@ -2200,6 +2200,18 @@ Agent fixtures include model/effort controls, Codex's subagent/sign-in squares
 and omp's three role squares. Every phone field must stay inside its row, model
 names must be readable, and each picker must open; desktop comparisons use
 those same populated rows.
+On Windows WebKit, the fixture reasserts the native active/focused page state
+before interaction. Playwright 1.61.1 initializes that state through
+`playwright._connection.toImpl(page).delegate._pageProxySession.send("Emulation.setActiveAndFocused", { active: true })`;
+this private adapter is pinned and must be checked again on an SDK update.
+In a controlled native-inactive page, the same element retained its geometry
+while visibility became hidden and animation frames stopped; the original
+click stalled at its 5s stability check, and `bringToFront()` alone did not
+clear the override. Reasserting the native state restored frames and the
+unchanged real clicks passed. The failed CI run did not capture visibility,
+so that run's native state is unknown; a bounded failure snapshot now records
+visibility, focus, paint, animations and view-transition state. All 30 cases,
+normal actionability checks, crop assertions and screenshot tolerances remain.
 It checks that Library's folder button is reachable, Usage tokens, costs and
 stat explanations are readable, and chart dates do not overlap. A released
 touch's continuous scroll can outlast the input window, while scripts cannot
