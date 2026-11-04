@@ -1,0 +1,14 @@
+{
+  ".github/dictionary-integration/browser_reaper.py": "46e8e6b33c1c04f387a7fc320cd8eed58fceab8ffc20a1570e81cb005a0e2225",
+  ".github/dictionary-integration/gate.py": "aec33976a25ec08d8d4229e38cbecd005cb6bbf80935cfb58b1af2a0f5fa19d0",
+  ".github/dictionary-integration/owned-selftest.py": "ee21291f3c1f7cfd515d220c46c9f5bdf980e570de5c79c3d455b7868f79ed51",
+  ".github/dictionary-integration/owned_process.py": "ef1988a78a18c03105acfba48351de6fb838ae5edff52630bc7b44423d2680ad",
+  ".github/dictionary-integration/package-lock.json": "2b5b9ba01d0c2f7d19770db20fba9620b492e615823d19bd782fc5928124eb4c",
+  ".github/dictionary-integration/package.json": "62dec65e00c2ec96390edddfe40061a1b30c1d3e90a87df79c6c32c07ba275ba",
+  ".github/dictionary-integration/prepare-env.sh": "e476e4f1dcfb50c3b7b21d51caee8186a30621fd09d66e6ad5740d733bc8322b",
+  ".github/dictionary-integration/reaper-native-selftest.py": "5d4d77b3229b763a5961ec7c78ed90b418be240c7ff4ba22e3fb45ac83fccc57",
+  ".github/dictionary-integration/reaper-selftest.py": "639f6ded38dcffc3308215acc9b1d715bf2989e6e02abe16621b945ebf278f7e",
+  ".github/dictionary-integration/run.py": "bdd8efc15c546e0f9b1fca857c6f6dfecc0615873e7f731e7bf671a952643d0d",
+  ".github/dictionary-integration/windows-selftest.py": "30f546c7ca36566617a7743ed8a53fcefa0fd83163cd710c854b39d3e47c5264",
+  ".github/workflows/local-dictionary-integration.yml": "39d3a71a219f2dc8c36d06c9d26139b2956a363c6222b331605f4473e362439d"
+}
