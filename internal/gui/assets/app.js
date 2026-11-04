@@ -2080,7 +2080,7 @@ function changesList(changes) {
 // had before magpie (agent.Disconnect). Picking Default isn't that: it is
 // the agent as installed.
 function askDisconnect(a) {
-  const ed = el("div", "editor disconnect-ask");
+  const ed = el("div", "editor disconnect-ask disconnect-preview");
   const head = el("div", "ehead");
   head.append(icon(a.icon), el("b", "", t("Disconnect {agent} from magpie?", { agent: a.name })));
   ed.append(head);
@@ -21911,6 +21911,7 @@ function renderRedact(s, keep) {
   i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") save(); else if (e.key === "Escape") { i.value = words; i.blur(); } };
   i.onblur = save;
   row(t("Masked words"), t("Your own words to keep from vendors, separated by commas"), i);
+  if (typeof renderLocalDictionary === "function") renderLocalDictionary(row);
   renderRedactRules(s, row);
   // how it is found: the rules on every request that masks anything, and
   // the local model on top of them, for what no pattern can tell

@@ -49,7 +49,7 @@ func gram(s string, i int) uint32 {
 // already, and are only as long as two letters.
 func addKnown(p, v string) {
 	kind := kindOf(p)
-	if kind == "TERM" || len(v) < minKnown {
+	if (kind == "TERM" || kind == "LOCAL_TERM") || len(v) < minKnown {
 		return
 	}
 	head := v[:minKnown]

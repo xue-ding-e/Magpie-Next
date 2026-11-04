@@ -8,22 +8,39 @@ import (
 	"net/http"
 
 	"github.com/yetone/magpie/internal/gwmw"
+	"github.com/yetone/magpie/internal/localdictionary"
 	"github.com/yetone/magpie/internal/pii"
 	"github.com/yetone/magpie/internal/redact"
 	"github.com/yetone/magpie/internal/settings"
 )
 
 // Masker masks as the settings say, read on each call.
-type Masker struct{}
+type Masker struct{ scoped *redact.Options }
+
+// NewRequest fixes one dictionary generation and budget for multi-field requests.
+func (Masker) NewRequest() gwmw.Masker {
+	o := redact.DictionaryRequest(options())
+	return Masker{scoped: &o}
+}
+func (m Masker) options() redact.Options {
+	if m.scoped != nil {
+		return *m.scoped
+	}
+	return options()
+}
 
 // Wanted says settings st ask for anything to be masked.
 func Wanted(st settings.Settings) bool {
-	return st.Redact || st.RedactPersonal || len(st.RedactWords) > 0
+	return st.Redact || st.RedactPersonal || len(st.RedactWords) > 0 || localdictionary.Wanted()
 }
 
 func options() redact.Options {
 	st := settings.Shared()
-	o := redact.Options{Secrets: st.Redact, Personal: st.RedactPersonal, Kinds: st.RedactKinds, Words: st.RedactWords, Rules: st.RedactRules}
+	dictionary, err := localdictionary.Matcher()
+	if err != nil {
+		panic(err)
+	} // gwmw.Safely holds the request back; never silently skip protection.
+	o := redact.Options{Secrets: st.Redact, Personal: st.RedactPersonal, Kinds: st.RedactKinds, Words: st.RedactWords, Dictionary: dictionary, Rules: st.RedactRules}
 	if st.RedactModel {
 		o.Model = model
 	}
@@ -41,20 +58,20 @@ func model(texts []string) [][]redact.Found {
 	return got
 }
 
-func (Masker) JSON(body []byte) ([]byte, int) {
-	o := options()
-	if !o.Secrets && !o.Personal && len(o.Words) == 0 {
+func (m Masker) JSON(body []byte) ([]byte, int) {
+	o := m.options()
+	if !o.Secrets && !o.Personal && len(o.Words) == 0 && o.Dictionary == nil {
 		return body, 0
 	}
 	return redact.MaskJSON(body, o)
 }
 
-func (Masker) Text(s string) (string, int) { return redact.Mask(s, options()) }
+func (m Masker) Text(s string) (string, int) { return redact.Mask(s, m.options()) }
 
 // JSONHits is JSON, with what it masked (gwmw.Teller).
-func (Masker) JSONHits(body []byte) ([]byte, []gwmw.Hit) {
-	o := options()
-	if !o.Secrets && !o.Personal && len(o.Words) == 0 {
+func (m Masker) JSONHits(body []byte) ([]byte, []gwmw.Hit) {
+	o := m.options()
+	if !o.Secrets && !o.Personal && len(o.Words) == 0 && o.Dictionary == nil {
 		return body, nil
 	}
 	var hits []gwmw.Hit
@@ -64,8 +81,8 @@ func (Masker) JSONHits(body []byte) ([]byte, []gwmw.Hit) {
 }
 
 // TextHits is Text, with what it masked.
-func (Masker) TextHits(s string) (string, []gwmw.Hit) {
-	o := options()
+func (m Masker) TextHits(s string) (string, []gwmw.Hit) {
+	o := m.options()
 	var hits []gwmw.Hit
 	o.Seen = told(&hits)
 	out, _ := redact.Mask(s, o)
@@ -80,6 +97,9 @@ func told(hits *[]gwmw.Hit) func(redact.Hit) {
 	return func(h redact.Hit) {
 		v, _ := redact.Value(h.Placeholder)
 		head, n := redact.Hint(h.Kind, v)
+		if h.Kind == "LOCAL_TERM" {
+			head = ""
+		} // dictionary passwords never become activity-preview hints.
 		*hits = append(*hits, gwmw.Hit{Kind: h.Kind, By: h.By, Placeholder: h.Placeholder, Head: head, Len: n})
 	}
 }

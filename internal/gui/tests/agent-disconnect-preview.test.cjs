@@ -35,6 +35,12 @@ function serve(lang, textSize, posts) {
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
+    // Windows paints its native title bar at startup; this changes no config.
+    if (url.pathname === "/api/window/titlebar") {
+      assert.equal(req.method(), "POST");
+      assert.deepEqual(req.postDataJSON(), {});
+      return json({ ok: true });
+    }
     if (req.method() === "POST") posts.push(url.pathname);
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = ${JSON.stringify({ lang, theme: "light", textSize, web: false })};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });

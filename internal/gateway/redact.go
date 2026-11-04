@@ -22,7 +22,7 @@ func redacted(w http.ResponseWriter, body []byte) (http.ResponseWriter, []byte, 
 // redactedHits is redacted with what it swapped, for the record of it
 // (noteMasked).
 func redactedHits(w http.ResponseWriter, body []byte) (http.ResponseWriter, []byte, func(), maskHits, error) {
-	m, err := gwmw.Masking(redactionWanted())
+	m, err := requestMasker()
 	if m == nil {
 		return w, body, func() {}, maskHits{}, err
 	}
@@ -55,7 +55,14 @@ func redactedPrompt(w http.ResponseWriter, prompt string) (http.ResponseWriter, 
 
 // redactedPromptHits is redactedPrompt with what it swapped.
 func redactedPromptHits(w http.ResponseWriter, prompt string) (http.ResponseWriter, string, func(), maskHits, error) {
-	m, masked, h, err := maskTextHits(prompt)
+	m, err := requestMasker()
+	if err != nil {
+		return w, prompt, func() {}, maskHits{}, err
+	}
+	return redactedPromptHitsWith(w, prompt, m)
+}
+func redactedPromptHitsWith(w http.ResponseWriter, prompt string, m gwmw.Masker) (http.ResponseWriter, string, func(), maskHits, error) {
+	m, masked, h, err := maskTextHitsWith(prompt, m)
 	if err != nil || h.n == 0 {
 		return w, prompt, func() {}, maskHits{}, err
 	}
@@ -70,12 +77,33 @@ func maskedText(s string) (string, int, error) {
 	return masked, h.n, err
 }
 
-// maskTextHits is maskedText with the masker that masked it and what it
-// swapped.
-func maskTextHits(s string) (gwmw.Masker, string, maskHits, error) {
+// requestMasker scopes core budgets without replacing third-party maskers or
+// an embedding implementation that overrides JSON/Text.
+func requestMasker() (gwmw.Masker, error) {
 	m, err := gwmw.Masking(redactionWanted())
-	if m == nil {
+	if err != nil || m == nil {
+		return m, err
+	}
+	switch core := m.(type) {
+	case masking.Masker:
+		return gwmw.Safely(func() gwmw.Masker { return core.NewRequest() })
+	case *masking.Masker:
+		return gwmw.Safely(func() gwmw.Masker { return core.NewRequest() })
+	}
+	return m, nil
+}
+
+// maskTextHits returns the masker, masked text, and safe hit metadata.
+func maskTextHits(s string) (gwmw.Masker, string, maskHits, error) {
+	m, err := requestMasker()
+	if err != nil {
 		return nil, s, maskHits{}, err
+	}
+	return maskTextHitsWith(s, m)
+}
+func maskTextHitsWith(s string, m gwmw.Masker) (gwmw.Masker, string, maskHits, error) {
+	if m == nil {
+		return nil, s, maskHits{}, nil
 	}
 	type out struct {
 		s string

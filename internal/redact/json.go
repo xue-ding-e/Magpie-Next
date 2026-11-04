@@ -368,7 +368,9 @@ func jsonEscape(s string) string {
 // wrote of its own that looks like an email or a phone number went as a
 // placeholder: either way the text no longer matched its signature, and
 // Anthropic answers 400 "Invalid `signature` in `thinking` block".
-func MaskJSON(body []byte, o Options) ([]byte, int) {
+func MaskJSON(body []byte, o Options) (result []byte, count int) {
+	o = dictionaryOptions(o, 0)
+	defer func() { o.checkDictionaryOutput(len(result) - len(body)) }()
 	signed, args, defs := scan(body)
 	masked := func(path, key, s string) bool {
 		return !keepIn(path, key, s, args, defs) && (signed == nil || !under(path, signed))
@@ -389,7 +391,9 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 	var seen []string // value, placeholder, value, placeholder…
 	put := func(kind, v string) string {
 		p := placeholder(kind, v)
-		seen = append(seen, v, p)
+		if kind != "LOCAL_TERM" {
+			seen = append(seen, v, p)
+		}
 		return p
 	}
 	out, ok := walk(body, func(path, key, s string) string {
@@ -417,7 +421,8 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 		}
 		t := s
 		if remask != nil {
-			if t = remask.Replace(s); t != s {
+			if masked := remask.Replace(t); masked != t {
+				t = masked
 				total++
 			}
 		}
@@ -429,6 +434,12 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 		// masked, its text would no longer match its signature
 		t, n := apply(t, knownSpans(t, Options{Secrets: o.Secrets}), placeholder, o.Seen)
 		total += n
+		// Restore the existing winner first. A shorter local literal inside
+		// a legacy value must not replace part of its signed placeholder.
+		if o.Dictionary != nil {
+			t, n = maskSignedDictionary(t, o)
+			total += n
+		}
 		return t
 	})
 	return out, total

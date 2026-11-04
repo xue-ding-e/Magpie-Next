@@ -36,7 +36,10 @@ type Options struct {
 	Secrets  bool     // API keys, private keys, tokens, passwords
 	Personal bool     // emails, phone numbers, ID and bank card numbers
 	Words    []string // the user's own: names, codenames, hosts
-	Rules    []Rule   // the user's own rules, masked with the secrets
+	// Dictionary is a local-only exact-literal library, compiled once per revision.
+	Dictionary       *Dictionary
+	dictionaryBudget *dictionaryBudget
+	Rules            []Rule // the user's own rules, masked with the secrets
 	// Kinds turns each of the Categories of personal data on or off by its
 	// id, where the user chose; one not in it is as its Category.On says.
 	// None of them is masked while Personal is off.
@@ -346,10 +349,13 @@ func loadKey() []byte {
 
 var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-func placeholder(kind, v string) string {
+func placeholderTag(kind, v string) string {
 	h := hmac.New(sha256.New, key())
 	h.Write([]byte(kind + "\x00" + v))
-	p := "{{" + kind + "_" + strings.ToLower(b32.EncodeToString(h.Sum(nil))[:8]) + "}}"
+	return "{{" + kind + "_" + strings.ToLower(b32.EncodeToString(h.Sum(nil))[:8]) + "}}"
+}
+func placeholder(kind, v string) string {
+	p := placeholderTag(kind, v)
 	mu.Lock()
 	if _, ok := values[p]; !ok {
 		if len(values) >= maxValues {
@@ -409,6 +415,9 @@ func Value(p string) (string, bool) {
 // and how many characters it has.
 func Hint(kind, v string) (head string, n int) {
 	n = utf8.RuneCountInString(v)
+	if kind == "LOCAL_TERM" {
+		return "", n
+	}
 	if n < 2 {
 		return "", n
 	}
@@ -432,16 +441,30 @@ func Hint(kind, v string) (head string, n int) {
 }
 
 // Mask swaps what o covers in s for placeholders, and says how many.
-func Mask(s string, o Options) (string, int) {
+func Mask(s string, o Options) (out string, count int) {
+	o = dictionaryOptions(o, 0)
+	defer func() { o.checkDictionaryOutput(len(out) - len(s)) }()
 	return mask(s, withModel(o, []string{s}), placeholder)
 }
 
 // mask swaps what o covers in s for what put makes of each value.
 func mask(s string, o Options, put func(kind, v string) string) (string, int) {
-	if len(s) < 3 {
+	o = dictionaryOptions(o, 0)
+	o.reserveDictionaryInput(len(s))
+	if len(s) < 3 && o.Dictionary == nil {
 		return s, 0
 	}
 	var found []span
+	if o.Dictionary != nil {
+		spans := o.Dictionary.Spans(s)
+		o.reserveDictionary(len(spans))
+		for _, p := range spans {
+			found = append(found, span{p[0], p[1], "LOCAL_TERM", ByWord})
+		}
+	}
+	if len(s) < 3 {
+		return apply(s, found, put, o.Seen)
+	} // short inputs keep legacy semantics; only the new literal library applies.
 	for _, w := range o.Words {
 		if w = strings.TrimSpace(w); len(w) < 2 {
 			continue
@@ -627,7 +650,12 @@ func apply(s string, found []span, put func(kind, v string) string, seen func(Hi
 	// nothing inside a placeholder already there
 	if strings.Contains(s, "{{") {
 		for _, p := range placeholderRe.FindAllStringIndex(s, -1) {
-			found = slices.DeleteFunc(found, func(f span) bool { return f.start < p[1] && f.end > p[0] })
+			_, known := Value(s[p[0]:p[1]])
+			found = slices.DeleteFunc(found, func(f span) bool {
+				// A literal library cannot be bypassed by user text shaped
+				// like a placeholder. Only placeholders made here are exempt.
+				return (f.kind != "LOCAL_TERM" || known) && f.start < p[1] && f.end > p[0]
+			})
 		}
 		if len(found) == 0 {
 			return s, 0
