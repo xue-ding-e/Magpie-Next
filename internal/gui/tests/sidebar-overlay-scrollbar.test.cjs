@@ -64,6 +64,13 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.goto("http://magpie.test/");
         await page.waitForSelector("#nav button.on");
         await page.locator("#side").waitFor();
+        // The delayed gateway read grows the sidebar's foot by 29px. Finish
+        // that startup layout before measuring a drag's scroll range.
+        await page.locator("#sideGw").waitFor({ state: "visible" });
+        await page.waitForFunction(() => {
+          const box = document.querySelector("#side .side-scroll"), track = document.querySelector("#side .side-bar");
+          return document.fonts.status === "loaded" && box.clientHeight === track.clientHeight;
+        }, null, { timeout: 5000 });
         await frame(page);
 
         let s = await bar(page);

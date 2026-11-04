@@ -9,6 +9,13 @@ fixture, `response.finished()` remained pending after a simulated 204; waiting
 for that matching response and checking its successful status completed. This
 observation applies to that fixture/runtime, not every response or browser.
 
+Finish the fixture's initial state and geometry-changing provider reads before
+measuring scroll ranges or retaining tab elements. `sidebar-overlay-scrollbar`
+waits for its Gateway foot and fonts; `usage-focus-steady` waits for its initial
+Overview load. For finite animation assertions, `sidebar.test.cjs` observes the
+real nonzero native animation at creation and waits for its natural completion;
+a later `getAnimations()` read can arrive after the animation has finished.
+
 `plugin-gateway.test.cjs` checks gateway-only plugin identification, the existing
 JSON options editor and aggregate diagnostics in all five languages on Chromium
 and WebKit. It uses local API fixtures, saves options through the real page, and

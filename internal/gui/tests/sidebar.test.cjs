@@ -174,18 +174,38 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     await t.test("the list opens and folds as it plays", async () => {
       const context = await browser.newContext({ viewport: { width: 1200, height: 760 } });
       const page = await context.newPage();
+      page.setDefaultTimeout(5000);
       await page.route("**/*", serve("en", []));
       await page.goto("http://magpie.test/");
       await page.waitForSelector("#nav button.on");
+      // Observe the native animations as they start: a slow round trip can
+      // return after the unroll has already played and left getAnimations().
+      await page.evaluate(() => {
+        window.__sideAnimations = [];
+        const animate = Element.prototype.animate;
+        Element.prototype.animate = function () {
+          const animation = animate.apply(this, arguments);
+          if (this.matches("#side .nav-sub")) {
+            const activeDuration = animation.effect.getComputedTiming().activeDuration;
+            const record = { leaving: this.classList.contains("leaving"), activeDuration,
+              active: Number.isFinite(activeDuration) && activeDuration > 0 && this.getAnimations().includes(animation), finished: false };
+            window.__sideAnimations.push(record);
+            animation.finished.then(() => { record.finished = true; }, () => { record.cancelled = true; });
+          }
+          return animation;
+        };
+      });
       await page.locator("#prefs").click();
       const box = page.locator("#side .nav-sub").first();
       await box.waitFor();
-      assert.ok(await box.evaluate((b) => b.getAnimations().length > 0), "the list unrolls");
+      assert.ok(await page.evaluate(() => __sideAnimations.some((a) => !a.leaving && a.active)), "the list unrolls");
+      await page.waitForFunction(() => __sideAnimations.some((a) => !a.leaving && a.finished), null, { polling: 100 });
       await page.locator('#nav button[data-view="agents"]').click();
       // folding: out of reach at once, gone once it has played
       assert.equal(await page.locator(".nav-sub:not(.leaving)").count(), 0);
       assert.equal(await page.locator(".nav-s").count(), 0, "its rows are no tabs while they fold");
       await page.waitForFunction(() => !document.querySelector(".nav-sub"));
+      assert.ok(await page.evaluate(() => __sideAnimations.some((a) => a.leaving && a.active && a.finished)), "the fold plays to completion");
       await context.close();
     });
   });
