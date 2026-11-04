@@ -1,0 +1,14 @@
+{
+  "source": "deb770e42bd210cb69b8b1970ad5d7c068e40dba",
+  "tree": "fae10bb58361a5f20d7dcd0cbf58d929e81ead4f",
+  "ref": "refs/heads/validation/local-dictionary-fullrepo-20261104",
+  "original_workflow": ".github/workflows/test.yml",
+  "original_workflow_sha256": "00b5dad19354cb455309fcc60b58cb69363f060367fa39d1cef603b537b935da",
+  "control_hashes": {
+    ".github/dictionary-fullrepo-validation/gate.py": "7334669c0f758d567b577cf2b85b5f01be30c2cf8e0dc00c61624d3c1af2a833",
+    ".github/workflows/local-dictionary-fullrepo.yml": "94e041cfd4fd5e5ff6bc0899866f97692ae323ef29ef6a6634099d9677214024"
+  },
+  "scope": "Preserve every original full repository Test run command and limit. No browser suite, packaging, release, native interactive GUI or ACL acceptance.",
+  "uploads": "No artifact upload, setup-go cache save, or setup-bun post cache save. Official workflow stdout/stderr remains.",
+  "cleanup": "Original identity-recorded synthetic-home cleanup is retained. This workflow does not claim the focused v6 owned-child-tree guarantee."
+}
