@@ -1,0 +1,63 @@
+{
+  "enabled": true,
+  "repository": "xue-ding-e/Magpie-Next",
+  "actions_allowlist_verified": true,
+  "action_admission_evidence": {
+    "browser_run": 41429799254,
+    "browser_job": 125225229043,
+    "go_run": 41438741797,
+    "go_job": 125255000377
+  },
+  "scope": "native Linux child lifecycle then bounded synthetic container dictionary resources only; no UI, packaging, release or main",
+  "branch": "refs/heads/validation/local-dictionary-node-resource-20261104",
+  "base": "203a1811105a97fa46cb62fcf9706f44535b0ebd",
+  "source": "bf712fea22287da278a38a8d5d484120952e0852",
+  "source_tree": "0395d776600f51d8ccc49904f3170678fd0a6a15",
+  "reviewed_full_product_patch_sha256": "4903922424ca26e5f15e11570cd49591e9b6d26809f42517f922ef1aaf38dde6",
+  "files": {
+    "internal/redact/dictionary.go": "ef2e00be9d25422b9efa3ebd0a2c5830fbcfd0eff2d39de42f6a47fe8a0ca7e0",
+    "internal/redact/dictionary_allocation_test.go": "c926a93c3ddc14002ad98ce98114a641e93a5667eb5ee3149bcfbb58fdc18b59"
+  },
+  "actions": [
+    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+    "actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+  ],
+  "container": {
+    "image": "docker.io/library/python@sha256:38b3a52e74d49330ab2f55255503669bcbbd759c847472816131b807b83cf2a6",
+    "platform": "linux/amd64",
+    "python": "3.13.18",
+    "uid": 1001,
+    "gid": 1001,
+    "options": "--memory=2g --memory-swap=2g --user=1001:1001 --cap-drop=ALL --security-opt=no-new-privileges --cgroupns=private",
+    "source": "https://raw.githubusercontent.com/docker-library/repo-info/master/repos/python/remote/3.13-bookworm.md",
+    "proof": "readonly cgroup and identity checks plus at most 1 MiB; kernel limit only covers container processes, not host image pull or daemon; successful post-job container removal must be independently checked in complete runner logs"
+  },
+  "environment_boundaries": {
+    "authority": "standard GitHub-hosted non-privileged job.container only; no additional GitHub permissions, registry credentials, user volumes or Docker API access",
+    "before_checkout": "UID/GID/saved IDs=1001, all capabilities=0, NoNewPrivs=1, seccomp filter, Docker socket inaccessible by effective identity, private read-only cgroup2 memory.max=2147483648 and memory.swap.max=0",
+    "host_operations": "no sudo/chown/host cgroup writes/migration/mount changes/Docker API; only reviewed owned synthetic children plus Go compiler/test binary; no real data or credentials",
+    "probe": "reuse reviewed tiny environment guard; delta may be zero, never claim positive observed memory charge",
+    "initialization": "exact public GitHub run-attempt/job started_at establishes initialization-inclusive 600-second cap, with 180-second cleanup reserve; unavailable or mismatched metadata is NOT RUN",
+    "cleanup_acceptance": "full official Stop containers log must confirm deletion and no Docker rm failure warning; green job alone is insufficient",
+    "future_large_workload": "enabled diagnostics-only candidate; existing guards unchanged; remote ref creation and execution require separately assigned root approval and heavy slot",
+    "oom_group_zero": "not equivalent to group=1; any OOM, timeout, absent completion or cleanup evidence fails closed; whole-container runner removal is independently verified platform fallback, not a guarantee of immediate owned-tree cleanup"
+  },
+  "budget_sources": [
+    "https://docs.github.com/en/rest/actions/workflow-runs#get-a-workflow-run-attempt",
+    "https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run-attempt"
+  ],
+  "diagnostic_basis": {
+    "run": 41543726670,
+    "head": "fe13d72e94e8c02cf668d1861b958efe90fcc286",
+    "classification": "resource acceptance FAIL / outcome indeterminate; stage-after guard rejection with missing stage evidence, not proven product OOM",
+    "prior_failure_gate_retained": true,
+    "runner_mapping_sources": [
+      "https://raw.githubusercontent.com/actions/runner/v2.338.2/src/Runner.Worker/Handlers/Handler.cs",
+      "https://raw.githubusercontent.com/actions/runner/v2.338.2/src/Runner.Worker/Handlers/StepHost.cs",
+      "https://raw.githubusercontent.com/actions/runner/v2.338.2/src/Runner.Worker/Container/ContainerInfo.cs"
+    ],
+    "memory_semantics": "https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files",
+    "allocation_predecessor_run": 41794322132
+  }
+}
