@@ -46,7 +46,7 @@ const README = [
   "<img src=\"https://evil.test/x.png\"> <script>window.pwned = 1</script>",
 ].join("\n");
 
-function server(lang, asked) {
+function server(lang, asked, heldSearch) {
   const installed = [{ spec: "opencode-broken", error: "Cannot find module 'x'", providers: [], version: "1.0.0" }];
   const subs = [];
   const market = () => ({ listings, state: { bun: true, bunVersion: "1.3.0", plugins: installed } });
@@ -67,6 +67,14 @@ function server(lang, asked) {
     if (url.pathname === "/api/plugins/market" || url.pathname === "/api/plugins" || url.pathname === "/api/plugins/listings") { const m = market(); return json(url.pathname === "/api/plugins" ? m.state : url.pathname === "/api/plugins/listings" ? { listings: m.listings } : m); }
     if (url.pathname === "/api/plugins/search") {
       asked.push(["search", url.searchParams.get("q")]);
+      if (heldSearch) {
+        let timer;
+        const released = await Promise.race([
+          heldSearch.then(() => true),
+          new Promise((resolve) => { timer = setTimeout(() => resolve(false), 5000); }),
+        ]).finally(() => clearTimeout(timer));
+        if (!released) return route.fulfill({ status: 504, json: { error: "The fixture's search gate was not released" } });
+      }
       return json({ hits: [
         { package: "opencode-copilot-auth", version: "0.0.9" },
         { package: "opencode-copilot-proxy-auth", version: "2.1.0", description: "Copilot through a proxy", publisher: "someone" },
@@ -117,13 +125,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
     t.after(() => browser.close());
     for (const lang of ["en", "zh"]) {
-      await t.test(lang, async () => {
+      await t.test(lang, async (t) => {
         const w = L[lang];
-        const page = await (await browser.newContext({ viewport: { width: 980, height: 820 } })).newPage();
+        const context = await browser.newContext({ viewport: { width: 980, height: 820 } });
+        const page = await context.newPage();
         page.setDefaultTimeout(5000);
         const errors = [], asked = [];
+        const search = Promise.withResolvers();
+        t.after(async () => { search.resolve(); await context.close(); });
         page.on("pageerror", (e) => errors.push(e.message));
-        await page.route("**/*", server(lang, asked));
+        await page.route("**/*", server(lang, asked, search.promise));
 
         // the providers list has no way of its own there: the add sheet's
         // Subscriptions has it, as its last row
@@ -154,15 +165,36 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal((await replaces.innerText()).trim(), w.replaces);
         assert.match(await replaces.getAttribute("title"), w.replacesWhy);
         await shot(view, `plugins-discover-${engine}-${lang}`);
-        await view.locator(".pm-find input").fill("copilot");
+        await Promise.all([
+          page.waitForRequest((r) => {
+            const url = new URL(r.url());
+            return url.origin === "http://magpie.test" && url.pathname === "/api/plugins/search" && url.searchParams.get("q") === "copilot";
+          }),
+          view.locator(".pm-find input").fill("copilot"),
+        ]);
         const copilot = view.locator('.pm-card[data-pkg="opencode-copilot-auth"]');
         await copilot.locator(".pm-dl", { hasText: w.week }).waitFor();
         assert.equal((await copilot.locator(".pm-by").innerText()).trim(), "thdxr");
 
         // a card's page: facts, links opened outside, the README without pictures
-        await copilot.locator(".pm-sum").click();
+        // npm answers while the pointer is down: the suggested card must
+        // stay in the page so releasing the pointer still opens its details.
+        await copilot.locator(".pm-sum").hover();
+        const pressedCard = await copilot.elementHandle();
+        try {
+          await page.mouse.down();
+          search.resolve();
+          await view.locator('.pm-card[data-pkg="opencode-copilot-proxy-auth"]').waitFor();
+          assert.ok(await pressedCard.evaluate((c) => c.isConnected), "the suggested card survives npm's response");
+          assert.equal(asked.filter(([k, v]) => k === "search" && v === "copilot").length, 1);
+        } finally {
+          search.resolve();
+          try { await page.mouse.up(); }
+          finally { await pressedCard.dispose(); }
+        }
         const dlg = page.locator("#modal .pm-detail");
         await dlg.locator(".pm-md h4", { hasText: w.readme }).waitFor();
+        assert.deepEqual(asked.filter(([k]) => k === "page"), [["page", "opencode-copilot-auth"]]);
         assert.equal(await dlg.locator(".pm-md img, .pm-md script").count(), 0);
         assert.equal(await page.evaluate(() => window.pwned), undefined);
         assert.doesNotMatch(await dlg.locator(".pm-md").innerText(), /pwned/);

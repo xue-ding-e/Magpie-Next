@@ -859,7 +859,7 @@
     } catch (e) {
       if (hits?.q === s) hits = { q: s, error: e.message };
     }
-    if (hits?.q === s) drawBody();
+    if (hits?.q === s) drawBody(true);
   }
 
   page.addEventListener("scroll", () => page.querySelector(".pm-head")?.classList.toggle("stuck", page.scrollTop > 0), { passive: true });
@@ -874,8 +874,9 @@
     page.scrollTop = scroll;
   }
 
-  function drawBody() {
+  function drawBody(npmOnly) {
     if (!body) return;
+    const justSearch = npmOnly === true;
     const key = tab + (query ? ":q" : "");
     body.classList.toggle("enter", shown !== key);
     shown = key;
@@ -920,12 +921,15 @@
       replaceKeeping(body, out);
       return;
     }
-    if (ls.length) out.push(section(t("Suggested"), "", ls));
-    if (gh.length) out.push(ghSection(gh));
-    else if (!tagged) out.push(ghWaiting());
-    else if (taggedErr && !tagged.length) out.push(ghFailed());
+    if (!justSearch) {
+      if (ls.length) out.push(section(t("Suggested"), "", ls));
+      if (gh.length) out.push(ghSection(gh));
+      else if (!tagged) out.push(ghWaiting());
+      else if (taggedErr && !tagged.length) out.push(ghFailed());
+    }
     const known = new Set([...listings.map((l) => l.package), ...(tagged || []).map((l) => l.github.package).filter(Boolean)]);
     const box = el("section", "pm-sec");
+    box.dataset.npmSearch = "1";
     const h = el("div", "pm-sechead");
     h.append(el("h3", "", t("On npm")), el("span", "", t("OpenCode plugins and pi packages anyone published — read what one does before you install it")));
     box.append(h);
@@ -938,6 +942,12 @@
       const g = el("div", "pm-grid");
       for (const x of list) g.append(card({ package: x.package, name: x.package, npm: x }));
       box.append(g);
+    }
+    if (justSearch) {
+      const previous = body.querySelector(":scope > .pm-sec[data-npm-search]");
+      if (previous) previous.replaceWith(box);
+      else drawBody();
+      return;
     }
     out.push(box);
     replaceKeeping(body, out);

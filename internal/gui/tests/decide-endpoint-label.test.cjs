@@ -67,6 +67,14 @@ const decideField = (ed) => ed.locator("input.decide-url").evaluate((input) => {
   return { label: wrap.previousElementSibling?.textContent || "", hint: wrap.querySelector(".hint")?.textContent || "" };
 });
 
+async function openProviders(page) {
+  await page.goto("http://magpie.test/?view=providers");
+  // The HTML already contains Add provider while startup draws skeletons.
+  // Wait for the fresh list, including a kept-list replacement, before its
+  // moving/hidden add button or saved rows are used for endpoint assertions.
+  await page.waitForFunction(() => load.done && providers && !providers.last && !loadProviders.first);
+}
+
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": only Jev's presets call the decision address Jev's endpoint", async (t) => {
     assert(["chromium", "webkit"].includes(engine), "BROWSER must be chromium or webkit");
@@ -84,7 +92,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const ed = page.locator(".editor.new");
 
         for (const { name } of presets) {
-          await page.goto("http://magpie.test/?view=providers");
+          await openProviders(page);
           await page.locator("#addProvider").click();
           const tile = sheet.locator(".tile .n", { hasText: new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$") });
           await reach(page, tile);
@@ -103,7 +111,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
         // editing a saved OpenRouter shows the same
         const saved = page.locator(".editor");
-        await page.goto("http://magpie.test/?view=providers");
+        await openProviders(page);
         await page.locator('#providers .row[data-id="openrouter"]').click();
         await saved.locator(".ehead b", { hasText: "OpenRouter" }).waitFor();
         const got = await decideField(saved);

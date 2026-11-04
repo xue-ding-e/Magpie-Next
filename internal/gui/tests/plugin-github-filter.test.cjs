@@ -20,6 +20,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
+const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const GH = require("./fixtures/plugins-github-31.json");
@@ -127,13 +128,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           // scroll by code, as a click's own scrolling into view, is put
           // back (no unasked scroll), and the footer took WebKit's click
           const press = async (b) => {
-            await page.mouse.move(width / 2, 400);
-            for (let i = 0; i < 12; i++) {
-              const [at, foot] = [await b.boundingBox(), await page.locator(".foot").boundingBox()];
-              if (at && (!foot || at.y + at.height <= foot.y)) break;
-              await page.mouse.wheel(0, 200);
-              await page.waitForTimeout(80);
-            }
+            await reach(page, b);
             await b.click();
           };
           const field = sec.locator(".pm-ghfind input");
