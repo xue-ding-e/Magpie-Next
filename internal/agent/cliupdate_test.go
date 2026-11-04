@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/testenv"
 )
 
@@ -56,6 +57,8 @@ func TestInstalledVersion(t *testing.T) {
 	p := filepath.Join(bin, "pi")
 	for _, c := range []struct{ out, want string }{{"0.98.2", "0.98.2"}, {"pi 0.99.0\n", "0.99.0"}} {
 		testenv.Program(t, p, "#!/bin/sh\necho '"+c.out+"'\n")
+		// The fake install can share the empty folder's timestamp.
+		proc.Forget()
 		if v := a.InstalledVersion(); v != c.want {
 			t.Errorf("%q: %q", c.out, v)
 		}
@@ -556,9 +559,12 @@ func TestGrokInstalled(t *testing.T) {
 	}))
 	defer rel.Close()
 	says := "grok 1.0.46 (2765805b9442)"
-	oldRel, oldVer, oldRun := grokReleases, runVersion, runUpdate
+	oldRel, oldVer, oldRun, oldCheck := grokReleases, runVersion, runUpdate, runCheck
 	grokReleases = []string{rel.URL + "/"}
 	runVersion = func(string) string { return says }
+	// The fixture's MZ bytes only stand for an install path. On WSL they
+	// start the Windows interpreter, which exits 1 on that incomplete file.
+	runCheck = func(context.Context, string, []string) (string, int, error) { return says, 0, nil }
 	versions, latests = memo{}, memo{}
 	var ran [][]string
 	runUpdate = func(_ context.Context, u *updater) ([]byte, error) {
@@ -568,7 +574,7 @@ func TestGrokInstalled(t *testing.T) {
 		return []byte("✓ grok v1.0.50 installed successfully!"), nil
 	}
 	t.Cleanup(func() {
-		grokReleases, runVersion, runUpdate = oldRel, oldVer, oldRun
+		grokReleases, runVersion, runUpdate, runCheck = oldRel, oldVer, oldRun, oldCheck
 		versions, latests = memo{}, memo{}
 	})
 

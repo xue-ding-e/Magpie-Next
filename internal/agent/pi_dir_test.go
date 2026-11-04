@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/testenv"
 )
 
@@ -146,10 +147,13 @@ func TestOmpDetectedWithPiDir(t *testing.T) {
 		ompCmd = "omp.cmd"
 	}
 	testenv.Program(t, filepath.Join(bin, ompCmd), "#!/bin/sh\n")
+	// A fake install or removal can keep the folder's timestamp unchanged.
+	proc.Forget()
 	if !omp(home).Detected() {
 		t.Error("omp's command is not")
 	}
 	os.Remove(filepath.Join(bin, ompCmd))
+	proc.Forget()
 	if err := os.WriteFile(filepath.Join(pi, "config.yml"), []byte("modelRoles: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
