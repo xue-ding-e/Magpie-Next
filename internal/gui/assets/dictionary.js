@@ -37,16 +37,18 @@ function openLocalDictionary() {
   const save = el("button", "btn primary", t("Save")), cancel = el("button", "btn", t("Cancel"));
   const reveal = el("button", "btn", t("Reveal entries")), prev = el("button", "btn", t("Previous")), next = el("button", "btn", t("Next"));
   const reload = el("button", "btn", t("Reload"));
-  let state = null, offset = 0, busy = false, shown = false, request = 0;
+  let state = null, saveRevision = null, offset = 0, busy = false, shown = false, request = 0;
   const controller = new AbortController();
   const active = () => localDictionaryDialog === d;
   const lock = (v) => { busy = v; save.disabled = v || !state; file.disabled = mode.disabled = format.disabled = input.disabled = v; reload.disabled = reveal.disabled = v; prev.disabled = v || !shown || offset === 0; next.disabled = v || !shown || offset + 100 >= (state?.count || 0); };
   const describe = () => { summary.textContent = `${state.count} ${t("entries")} · ${state.bytes} ${t("bytes")}`; lock(busy); };
-  const load = async () => {
+  const load = async (resetRevision = false) => {
     const id = ++request; lock(true); error.textContent = "";
     try {
       const s = await api(`settings/local-dictionary?offset=${offset}&limit=100${shown ? "&reveal=1" : ""}`, undefined, undefined, controller.signal);
       if (!active() || id !== request) return;
+      // Viewing another page must not bless an old draft against a newer writer.
+      if (saveRevision === null || resetRevision) saveRevision = s.revision;
       state = s; preview.textContent = shown ? (s.words || []).map((w, i) => `${offset+i+1}: ${JSON.stringify(w)}`).join("\n") : ""; preview.hidden = !shown; describe();
     } catch (e) { if (active() && e.name !== "AbortError") error.textContent = e.message; }
     finally { if (active() && id === request) lock(false); }
@@ -55,7 +57,11 @@ function openLocalDictionary() {
   cancel.onclick = close;
   d.addEventListener("cancel", (e) => { e.preventDefault(); close(); });
   d.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Escape") { e.preventDefault(); close(); } });
-  d.addEventListener("click", (e) => { if (e.target === d) { const r=d.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) close(); } });
+  const onBackdrop = backdropClick(d, (e) => {
+    const r=d.getBoundingClientRect();
+    return e.target===d && (e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom);
+  });
+  d.addEventListener("click", (e) => { if(onBackdrop(e))close(); });
   file.onchange = async () => {
     const f = file.files?.[0]; if (!f) return;
     error.textContent = "";
@@ -69,12 +75,19 @@ function openLocalDictionary() {
     if (!state || busy) return;
     if (new TextEncoder().encode(input.value).length > 16*1024*1024) { error.textContent=t("Import exceeds 16 MiB"); return; }
     lock(true); error.textContent="";
-    try { const result=await api("settings/local-dictionary", {revision:state.revision,mode:mode.value,format:format.value,content:input.value},undefined,controller.signal); if(active()){state=result;input.value=file.value=preview.textContent="";shown=false;preview.hidden=true;offset=0;reveal.textContent=t("Reveal entries");describe();} }
+    try { const result=await api("settings/local-dictionary", {revision:saveRevision,mode:mode.value,format:format.value,content:input.value},undefined,controller.signal); if(active()){state=result;saveRevision=result.revision;input.value=file.value=preview.textContent="";shown=false;preview.hidden=true;offset=0;reveal.textContent=t("Reveal entries");describe();} }
     catch(e){if(active()&&e.name!=="AbortError")error.textContent=e.message;}
     finally{if(active())lock(false);}
   };
   reveal.onclick = () => { shown=!shown;offset=0;reveal.textContent=t(shown?"Hide entries":"Reveal entries");if(!shown){++request;preview.textContent="";preview.hidden=true;if(state)delete state.words;lock(false);return;}load(); };
-  prev.onclick = () => {offset=Math.max(0,offset-100);load();}; next.onclick = () => {offset+=100;load();}; reload.onclick=()=>{offset=0;load();};
+  prev.onclick = () => {offset=Math.max(0,offset-100);load();}; next.onclick = () => {offset+=100;load();}; reload.onclick=async()=>{
+    if(busy)return;
+    lock(true);
+    if((input.value || file.value) && !(await confirmDiscard())) { if(active())lock(false);return; }
+    if(!active())return;
+    input.value=file.value=preview.textContent="";offset=0;
+    await load(true);
+  };
   buttons.append(save,cancel,reload,reveal,prev,next);
   d.append(heading,note,boundary,limits,summary,mode,format,file,input,error,buttons,preview);document.body.append(d);d.showModal();load();
 }
