@@ -120,8 +120,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       };
       const pick = (i) => tap(page.locator(".rt-req").nth(i));
       await page.goto("http://magpie.test/?view=routing");
-      await page.locator(".rt-day").nth(1).waitFor({ state: "visible", timeout: 15000 });
-      await page.locator(".rt-day").nth(1).click();
+      // Group-by buttons share .rt-day and can exist before history arrives.
+      // Pick this fixture's date from the date bar, then observe its real read.
+      const historyDay = page.locator(".rt-days > .rt-day:not(.rt-day-more)").nth(1);
+      await historyDay.waitFor({ state: "visible", timeout: 15000 });
+      await Promise.all([
+        page.waitForRequest((r) => new URL(r.url()).pathname === "/api/gateway/history" && new URL(r.url()).searchParams.get("day") === day),
+        historyDay.click(),
+      ]);
       await page.locator(".rt-req").nth(routes.length - 1).waitFor();
 
       // in the recent calls: both bodies, read only when asked

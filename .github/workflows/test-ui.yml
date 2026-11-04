@@ -12,8 +12,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  baseline:
+    name: Pin the desktop comparison baseline
+    runs-on: windows-latest
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.select.outputs.sha }}
+      main_sha: ${{ steps.select.outputs.main_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - name: Fetch main once and select an independent baseline
+        id: select
+        shell: pwsh
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c credential.helper= fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $mainSHA = git rev-parse --verify 'refs/remotes/origin/main^{commit}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # A main release/push must compare against its first parent, not itself.
+          # Other candidates compare against this one fetched main snapshot.
+          node build/ui-test-shard.mjs --source-sha $env:GITHUB_SHA --resolve-baseline-main $mainSHA --output (Join-Path $env:RUNNER_TEMP 'ui-baseline')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $selection = Get-Content (Join-Path $env:RUNNER_TEMP 'ui-baseline/baseline-selection.json') -Raw | ConvertFrom-Json
+          "sha=$($selection.baselineSHA)" >> $env:GITHUB_OUTPUT
+          "main_sha=$($selection.mainSHA)" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-baseline-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-baseline/
+          if-no-files-found: error
+          retention-days: 14
+
   shards:
     name: Windows UI shard ${{ matrix.shard }} of 4
+    needs: baseline
     runs-on: windows-latest
     timeout-minutes: 180
     strategy:
@@ -29,6 +71,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '26.13.0'
+      - name: Fetch the exact baseline without changing the source checkout
+        timeout-minutes: 2
+        shell: pwsh
+        env:
+          UI_BASELINE_SHA: ${{ needs.baseline.outputs.sha }}
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:UI_BASELINE_SHA -cnotmatch '^[a-f0-9]{40}$') { throw 'Invalid baseline SHA' }
+          git -c credential.helper= fetch --no-tags --depth=1 origin $env:UI_BASELINE_SHA
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $actual = git rev-parse --verify "$($env:UI_BASELINE_SHA)^{commit}"
+          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:UI_BASELINE_SHA) { throw 'Baseline fetch mismatch' }
+          if ((git rev-parse HEAD) -cne $env:GITHUB_SHA) { throw 'Source SHA changed' }
       - name: Check runner contracts without browsers
         shell: pwsh
         run: |
@@ -56,7 +112,7 @@ jobs:
       - name: Run the complete modulo shard, concurrency 2
         shell: pwsh
         run: |
-          node build/ui-test-shard.mjs --source-sha $env:GITHUB_SHA --shard-index ${{ matrix.shard }} --shard-count 4 --expected-files 829 --output (Join-Path $env:RUNNER_TEMP 'ui-shard-${{ matrix.shard }}')
+          node build/ui-test-shard.mjs --source-sha $env:GITHUB_SHA --baseline-sha '${{ needs.baseline.outputs.sha }}' --baseline-main-sha '${{ needs.baseline.outputs.main_sha }}' --shard-index ${{ matrix.shard }} --shard-count 4 --expected-files 829 --output (Join-Path $env:RUNNER_TEMP 'ui-shard-${{ matrix.shard }}')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
@@ -70,7 +126,7 @@ jobs:
   coverage:
     name: All four UI shards and all 829 files
     if: always()
-    needs: shards
+    needs: [baseline, shards]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -90,7 +146,7 @@ jobs:
           SHARDS_RESULT: ${{ needs.shards.result }}
         run: |
           test "$SHARDS_RESULT" = success
-          node build/ui-test-shard.mjs --source-sha "$GITHUB_SHA" --shard-count 4 --expected-files 829 --verify-artifacts "$RUNNER_TEMP/ui-shards" --output "$RUNNER_TEMP/ui-coverage"
+          node build/ui-test-shard.mjs --source-sha "$GITHUB_SHA" --baseline-sha '${{ needs.baseline.outputs.sha }}' --shard-count 4 --expected-files 829 --verify-artifacts "$RUNNER_TEMP/ui-shards" --output "$RUNNER_TEMP/ui-coverage"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

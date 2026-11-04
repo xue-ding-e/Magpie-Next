@@ -1,5 +1,14 @@
 # Dropdown browser regression
 
+When a click posts asynchronously, capture the new Playwright Request before
+clicking and match its Response by request identity before asserting fixture
+state. A previous request's delayed response can otherwise satisfy the wait.
+`update-wait.test.cjs` keeps the strict `when: "now"` body assertion: waiting
+must not filter out an incorrect body. In the Windows Playwright 1.61.1 Chromium
+fixture, `response.finished()` remained pending after a simulated 204; waiting
+for that matching response and checking its successful status completed. This
+observation applies to that fixture/runtime, not every response or browser.
+
 `plugin-gateway.test.cjs` checks gateway-only plugin identification, the existing
 JSON options editor and aggregate diagnostics in all five languages on Chromium
 and WebKit. It uses local API fixtures, saves options through the real page, and

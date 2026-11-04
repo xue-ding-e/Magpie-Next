@@ -95,6 +95,22 @@ const fresh = (over) => ({
 const confirmAsk = (page) => page.locator("#modal .update-ask button.primary").click();
 const scrolls = (page) => page.evaluate(() => [window.scrollY, document.scrollingElement.scrollTop, ...[...document.querySelectorAll(".view")].map((v) => v.scrollTop)].join(","));
 
+// A click can finish before its POST reaches the fixture. Follow that new
+// request, not an earlier install's late response; a wrong `when` still fails below.
+async function installClick(page, click) {
+  let request;
+  const [, response] = await Promise.all([
+    page.waitForRequest((r) => {
+      if (r.url() !== "http://magpie.test/api/update/install" || r.method() !== "POST") return false;
+      request = r;
+      return true;
+    }),
+    page.waitForResponse((r) => r.request() === request),
+    click(),
+  ]);
+  assert(response.ok(), "the install request succeeded");
+}
+
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": a restart to update waits for the gateway", async (t) => {
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
@@ -148,8 +164,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
         await row.locator("button", { hasText: w.restart }).click();
         await confirmAsk(page);
-        await row.locator("button", { hasText: w.now }).click();
-        for (let i = 0; i < 50 && !ctl.restarted; i++) await page.waitForTimeout(20);
+        await installClick(page, () => row.locator("button", { hasText: w.now }).click());
         assert.deepEqual(ctl.installs.at(-1), { view: "settings", when: "now" });
         assert.equal(ctl.restarted, true);
         await subIs(page, row, w.restarting).catch(() => {});
@@ -183,8 +198,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.waitForTimeout(100);
         assert.equal(ctl.installs.length, 1);
         await page.waitForTimeout(1500);
-        await pill.click();
-        for (let i = 0; i < 50 && !ctl.restarted; i++) await page.waitForTimeout(20);
+        await installClick(page, () => pill.click());
         assert.deepEqual(ctl.installs.at(-1), { when: "now" });
         assert.equal(ctl.restarted, true);
         assert.equal(await scrolls(page), before, "no click moves the page");
@@ -198,8 +212,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await row.locator("button", { hasText: w.restart }).waitFor();
         assert.equal((await row.locator(".sub").textContent()).trim(), w.busy.split(" · ")[0]);
         await row.locator("button", { hasText: w.restart }).click();
-        await confirmAsk(page);
-        for (let i = 0; i < 50 && !ctl.restarted; i++) await page.waitForTimeout(20);
+        await installClick(page, () => confirmAsk(page));
         assert.equal(ctl.restarted, true);
         assert.deepEqual(errors, []);
       });

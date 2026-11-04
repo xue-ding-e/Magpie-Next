@@ -565,6 +565,12 @@ the requested source commit and unchanged input hashes. Logs and input reports
 are retained as artifacts. The Next package workflow requires all four shards
 and their coverage check in addition to the Go workflow; a CI-only change does
 not authorize a release. Update the reviewed inventory count when adding a file.
+The desktop screenshot comparison needs a second Git tree. CI fetches main once
+and pins that commit for every shard; when main is the candidate itself, it uses
+the candidate's first parent. Each worker fetches that exact baseline without
+changing its source checkout. Its asset bytes and tree are included in the input
+seal, and coverage rejects mixed baselines. A missing baseline fails before a
+browser starts instead of turning a fixture asset into a 404.
 Local GUI verification still reports the exact command and result. See
 [`tests/README.md`](../../internal/gui/tests/README.md).
 

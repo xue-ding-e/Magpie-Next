@@ -5,9 +5,12 @@ import fs from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { finished } from "node:stream/promises";
-import { discoverInventory, selectShard, verifyReports, fileResults, executeTests, runCommand } from "./ui-test-shard.mjs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { discoverInventory, selectShard, verifyReports, fileResults, executeTests, runCommand,
+  chooseBaseline, baselineSnapshot, inputSnapshot } from "./ui-test-shard.mjs";
 
 async function fixture(t, names = ["a", "b"]) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "magpie-ui-shard-"));
@@ -20,13 +23,51 @@ async function fixture(t, names = ["a", "b"]) {
   return root;
 }
 
+async function shallowFixture(t) {
+  const root = await fixture(t, ["baseline"]);
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("GIT_")));
+  const config = path.join(root, "empty-git-config");
+  await fs.writeFile(config, "");
+  Object.assign(env, { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: config, GIT_CONFIG_SYSTEM: config,
+    GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
+  const hooks = path.join(root, "no-hooks");
+  await fs.mkdir(hooks);
+  const git = (cwd, ...args) => execFileSync("git", ["-c", `core.hooksPath=${hooks}`, "-c", "credential.helper=",
+    "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", "-c", "user.name=UI fixture",
+    "-c", "user.email=ui-fixture@example.invalid", ...args], { cwd, env, windowsHide: true, maxBuffer: 256 * 1024 * 1024 });
+  for (const name of ["internal/gui/assets/index.html", "internal/gui/assets/app.js", "internal/gui/assets/app.css",
+    "build/ui-test-shard.mjs", "build/ui-test-shard.test.mjs", ".github/ui-preview/package.json", ".github/workflows/test-ui.yml"]) {
+    const file = path.join(root, name);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, `synthetic ${name}\n`);
+  }
+  git(root, "init", "--template=", "-b", "candidate");
+  git(root, "add", "."); git(root, "commit", "-m", "synthetic baseline");
+  const baselineSHA = git(root, "rev-parse", "HEAD").toString().trim();
+  await fs.writeFile(path.join(root, "internal/gui/assets/app.js"), "synthetic candidate parent\n");
+  git(root, "commit", "-am", "synthetic candidate parent");
+  const parentSHA = git(root, "rev-parse", "HEAD").toString().trim();
+  await fs.writeFile(path.join(root, "internal/gui/assets/app.js"), "synthetic candidate\n");
+  git(root, "commit", "-am", "synthetic candidate");
+  const sourceSHA = git(root, "rev-parse", "HEAD").toString().trim();
+  const clone = path.join(root, "shallow");
+  git(root, "clone", "--no-hardlinks", "--depth=1", "--single-branch", "--branch", "candidate", pathToFileURL(root).href, clone);
+  assert.equal(git(clone, "rev-parse", "--is-shallow-repository").toString().trim(), "true");
+  assert.throws(() => git(clone, "cat-file", "-e", `${baselineSHA}^{commit}`));
+  assert.throws(() => git(clone, "rev-parse", "--verify", "origin/main"));
+  return { repo: clone, git: (...args) => git(clone, ...args), baselineSHA, parentSHA, sourceSHA };
+}
+
 const files = Array.from({ length: 9 }, (_, i) => `internal/gui/tests/${i}.test.cjs`);
 const source = "a".repeat(40), digest = "b".repeat(64);
+const pinned = "c".repeat(40);
 function reports() {
   return Array.from({ length: 4 }, (_, shardIndex) => {
     const selected = files.filter((_, i) => i % 4 === shardIndex);
     return { sourceSHA: source, expectedFiles: files.length, shardCount: 4, shardIndex,
       inventory: [...files], selected, inputSHA256: digest, assetsSHA256: digest,
+      baseline: { sourceSHA: source, mainSHA: pinned, baselineSHA: pinned, policy: "origin/main",
+        assetsTreeSHA: "d".repeat(40), assetsSHA256: digest },
       inputsUnchanged: true, exitCode: 0, results: selected.map((file) => ({ file, success: true })) };
   });
 }
@@ -70,6 +111,8 @@ test("aggregate rejects missing or duplicate file results and mixed/failed evide
     (r) => { r[0].inputsUnchanged = false; },
     (r) => { r[0].sourceSHA = "c".repeat(40); },
     (r) => { r[0].assetsSHA256 = "c".repeat(64); },
+    (r) => { r[0].baseline.baselineSHA = source; },
+    (r) => { r[0].baseline.assetsSHA256 = "e".repeat(64); },
   ]) {
     const value = reports(); mutate(value);
     assert.throws(() => verifyReports(value, source, files.length));
@@ -105,4 +148,59 @@ test("native child exit code is preserved instead of turning failure green", asy
   const code = await runCommand(process.execPath, ["-e", "process.exit(7)"], { cwd: root, env: process.env, log });
   log.end(); await finished(log);
   assert.equal(code, 7);
+});
+
+test("baseline policy pins main and uses its first parent when main is the candidate", () => {
+  assert.deepEqual(chooseBaseline(source, pinned), { sourceSHA: source, mainSHA: pinned,
+    baselineSHA: pinned, policy: "origin/main" });
+  assert.deepEqual(chooseBaseline(source, source, pinned), { sourceSHA: source, mainSHA: source,
+    baselineSHA: pinned, policy: "source-first-parent" });
+  assert.throws(() => chooseBaseline(source, source), /first parent/);
+  assert.throws(() => chooseBaseline(source, source, source), /differ from/);
+});
+
+test("a real shallow checkout fetches the missing baseline and seals its exact bytes", async (t) => {
+  const { repo, git, sourceSHA, baselineSHA, parentSHA } = await shallowFixture(t);
+  await assert.rejects(baselineSnapshot(repo, sourceSHA, baselineSHA, baselineSHA));
+  git("fetch", "--no-tags", "--depth=1", "origin", baselineSHA);
+  assert.throws(() => git("cat-file", "-e", `${parentSHA}^{commit}`));
+  const baseline = await baselineSnapshot(repo, sourceSHA, baselineSHA, baselineSHA);
+  assert.equal(baseline.baselineSHA, baselineSHA);
+  assert.equal(baseline.files["internal/gui/assets/app.js"], createHash("sha256")
+    .update(git("show", `${baselineSHA}:internal/gui/assets/app.js`)).digest("hex"));
+  await assert.rejects(baselineSnapshot(repo, sourceSHA, sourceSHA, sourceSHA), /policy/);
+  assert.equal(baseline.policy, "origin/main");
+  await assert.rejects(baselineSnapshot(repo, sourceSHA, sourceSHA, parentSHA));
+  git("fetch", "--no-tags", "--depth=1", "origin", parentSHA);
+  assert.equal((await baselineSnapshot(repo, sourceSHA, sourceSHA, parentSHA)).policy, "source-first-parent");
+  assert.equal(git("rev-parse", "HEAD").toString().trim(), sourceSHA);
+  const before = await inputSnapshot(repo, baseline);
+  const changed = await inputSnapshot(repo, { ...baseline, assetsSHA256: "0".repeat(64) });
+  assert.notEqual(before.inputSHA256, changed.inputSHA256);
+  assert.equal(before.assetsSHA256, changed.assetsSHA256);
+});
+
+test("real child receives the pinned baseline instead of an inherited missing main ref", async (t) => {
+  const root = await fixture(t, ["baseline"]);
+  await fs.writeFile(path.join(root, "internal/gui/tests/baseline.test.cjs"),
+    `require('node:test')('baseline reaches the fixture', () => require('node:assert/strict').equal(process.env.BASE_REF, '${pinned}'));\n`);
+  const env = { ...process.env, BASE_REF: "origin/main" };
+  delete env.NODE_TEST_CONTEXT; delete env.NODE_OPTIONS; delete env.BROWSER;
+  const result = await executeTests({ repo: root, output: path.join(root, "results"), env,
+    selected: ["internal/gui/tests/baseline.test.cjs"], baselineSHA: pinned });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.results[0].success, true);
+});
+
+test("mobile fixture rejects a missing main ref before loading or launching browsers", async (t) => {
+  const { repo } = await shallowFixture(t);
+  const name = "internal/gui/tests/mobile-web.test.cjs";
+  await fs.copyFile(fileURLToPath(new URL("../" + name, import.meta.url)), path.join(repo, name));
+  const env = { ...process.env, BASE_REF: "origin/main" };
+  delete env.NODE_TEST_CONTEXT; delete env.NODE_OPTIONS; delete env.NODE_PATH;
+  const result = spawnSync(process.execPath, ["--test", "--test-concurrency=1", name], {
+    cwd: repo, env, windowsHide: true, encoding: "utf8", timeout: 10000 });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout + result.stderr, /origin\/main/);
+  assert.doesNotMatch(result.stdout + result.stderr, /Cannot find module|#nav button/);
 });

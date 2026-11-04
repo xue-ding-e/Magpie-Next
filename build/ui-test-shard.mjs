@@ -54,7 +54,54 @@ export function selectShard(files, index, count = SHARDS) {
   return selected;
 }
 
-export async function inputSnapshot(repo) {
+export function chooseBaseline(sourceSHA, mainSHA, firstParentSHA) {
+  for (const value of [sourceSHA, mainSHA]) assert.match(value, /^[a-f0-9]{40}$/, "invalid baseline selection SHA");
+  const baselineSHA = mainSHA === sourceSHA ? firstParentSHA : mainSHA;
+  assert.match(baselineSHA || "", /^[a-f0-9]{40}$/, "main candidate needs its first parent baseline");
+  assert.notEqual(baselineSHA, sourceSHA, "desktop baseline must differ from the candidate");
+  return { sourceSHA, mainSHA, baselineSHA, policy: mainSHA === sourceSHA ? "source-first-parent" : "origin/main" };
+}
+
+function git(repo, ...args) {
+  return execFileSync("git", ["--no-optional-locks", ...args], { cwd: repo, windowsHide: true, maxBuffer: 256 * 1024 * 1024 });
+}
+
+export async function baselineSnapshot(repo, sourceSHA, mainSHA, baselineSHA) {
+  // cat-file retains the actual parent even when checkout's shallow boundary hides HEAD^.
+  const parent = git(repo, "cat-file", "commit", sourceSHA).toString().match(/^parent ([a-f0-9]{40})$/m)?.[1];
+  const selected = chooseBaseline(sourceSHA, mainSHA, parent);
+  assert.equal(baselineSHA, selected.baselineSHA, "baseline differs from the pinned main/first-parent policy");
+  assert.equal(git(repo, "rev-parse", "--verify", `${baselineSHA}^{commit}`).toString().trim(), baselineSHA, "baseline commit missing");
+  const dir = "internal/gui/assets/";
+  const entries = git(repo, "ls-tree", "-r", "-z", baselineSHA, "--", dir).toString().split("\0").filter(Boolean)
+    .map((entry) => {
+      const match = entry.match(/^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/);
+      assert(match, "baseline assets must be regular Git blobs");
+      return { blob: match[2], file: match[3] };
+    });
+  assert(entries.length > 0, "baseline has no UI assets");
+  const out = execFileSync("git", ["--no-optional-locks", "cat-file", "--batch"], {
+    cwd: repo, windowsHide: true, input: entries.map((entry) => entry.blob + "\n").join(""), maxBuffer: 256 * 1024 * 1024 });
+  const files = {};
+  let offset = 0;
+  for (const entry of entries) {
+    const end = out.indexOf(10, offset), header = out.subarray(offset, end).toString().split(" ");
+    const size = Number(header[2]);
+    assert(end >= offset && header[0] === entry.blob && header[1] === "blob" && Number.isSafeInteger(size) && size >= 0, "invalid baseline blob response");
+    const body = out.subarray(end + 1, end + 1 + size);
+    assert.equal(body.length, size, "truncated baseline blob");
+    files[entry.file] = sha(body);
+    offset = end + size + 2;
+    assert.equal(out[offset - 1], 10, "baseline blob missing trailing newline");
+  }
+  assert.equal(offset, out.length, "unexpected trailing baseline blob bytes");
+  for (const name of ["index.html", "app.js", "app.css"]) assert(files[dir + name], `baseline missing ${name}`);
+  const ordered = Object.entries(files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  return { ...selected, assetsTreeSHA: git(repo, "rev-parse", `${baselineSHA}:internal/gui/assets`).toString().trim(),
+    files, assetsSHA256: sha(JSON.stringify(ordered)) };
+}
+
+export async function inputSnapshot(repo, baseline) {
   const files = {};
   const roots = ["internal/gui/tests", "internal/gui/assets"];
   for (const root of roots) {
@@ -66,7 +113,7 @@ export async function inputSnapshot(repo) {
     files[relative] = sha(await fs.readFile(path.join(repo, relative)));
   }
   const ordered = Object.entries(files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-  return { files, inputSHA256: sha(JSON.stringify(ordered)),
+  return { files, baseline, inputSHA256: sha(JSON.stringify({ files: ordered, baseline })),
     assetsSHA256: sha(JSON.stringify(ordered.filter(([name]) => name.startsWith("internal/gui/assets/")))) };
 }
 
@@ -122,9 +169,9 @@ export async function fileResults(repo, selected, eventFile) {
   return selected.map((file) => found.get(file));
 }
 
-export async function executeTests({ repo, selected, output, home = path.join(output, "home"), env }) {
+export async function executeTests({ repo, selected, output, home = path.join(output, "home"), env, baselineSHA }) {
   await fs.mkdir(output, { recursive: true });
-  const childEnv = env || childEnvironment(repo, home);
+  const childEnv = { ...(env || childEnvironment(repo, home)), ...(baselineSHA ? { BASE_REF: baselineSHA } : {}) };
   if (!env) {
     for (const key of ["HOME", "APPDATA", "LOCALAPPDATA", "TEMP", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]) {
       await fs.mkdir(childEnv[key], { recursive: true });
@@ -152,7 +199,7 @@ export async function executeTests({ repo, selected, output, home = path.join(ou
   }
 }
 
-export function verifyReports(reports, sourceSHA, expected = EXPECTED_FILES, count = SHARDS) {
+export function verifyReports(reports, sourceSHA, expected = EXPECTED_FILES, count = SHARDS, baselineSHA) {
   assert.equal(reports.length, count, "missing shard report");
   const indices = new Set(), files = new Set();
   const inventory = reports[0].inventory;
@@ -165,6 +212,14 @@ export function verifyReports(reports, sourceSHA, expected = EXPECTED_FILES, cou
     assert(!indices.has(report.shardIndex), "duplicate shard index");
     indices.add(report.shardIndex);
     assert.deepEqual(report.inventory, inventory, "mixed file inventories");
+    assert.match(report.baseline?.baselineSHA || "", /^[a-f0-9]{40}$/, "missing baseline SHA");
+    assert.notEqual(report.baseline.baselineSHA, sourceSHA, "desktop baseline equals candidate");
+    assert.equal(report.baseline.sourceSHA, sourceSHA, "baseline source mismatch");
+    assert.match(report.baseline.mainSHA, /^[a-f0-9]{40}$/, "missing fetched main SHA");
+    assert.match(report.baseline.assetsTreeSHA, /^[a-f0-9]{40}$/, "missing baseline asset tree");
+    assert.match(report.baseline.assetsSHA256, /^[a-f0-9]{64}$/, "missing baseline asset seal");
+    if (baselineSHA) assert.equal(report.baseline.baselineSHA, baselineSHA, "unexpected baseline SHA");
+    assert.deepEqual(report.baseline, reports[0].baseline, "mixed desktop baselines");
     assert.match(report.inputSHA256, /^[a-f0-9]{64}$/);
     assert.match(report.assetsSHA256, /^[a-f0-9]{64}$/);
     assert.equal(report.inputSHA256, reports[0].inputSHA256, "mixed UI inputs");
@@ -181,13 +236,15 @@ export function verifyReports(reports, sourceSHA, expected = EXPECTED_FILES, cou
   }
   assert.deepEqual([...indices].sort(), Array.from({ length: count }, (_, i) => i), "shard indices incomplete");
   assert.deepEqual([...files].sort(), inventory, "combined UI coverage is incomplete");
-  return { sourceSHA, files: files.size, shards: count, inputSHA256: reports[0].inputSHA256, assetsSHA256: reports[0].assetsSHA256 };
+  return { sourceSHA, files: files.size, shards: count, baseline: reports[0].baseline,
+    inputSHA256: reports[0].inputSHA256, assetsSHA256: reports[0].assetsSHA256 };
 }
 
 function options(argv) {
   const result = { repo: process.cwd(), expected: EXPECTED_FILES, count: SHARDS };
   const names = { "--repo": "repo", "--output": "output", "--shard-index": "index",
-    "--shard-count": "count", "--expected-files": "expected", "--source-sha": "sourceSHA", "--verify-artifacts": "verify" };
+    "--shard-count": "count", "--expected-files": "expected", "--source-sha": "sourceSHA", "--verify-artifacts": "verify",
+    "--baseline-sha": "baselineSHA", "--baseline-main-sha": "mainSHA", "--resolve-baseline-main": "resolveMain" };
   for (let i = 0; i < argv.length; i += 2) {
     assert(names[argv[i]] && argv[i + 1], "unknown option or missing value");
     result[names[argv[i]]] = argv[i + 1];
@@ -196,6 +253,11 @@ function options(argv) {
   result.repo = path.resolve(result.repo);
   result.sourceSHA ||= process.env.GITHUB_SHA;
   assert.match(result.sourceSHA || "", /^[a-f0-9]{40}$/, "explicit source SHA required");
+  if (result.resolveMain) assert.match(result.resolveMain, /^[a-f0-9]{40}$/);
+  else {
+    assert.match(result.baselineSHA || "", /^[a-f0-9]{40}$/, "explicit baseline SHA required");
+    if (!result.verify) assert.match(result.mainSHA || "", /^[a-f0-9]{40}$/, "explicit fetched main SHA required");
+  }
   assert(result.output, "--output required");
   result.output = path.resolve(result.output);
   return result;
@@ -211,10 +273,17 @@ async function main(argv) {
   const o = options(argv);
   await fs.mkdir(o.output, { recursive: true });
   verifyCheckout(o.repo, o.sourceSHA);
+  if (o.resolveMain) {
+    const parent = git(o.repo, "cat-file", "commit", o.sourceSHA).toString().match(/^parent ([a-f0-9]{40})$/m)?.[1];
+    const selected = chooseBaseline(o.sourceSHA, o.resolveMain, parent);
+    await json(path.join(o.output, "baseline-selection.json"), selected);
+    console.log(JSON.stringify(selected));
+    return 0;
+  }
   if (o.verify) {
     const filenames = (await walk(path.resolve(o.verify))).filter((name) => path.basename(name) === "shard-result.json");
     const reports = await Promise.all(filenames.map(async (name) => JSON.parse(await fs.readFile(name, "utf8"))));
-    const coverage = verifyReports(reports, o.sourceSHA, o.expected, o.count);
+    const coverage = verifyReports(reports, o.sourceSHA, o.expected, o.count, o.baselineSHA);
     await json(path.join(o.output, "coverage.json"), coverage);
     console.log(JSON.stringify(coverage));
     return 0;
@@ -223,17 +292,19 @@ async function main(argv) {
     shardCount: o.count, shardIndex: o.index, inventory: [], selected: [], results: [],
     inputsUnchanged: false, exitCode: 1 };
   try {
+    report.baseline = await baselineSnapshot(o.repo, o.sourceSHA, o.mainSHA, o.baselineSHA);
+    await json(path.join(o.output, "baseline.json"), report.baseline);
     report.inventory = await discoverInventory(o.repo, o.expected);
     report.selected = selectShard(report.inventory, o.index, o.count);
     await json(path.join(o.output, "inventory.json"), { ...report, results: undefined });
-    const before = await inputSnapshot(o.repo);
+    const before = await inputSnapshot(o.repo, report.baseline);
     Object.assign(report, { inputSHA256: before.inputSHA256, assetsSHA256: before.assetsSHA256 });
     await json(path.join(o.output, "inputs-before.json"), before);
     console.log(`UI shard ${o.index}/${o.count}: ${report.selected.length}/${report.inventory.length} files; both default engines; concurrency 2`);
     const execution = await executeTests({ repo: o.repo, selected: report.selected, output: o.output,
-      home: path.join(path.dirname(o.output), `ui-home-${o.index}`) });
+      home: path.join(path.dirname(o.output), `ui-home-${o.index}`), baselineSHA: report.baseline.baselineSHA });
     Object.assign(report, execution);
-    const after = await inputSnapshot(o.repo);
+    const after = await inputSnapshot(o.repo, await baselineSnapshot(o.repo, o.sourceSHA, o.mainSHA, o.baselineSHA));
     await json(path.join(o.output, "inputs-after.json"), after);
     report.inputsUnchanged = before.inputSHA256 === after.inputSHA256;
     if (!report.inputsUnchanged) report.exitCode ||= 1;

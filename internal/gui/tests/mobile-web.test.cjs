@@ -1,7 +1,7 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
 // Phone navigation and content stay usable in both languages (#391). The
 // desktop screenshots match BASE_REF within a small rendering tolerance
-// (origin/main by default), but for the Agents page while BASE_REF hasn't its
+// (origin/main by default; CI supplies a sealed commit SHA), but for the Agents page while BASE_REF hasn't its
 // 「接入」 rows yet. Until BASE_REF has the visibility manager, its new footer
 // alone is excluded; agent-bulk-visibility and agent-grip cover that footer's
 // layout and controls. Its height is rounded only for the pixel comparison,
@@ -12,12 +12,17 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { test } = require("node:test");
+
+const assets = path.resolve(__dirname, "../assets");
+const baseRef = process.env.BASE_REF || "origin/main";
+// Resolve before launching either engine. Missing Git objects are a fixture
+// setup error, not an asset 404 followed by a navigation-button timeout.
+const base = execFileSync("git", ["rev-parse", "--verify", `${baseRef}^{commit}`], {
+  cwd: path.resolve(assets, "../../.."), windowsHide: true, encoding: "utf8",
+}).trim();
 const { chromium, webkit } = require("playwright");
 const { reach } = require("./reader.cjs");
 const { PNG } = require("playwright-core/lib/utilsBundle");
-
-const assets = path.resolve(__dirname, "../assets");
-const base = process.env.BASE_REF || "origin/main";
 const baseline = new Map();
 const at = "2026-09-30T12:00:00.000Z";
 const groups = [{ name: "Claude Code", icon: "claudecode-color", calls: 123, errors: 2,
@@ -362,6 +367,23 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
                   for (const b of document.querySelectorAll("#usagePane .row-head .fold, #stats .kpi-pick")) b.replaceWith(b.querySelector(".label, span"));
                 });
                 await current.waitForTimeout(350);
+              }
+              if (view === "usage") {
+                const font = await current.locator(".usage-cost b").evaluate((b) => {
+                  const sample = document.createElement("span"); sample.style.fontFamily = "var(--code)";
+                  b.append(sample);
+                  const expected = getComputedStyle(sample).fontFamily;
+                  sample.remove();
+                  return { actual: getComputedStyle(b).fontFamily, expected };
+                });
+                assert.equal(font.actual, font.expected, "current Usage total must retain the code font that stabilizes money width");
+                // The money-width fix intentionally changes this one old-main
+                // font. Match it on the baseline only; retain every pixel and
+                // the same tolerance for the rest of the desktop comparison.
+                const oldRule = baselineFile("app.css").toString().match(/\.usage-cost b\s*\{([^}]*)\}/)?.[1] || "";
+                if (!/font-family\s*:\s*var\(--code\)/.test(oldRule)) {
+                  await original.locator(".usage-cost b").evaluate((b) => { b.style.fontFamily = "var(--code)"; });
+                }
               }
               // Replies' Short Claude system prompt row is new: until BASE_REF
               // has it, the page is compared with the row taken out;
