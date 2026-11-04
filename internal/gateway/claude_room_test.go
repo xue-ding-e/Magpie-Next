@@ -206,7 +206,7 @@ func TestClaudeOneOffsTakeRoom(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "ran")
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	err = runClaudeTree(ctx, exec.Command("touch", marker), "a one-off")
+	err = runClaudeTree(ctx, exec.Command("touch", marker), "a one-off", "")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("a one-off with no room: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestClaudeOneOffsTakeRoom(t *testing.T) {
 		t.Fatal("the one-off ran with no room")
 	}
 	release(false)
-	if err := runClaudeTree(context.Background(), exec.Command("touch", marker), "a one-off"); err != nil {
+	if err := runClaudeTree(context.Background(), exec.Command("touch", marker), "a one-off", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(marker); err != nil {

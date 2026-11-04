@@ -175,24 +175,29 @@ func (s *Server) serveDecideTries(w http.ResponseWriter, r *http.Request, body [
 		}
 		status, b, header, err := s.postDecide(r.Context(), c.p, c.model, withModel(body, c.model))
 		if err != nil {
+			status = http.StatusBadGateway
+			local := errors.Is(err, provider.ErrModelPolicy)
+			if local {
+				status = http.StatusForbidden
+			}
 			fail, rest := failOther, (*Rest)(nil)
 			var tooMany *errRPM
-			if r.Context().Err() == nil && !errors.As(err, &tooMany) {
+			if !local && r.Context().Err() == nil && !errors.As(err, &tooMany) {
 				// unreachable: it rests, as a chat's would
 				fail, rest = s.decideFailed(c, http.StatusBadGateway, nil, []byte(err.Error()))
 			}
 			if !last && r.Context().Err() == nil {
-				tried(http.StatusBadGateway, err.Error(), fail, rest, Usage{})
+				tried(status, err.Error(), fail, rest, Usage{})
 				skipped = append(skipped, c.label()+": "+err.Error())
 				continue
 			}
 			last = true
-			tried(http.StatusBadGateway, err.Error(), fail, rest, Usage{})
+			tried(status, err.Error(), fail, rest, Usage{})
 			msg := err.Error()
 			if len(skipped) > 0 {
 				msg += " (tried first: " + strings.Join(skipped, "; ") + ")"
 			}
-			writeError(w, provider.Chat, http.StatusBadGateway, msg)
+			writeError(w, provider.Chat, status, msg)
 			return
 		}
 		var use struct {
@@ -304,6 +309,9 @@ func (s *Server) askDecideTries(cs []candidate, intents []string, prev before, e
 		var refused decideRefused
 		var answer answerError
 		switch {
+		case errors.Is(err, provider.ErrModelPolicy):
+			// Locally forbidden: another model may be allowed, and this
+			// key stays healthy for the models the user permits.
 		case errors.As(err, &refused):
 			s.decideFailed(c, refused.status, refused.header, refused.body)
 		case errors.As(err, &answer), errors.Is(err, context.Canceled):

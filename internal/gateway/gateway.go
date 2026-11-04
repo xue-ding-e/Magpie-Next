@@ -371,6 +371,8 @@ type Call struct {
 	// when it was on (archive.go); wire what it keeps besides
 	Archive string `json:"archive,omitempty"`
 	wire    *wire
+	// policyDenied marks a local refusal, which never rests the account.
+	policyDenied bool
 	// wholeIn/wholeOut are the whole bodies for an observer that asks for
 	// them uncut (the OTLP export, #538): nil leaves it to the 256 KiB
 	// bodies above, which is all the Recent-calls page keeps
@@ -398,6 +400,9 @@ type Server struct {
 	// codexTurns is the model each Codex last had a turn of its own
 	// answered on, by caller (codexMemoryStandIn)
 	codexTurns sync.Map
+	// Raw native model lists refresh while this gateway serves, without
+	// holding Codex's picker on the ChatGPT backend's round trip.
+	codexLists *codexModelLists
 	// the listener, swapped when the gateway is shared on the network or
 	// taken off it (see Relisten)
 	lnMu sync.Mutex
@@ -520,6 +525,8 @@ var WhileServing []func(context.Context)
 // long as a stream takes. A bind error means another magpie is already
 // serving, which is fine for the caller to ignore.
 func (s *Server) ListenAndServe(ctx context.Context) error {
+	s.codexLists = newCodexModelLists(ctx)
+	defer s.codexLists.stop()
 	migrateLANKeyBestEffort()
 	cfg, err := tlsConfig()
 	if err != nil {
@@ -2896,6 +2903,23 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			i--
 			continue
 		}
+		if call.policyDenied {
+			// The gateway refused this model locally. No vendor failed,
+			// so the account stays available for permitted models.
+			call.To, call.Status = "", http.StatusForbidden
+			try.Status, try.Fail = call.Status, failOther
+			watched.attempt(call, try, c.p.ID, sent, hw, capture)
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			if !last {
+				if other == nil {
+					other = &Try{Status: call.Status, Error: call.Error}
+				}
+				skipped = append(skipped, c.label()+": "+call.Error)
+				continue
+			}
+			failTo(w, kept, from, call.Status, call.Error)
+			break
+		}
 		watched.attempt(call, try, c.p.ID, sent, hw, capture)
 		if autoPicks(c) && repicked < 2 && !hw.passing && hw.code() == http.StatusBadRequest &&
 			(provider.CopilotRefusal(hw.errBody()) || wrongEndpoint(hw.code(), hw.errBody())) {
@@ -3642,6 +3666,14 @@ func sinceStart(before, d time.Duration) int64 {
 // attempt sends a request to one provider. call.To stays empty when the
 // provider has no endpoint to send it to.
 func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, call *Call) (int, string) {
+	var denied atomic.Bool
+	r = r.WithContext(context.WithValue(r.Context(), modelPolicyKey{}, &denied))
+	defer func() { call.policyDenied = denied.Load() }()
+	// Every candidate, including a fallback added after the plan, is held
+	// to the local policy before a plugin, subscription or vendor is asked.
+	if err := checkModelPolicy(r.Context(), model); err != nil {
+		return writeError(w, from, http.StatusForbidden, err.Error()), err.Error()
+	}
 	// Normalize for the actual destination, separately on each fallback.
 	// Native ChatGPT accounts accept standalone tool outputs themselves.
 	if from == provider.Responses && (p.Account == nil || p.Account.Agent != "codex") {
@@ -3679,6 +3711,9 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	} else if m != model {
 		r, model = r.WithContext(ctx), m
 		noteMember(w, r, p, model)
+	}
+	if err := checkModelPolicy(r.Context(), model); err != nil {
+		return writeError(w, from, http.StatusForbidden, err.Error()), err.Error()
 	}
 	// a backend that only streams gets a non-streaming request translated
 	// (the provider is always streamed on that path) rather than relayed,
@@ -3964,6 +3999,16 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		}
 		body = extra
 	}
+	// The isolated OpenCode 2.1.3 capture supplies this model's Chat
+	// defaults; the client's conversation and real tool schemas stay its own.
+	body = p.OpenCodeDeepSeekBody(to, body)
+	if to == provider.Chat && p.OpenCodeDeepSeek(modelOf(body)) {
+		// The profile may supply max after translation, and the user's
+		// extra fields may supply another level. Record the final wire
+		// value while the route keeps what the client originally asked.
+		var sent = Request{Effort: bodyEffort(to, body)}
+		noteWireEffort(ctx, to, &sent)
+	}
 	if !countsTokens(path) {
 		// the tier it goes at, the user's own fields in it (#1784)
 		noteWireTier(ctx, to, body)
@@ -3973,6 +4018,7 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		// Zen's free tier answers at the inference API's URL alone (zenfree.go)
 		base = provider.OpenCodeFreeURL(base)
 	}
+	base = p.OpenCodeDeepSeekURL(base, to, modelOf(body))
 	if mantleRoutes(p, to) {
 		// Bedrock Mantle serves each model under /v1 or /openai/v1
 		// (mantle.go)
@@ -3981,6 +4027,19 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(body))
 	if err != nil {
+		return nil, err
+	}
+	// Check the wire name too: a provider can map a permitted catalog id
+	// to another upstream model. Gemini and Vertex name it in the URL,
+	// and a translated Vertex body never carries a model field.
+	wireModel := modelOf(body)
+	if to == provider.Gemini && !p.FactoryGemini() {
+		_, wireModel, _ = strings.Cut(req.URL.Path, "/models/")
+		if i := strings.LastIndex(wireModel, ":"); i >= 0 {
+			wireModel = wireModel[:i]
+		}
+	}
+	if err := checkModelPolicy(ctx, wireModel); err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -4034,6 +4093,9 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		// with the conversation's own session, which Zen and Go route and
 		// cache by and answer 400 without
 		provider.OpenCodeClient(req.Header, openCodeSeed(in, body))
+		if openCodeModel := modelOf(body); p.OpenCodeDeepSeek(openCodeModel) {
+			p.OpenCodeDeepSeekHeaders(req.Header, openCodeSeed(in, body), factsOf(to, body).dir, openCodeModel)
+		}
 	}
 	if p.IsCline() {
 		// as Cline's desktop app sends it: its free models are 403'd
@@ -5829,7 +5891,10 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	}
 	var zen *zenReply
 	if p.OpenCodeFree(model) {
-		zen = &zenReply{z: zenFreeTools(request)}
+		zen = &zenReply{z: zenFreeToolsFor(request, p, model)}
+		if p.OpenCodeDeepSeek(model) && request.MaxTokens <= 0 {
+			request.MaxTokens = 32000
+		}
 	}
 	if request.WebSearch {
 		// an API on which the provider searches by itself comes first;

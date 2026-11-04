@@ -1024,6 +1024,11 @@ func (s *Server) sendWith(ctx context.Context, p provider.Provider, method, url,
 	for k, v := range extra {
 		req.Header[k] = v
 	}
+	if method == http.MethodPost {
+		if err := requireAllowedMediaRequest(req.URL.String(), req.Header.Get("Content-Type"), body); err != nil {
+			return nil, http.StatusForbidden, err
+		}
+	}
 	asked := time.Now()
 	res, err := p.Do(s.client, req) // a plugin's through the plugin
 	if err != nil {

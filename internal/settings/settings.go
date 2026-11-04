@@ -596,9 +596,14 @@ type Settings struct {
 	OwnModelsHidden []string `json:"ownModelsHidden,omitempty"`
 	// AgentEfforts are the reasoning efforts the gateway asks for on an
 	// agent's requests, by agent id, for an agent whose own config can't
-	// carry one (Cursor Private Inference, #1003): one of the levels in
-	// provider.MemberEfforts.
+	// carry one (Cursor Private Inference, #1003), or an explicit live
+	// override for Codex's running conversations. Levels are those in
+	// provider.MemberEfforts; Codex also keeps its Ultra selection here.
 	AgentEfforts map[string]string `json:"agentEfforts,omitempty"`
+	// AllowedModels is an optional exact allowlist of outbound model ids.
+	// Empty leaves models unrestricted. A nonempty list also constrains
+	// native sign-ins, auxiliary requests, fallbacks and warm-ups.
+	AllowedModels []string `json:"allowedModels,omitempty"`
 	// OrderedModels is the order an agent's lists put its models in, by
 	// agent id and then entry id, as the user dragged them on the Agents
 	// page (Codex's, #855): the ones named first, any other after them.
@@ -1325,6 +1330,14 @@ func SetRedactModel(on bool) error {
 func save(s Settings, recording bool) error {
 	defer filememo.Forget() // read again, where a request holds it
 	s = s.normal()
+	s.AllowedModels = slices.Clone(s.AllowedModels)
+	for i, model := range s.AllowedModels {
+		model = strings.TrimSpace(model)
+		if model == "" || strings.ContainsAny(model, "*?\r\n\t") {
+			return fmt.Errorf("allowed models must be nonempty exact model ids, not %q", model)
+		}
+		s.AllowedModels[i] = model
+	}
 	if !slices.Contains(Themes, s.Theme) {
 		return fmt.Errorf("theme must be one of %v, not %q", Themes, s.Theme)
 	}

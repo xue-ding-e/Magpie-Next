@@ -160,14 +160,18 @@ const OpenCodeStub = "Not available in this session. Never call this tool."
 // free tier wants it: streamed, offering bash and read, which say they
 // aren't to be called.
 func zenFreeProbe(proto Protocol, body string) string {
+	return zenFreeProbeWith(proto, body, OpenCodeTools, OpenCodeToolSchemas)
+}
+
+func zenFreeProbeWith(proto Protocol, body string, required []string, schemas map[string]string) string {
 	var m map[string]any
 	if json.Unmarshal([]byte(body), &m) != nil {
 		return body
 	}
 	var tools []any
-	for _, n := range OpenCodeTools {
+	for _, n := range required {
 		var schema map[string]any
-		_ = json.Unmarshal([]byte(OpenCodeToolSchemas[n]), &schema)
+		_ = json.Unmarshal([]byte(schemas[n]), &schema)
 		switch proto {
 		case Chat:
 			tools = append(tools, map[string]any{"type": "function", "function": map[string]any{"name": n, "description": OpenCodeStub, "parameters": schema}})

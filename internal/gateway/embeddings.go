@@ -304,6 +304,9 @@ func (s *Server) retrieveAs(ctx context.Context, p provider.Provider, url, ctype
 	if err := p.Sign(ctx, req, provider.Chat, body); err != nil {
 		return nil, "", 502, err
 	}
+	if err := requireAllowedMediaRequest(req.URL.String(), req.Header.Get("Content-Type"), body); err != nil {
+		return nil, "", http.StatusForbidden, err
+	}
 	res, err := p.Do(s.client, req)
 	if err != nil {
 		if ctx.Err() != nil {

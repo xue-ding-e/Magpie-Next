@@ -381,7 +381,7 @@ func warmCodexLogin(ctx context.Context, user string) error {
 }
 
 // warmModel is the model a warm-up asks, and at what effort: the account's
-// cheapest (warmPick), at low.
+// cheapest allowed model (warmPick), at low.
 func warmModel(user string) (model, effort string, err error) {
 	ms, _, ok := catalog.Live(accountModels("codex", user))
 	if !ok {
@@ -393,6 +393,19 @@ func warmModel(user string) (model, effort string, err error) {
 	if len(ms) == 0 {
 		return "", "", errors.New("no Codex model is known yet")
 	}
+	var allowed []catalog.Model
+	var blocked error
+	for _, m := range ms {
+		if err := RequireAllowedModel(m.ID); err != nil {
+			blocked = err
+			continue
+		}
+		allowed = append(allowed, m)
+	}
+	if len(allowed) == 0 {
+		return "", "", fmt.Errorf("no known Codex model is allowed for warm-up: %w", blocked)
+	}
+	ms = allowed
 	m := warmPick(ms, func(id string) (catalog.Price, bool) { return catalog.PricedBy([]string{"openai"}, id) })
 	switch {
 	case slices.Contains(m.Efforts, "low"):
@@ -447,6 +460,9 @@ func warmCodex(ctx context.Context, sign func(context.Context, *http.Request, []
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if err := sign(ctx, req, body); err != nil {
+		return err
+	}
+	if err := RequireAllowedModel(model); err != nil {
 		return err
 	}
 	CodexCompressed(req, body) // as Codex sends a turn

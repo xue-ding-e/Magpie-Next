@@ -605,6 +605,12 @@ func fieldForValue(a *agent.Agent, v string) *agent.Field {
 		}
 		v = m
 	}
+	// A provider/model names the main model even when its picker omits it
+	// but a subagent or role picker offers it. Other model fields are
+	// selected by name, not inferred from the models they offer.
+	if pid, model, ok := strings.Cut(v, "/"); ok && pid != "" && model != "" {
+		return nil
+	}
 	// a model stays with the model, even where other fields offer it too
 	// (Claude Code's opus/sonnet/haiku/fable)
 	for _, o := range a.Fields[0].Options(vals) {

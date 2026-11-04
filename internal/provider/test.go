@@ -101,6 +101,11 @@ func tiny(q Provider, proto Protocol, model string) (url, body string) {
 	}
 	if q.OpenCodeFree(model) && body != "" {
 		url, body = OpenCodeFreeURL(url), zenFreeProbe(proto, body)
+		if q.OpenCodeDeepSeek(model) && proto == Chat {
+			url = q.OpenCodeDeepSeekURL(url, proto, model)
+			body = zenFreeProbeWith(proto, body, OpenCodeDeepSeekTools, OpenCodeDeepSeekToolSchemas)
+			body = string(q.OpenCodeDeepSeekBody(proto, []byte(body)))
+		}
 	}
 	if q.IsCline() && body != "" {
 		body = clineProbe(body)
@@ -499,12 +504,31 @@ func probe(ctx context.Context, p Provider, proto Protocol, url string, body []b
 		r.Error = err.Error()
 		return r
 	}
+	sentModel := ""
+	if proto == Gemini && !p.FactoryGemini() {
+		_, sentModel, _ = strings.Cut(req.URL.Path, "/models/")
+		if i := strings.LastIndex(sentModel, ":"); i >= 0 {
+			sentModel = sentModel[:i]
+		}
+	} else {
+		var outbound struct {
+			Model string `json:"model"`
+		}
+		if json.Unmarshal(body, &outbound) == nil {
+			sentModel = outbound.Model
+		}
+	}
+	if err := RequireAllowedModel(sentModel); err != nil {
+		r.Error = err.Error()
+		return r
+	}
 	req.Header.Set("Content-Type", "application/json")
 	if proto == Anthropic {
 		req.Header.Set("anthropic-version", "2023-06-01")
 	}
 	if OpenCodeURL(url) {
 		OpenCodeClient(req.Header, "") // a session of the probe's own
+		p.OpenCodeDeepSeekHeaders(req.Header, "", "", model)
 	}
 	if p.IsCline() {
 		ClineClient(req.Header)

@@ -357,6 +357,9 @@ func (s *Server) askJev(p provider.Provider, model string, intents []string, pre
 	if model == "" {
 		model = p.Jev()
 	}
+	if err := provider.RequireAllowedModel(model); err != nil {
+		return verdict{}, err
+	}
 	// what Jev reads goes masked unless Jev is itself where the user set
 	// requests to go unmasked: a group whose every member skips redaction
 	// hands rules the body as the agent wrote it (unredactedRoute), and a
@@ -442,6 +445,9 @@ func (s *Server) systemOne(ctx context.Context, p provider.Provider, model strin
 // the provider answers in another one. DecideURL and Sign errors are as
 // they are; a transport error is named with p.
 func (s *Server) postDecide(ctx context.Context, p provider.Provider, model string, body []byte) (int, []byte, http.Header, error) {
+	if err := provider.RequireAllowedModel(model); err != nil {
+		return 0, nil, nil, err
+	}
 	// every decision call goes through here — System One, a group rule's
 	// classifier, a decision group's members: a model the user disabled
 	// (#1867) is never asked

@@ -7,6 +7,30 @@ doesn't speak the agent's API, the gateway translates. When an upstream
 fails before any of the reply is sent, the gateway moves to the next
 candidate.
 
+The optional `allowedModels` setting is an exact allowlist of outbound model
+ids. Empty leaves models unrestricted; a nonempty list is enforced before
+native inference, routed attempts, fallbacks, decision calls, searches,
+media and retrieval posts, and Codex warm-ups. Claude model probes check
+before reading a saved sign-in, and warm-ups and probes check before
+finding the CLI and again after waiting for a slot, before starting it.
+Under an allowlist, unresolved Claude Code aliases
+such as `haiku` are refused even if the alias is listed: it does not
+establish the exact model the CLI would ask. With no policy, warm-ups keep
+their existing Haiku alias. A mapped wire name is checked again before HTTP
+dispatch. A local policy refusal does not rest an account, including a
+decision provider's keys: System One records a local 403, and a decision
+group or routing classifier can continue with an allowed member.
+An unavailable policy read fails closed. Models outside the list are refused
+locally, including hidden native helpers. See
+[`model_policy.go`](../../internal/provider/model_policy.go) and
+[`model_policy_test.go`](../../internal/gateway/model_policy_test.go).
+
+When a subagent replacement was applied, the Routing page's primary model
+label and context use its actual latest attempt, or the selected replacement
+before any attempt. Its original requested model stays in the record and
+the explanation. A replacement that was kept on the original model retains
+that model and its reason; ordinary routing-group labels keep their meaning.
+
 This page covers how a request is routed. Plugins that change requests and
 replies are in [Gateway middleware](gateway-middleware.md). Subscriptions
 served by a plugin are in [Provider and plugin ownership](provider-plugins.md).

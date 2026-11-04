@@ -122,6 +122,9 @@ func chatGPTSearchers(r *http.Request, model string) ([]provider.Provider, strin
 // did, nothing is written, and the search is magpie's (alphaSearchHere),
 // with why returned.
 func (s *Server) alphaSearchOn(w http.ResponseWriter, r *http.Request, body []byte, model string, ons []provider.Provider) (bool, string) {
+	if err := provider.RequireAllowedModel(model); err != nil {
+		return false, err.Error()
+	}
 	start := time.Now()
 	w, body, unmask, hits, err := redactedHits(w, body)
 	defer unmask()

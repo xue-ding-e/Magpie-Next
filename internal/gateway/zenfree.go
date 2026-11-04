@@ -44,9 +44,22 @@ const zenStubNote = "(The model asked for a tool this session doesn't have.)"
 // zenFreeTools offers r's tools as Zen's free tier wants them, renaming
 // them in the conversation so far too.
 func zenFreeTools(r *Request) *zenTools {
+	return zenFreeToolsWith(r, provider.OpenCodeTools, provider.OpenCodeToolSchemas)
+}
+
+// zenFreeToolsFor keeps each client's callable tool contracts, while using
+// the captured 2.1.3 shell/read schemas only for unavailable DS tools.
+func zenFreeToolsFor(r *Request, p provider.Provider, model string) *zenTools {
+	if p.OpenCodeDeepSeek(model) {
+		return zenFreeToolsWith(r, provider.OpenCodeDeepSeekTools, provider.OpenCodeDeepSeekToolSchemas)
+	}
+	return zenFreeTools(r)
+}
+
+func zenFreeToolsWith(r *Request, required []string, schemas map[string]string) *zenTools {
 	z := &zenTools{back: map[string]string{}, stubs: map[string]bool{}}
 	tools := slices.Clone(r.Tools)
-	for _, need := range provider.OpenCodeTools {
+	for _, need := range required {
 		i := slices.IndexFunc(tools, func(t Tool) bool { return t.Name == need })
 		if i < 0 {
 			i = slices.IndexFunc(tools, func(t Tool) bool { return strings.EqualFold(t.Name, need) })
@@ -58,7 +71,7 @@ func zenFreeTools(r *Request) *zenTools {
 			}
 			continue
 		}
-		tools = append(tools, Tool{Name: need, Description: provider.OpenCodeStub, Schema: json.RawMessage(provider.OpenCodeToolSchemas[need])})
+		tools = append(tools, Tool{Name: need, Description: provider.OpenCodeStub, Schema: json.RawMessage(schemas[need])})
 		z.stubs[need] = true
 	}
 	r.Tools = tools

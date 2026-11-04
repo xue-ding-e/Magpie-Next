@@ -1526,6 +1526,22 @@ func codexIn(at place) *Agent {
 					}
 				},
 			},
+			{
+				// A live override is separate from Codex's startup default:
+				// existing conversations may still send their previous level.
+				Key: "gateway_effort", Label: "gateway effort", Quiet: true, Live: true,
+				Get: func() string { return provider.AgentEffort("codex") },
+				Set: func(v string) error { return provider.SetAgentEffort("codex", v) },
+				Options: func(cur map[string]string) []Option {
+					out := []Option{{Value: ""}}
+					for _, o := range codexEfforts(models(), cur["model"]) {
+						if o.Value != "" {
+							out = append(out, o)
+						}
+					}
+					return out
+				},
+			},
 		},
 	}, path, catalogPath)
 	// this machine's Codex: the address its config keeps is tried (Drift),

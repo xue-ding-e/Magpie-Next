@@ -920,6 +920,9 @@ func (p Provider) AskSystemOne(ctx context.Context, model string) error {
 	if pat, off := ModelDisabled(p.ID, model); off { // never asked (#1867)
 		return fmt.Errorf("model %s/%s is disabled in magpie (it matches %q)", p.ID, model, pat)
 	}
+	if err := RequireAllowedModel(model); err != nil {
+		return err
+	}
 	u, err := p.DecideModelURL(ctx, model)
 	if err != nil {
 		return err

@@ -223,6 +223,7 @@
   // ctxCard draws a route's prompt. opts: series (the session's prompts,
   // [{id, tokens, time}]), onPoint (a point of it clicked), cache ({read,
   // total}, when the route carries no usage), crumbs (the footer's path),
+  // model (a display label, leaving the route's original request intact),
   // place (where it is drawn, for its width: see cardWidth). The card's
   // ctxUpdate(r, opts) draws another route, or the same one further on, in
   // it: what is the same stays the same nodes, its grid's cells among them,
@@ -420,7 +421,8 @@
         head.append(bar);
       }
       head.append(el("span", "grow"));
-      if (r.model) head.append(el("code", "ctx-model", r.model));
+      const model = opts.model ?? r.model;
+      if (model) head.append(el("code", "ctx-model", model));
       head.append(st);
 
       // how full, and the cache

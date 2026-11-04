@@ -846,7 +846,24 @@ func (s *Server) codexUpstream(w http.ResponseWriter, r *http.Request, rest stri
 func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest string, body []byte, on *provider.Provider) {
 	start := time.Now()
 	usage.Saw(agentOf(r))
-	w0, body0 := w, body // as they came, for the fallbacks (codexFallBack)
+	if r.Method == http.MethodPost && (strings.HasPrefix(rest, "/responses") || modelOf(body) != "") {
+		if err := provider.RequireAllowedModel(modelOf(body)); err != nil {
+			writeError(w, provider.Responses, http.StatusForbidden, err.Error())
+			return
+		}
+	}
+	if r.Method == http.MethodPost && rest == "/responses" {
+		// An explicit gateway pick reaches threads already running with
+		// an older config. Keep Ultra in the pick; the native API takes
+		// its max. Capture the changed body for retries and records too.
+		if effort := provider.AgentEffort("codex"); effort != "" {
+			if effort == "ultra" {
+				effort = "max"
+			}
+			body = withFixedEffort(provider.Responses, body, effort)
+		}
+	}
+	w0, body0 := w, body // before masking, for the fallbacks (codexFallBack)
 	var maskedHits maskHits
 	if r.Method == http.MethodPost {
 		var unmask func()
@@ -893,7 +910,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	kind := requestCallKind(r.Header, metadata)
 	var titleReply capturedBody // bounded; ordinary streams incur no copy
 	captureTitle := false
-	effort := "" // the reasoning Codex asked for, which goes on as it is
+	effort := "" // the reasoning sent, including an explicit gateway pick
 	end := func(status int, msg string, tokens, out int) {}
 	var tools *toolScan // whether the reply calls a tool, for a turn's end
 	if rest != "/responses" {
@@ -1634,37 +1651,28 @@ var codexModelsWait = 3 * time.Second
 
 // codexModels is the ChatGPT backend's model list for this sign-in, with
 // magpie's models after it. Should the backend not answer, or not in
-// time, Codex's last list of its own stands in.
+// time, Codex's last list of its own stands in. While the gateway serves,
+// a usable list is returned before its backend refresh (codexModelList).
 func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 	var own []any
 	etag := ""
-	u := provider.CodexBase + "/models"
-	if r.URL.RawQuery != "" {
-		u += "?" + r.URL.RawQuery
+	reply := s.codexModelList(r)
+	if reply.status == 401 || reply.status == 403 {
+		// a sign-in to renew is Codex's to see
+		w.Header().Set("Content-Type", reply.contentType)
+		w.WriteHeader(reply.status)
+		w.Write(reply.body)
+		return
 	}
-	ctx, cancel := context.WithTimeout(provider.ViaSignedIn(r.Context(), "codex"), codexModelsWait)
-	defer cancel()
-	if req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil); err == nil {
-		copyHeaders(req.Header, r.Header)
-		req.Header.Del("Accept-Encoding")
-		if res, err := s.client.Do(req); err == nil {
-			var list struct {
-				Models []any `json:"models"`
-			}
-			b, _ := io.ReadAll(io.LimitReader(res.Body, 16<<20))
-			res.Body.Close()
-			if res.StatusCode < 300 && json.Unmarshal(b, &list) == nil {
-				own, etag = list.Models, res.Header.Get("ETag")
-				// the versions as the backend says them, before any is
-				// stamped below (see codexcat.V1)
-				codexcat.Remember(own)
-			} else if res.StatusCode == 401 || res.StatusCode == 403 {
-				// a sign-in to renew is Codex's to see
-				w.Header().Set("Content-Type", res.Header.Get("Content-Type"))
-				w.WriteHeader(res.StatusCode)
-				w.Write(b)
-				return
-			}
+	if reply.status != 0 {
+		var list struct {
+			Models []any `json:"models"`
+		}
+		if json.Unmarshal(reply.body, &list) == nil {
+			own, etag = list.Models, reply.etag
+			// the versions as the backend says them, before any is
+			// stamped below (see codexcat.V1)
+			codexcat.Remember(own)
 		}
 	}
 	// what follows reads the providers seven times over (the catalog, the
@@ -1756,6 +1764,20 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 		}
 		own = kept
 	}
+	// Include hidden helpers in the user's exact outbound model policy.
+	if _, err := settings.LoadChecked(); err != nil {
+		writeError(w, provider.Responses, http.StatusServiceUnavailable, "the outbound model policy could not be read")
+		return
+	}
+	kept := own[:0]
+	for _, m := range own {
+		o, _ := m.(map[string]any)
+		slug, _ := o["slug"].(string)
+		if provider.RequireAllowedModel(slug) == nil {
+			kept = append(kept, m)
+		}
+	}
+	own = kept
 	// multi-agent V1 when the user asked for it (#141): the version is all
 	// that changes
 	if codexcat.V1() {
@@ -1777,6 +1799,10 @@ func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
 	if !codexOwnOnly() {
 		ms = provider.CodexListed()
 	}
+	ms = slices.DeleteFunc(ms, func(m catalog.Model) bool {
+		pid, model, qualified := strings.Cut(m.ID, "/")
+		return qualified && pid != "group" && provider.RequireAllowedModel(model) != nil
+	})
 	// the list is the backend's and magpie's, and so is its ETag
 	w.Header().Set("ETag", codexcat.WithTag(etag, codexListTag()))
 	all := append(own, codexcat.Entries(ms, len(own)+100)...)

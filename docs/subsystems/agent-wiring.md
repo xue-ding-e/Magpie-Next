@@ -8,6 +8,35 @@ supported agent: where its config lives, which fields matter and which
 values to offer. It also records what magpie set, so a later change made by
 something else shows up as drift.
 
+The CLI treats a qualified `provider/model` as the main model, even when
+the main picker does not currently offer it and a subagent picker does.
+Other model fields still use their explicit names, such as
+`magpie codex subagent_model codex/gpt-6.1-sol`. Bare effort levels keep
+their existing meaning. The regression is
+[`model_value_cli_test.go`](../../internal/cli/model_value_cli_test.go).
+
+Codex's `effort` is its startup default. A running conversation can retain
+an earlier effort, so `gateway_effort` is a separate explicit live override
+for Codex requests, including its native ChatGPT backend. It is empty by
+default and clearing it restores each request's own level. Its Ultra
+selection stays `ultra` in magpie's settings; native protocol handling and
+request records use the actual outbound level without rewriting Codex's
+own selected default. See [`agenteffort.go`](../../internal/provider/agenteffort.go),
+`codexUpstreamOn` in [`codex_backend.go`](../../internal/gateway/codex_backend.go)
+and [`codex_gateway_effort_test.go`](../../internal/gateway/codex_gateway_effort_test.go).
+
+While the gateway is running, Codex's backend model list uses cached raw
+replies for the same sign-in and client query. This machine's Codex can
+also start from its own on-disk list. The reply applies the current model
+picks and catalog immediately while a coalesced background request refreshes
+the native list, at most once a minute per identity. Failed refreshes keep
+the last successful list; a refreshed 401 or 403 is returned on the next
+read. Backend ETags revalidate only their original bodies. Uncached callers
+retain the bounded synchronous fetch. The gateway cancels and joins these
+workers when it stops; the workers never write an agent's files. See
+[`codex_models_cache.go`](../../internal/gateway/codex_models_cache.go) and
+[`codex_models_cached_wait_test.go`](../../internal/gateway/codex_models_cached_wait_test.go).
+
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |

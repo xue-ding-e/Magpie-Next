@@ -9,6 +9,30 @@ The gateway can send a request to three kinds of upstream:
 Package `internal/provider` holds all three, the routing groups built over
 them, and what is left of each one's allowance.
 
+`deepseek-v4.1-flash-free` at OpenCode Zen has a model-specific desktop
+profile in [`opencode_deepseek.go`](../../internal/provider/opencode_deepseek.go).
+An isolated OpenCode 2.1.3 desktop capture verified Chat at
+`/inference/openai/v1/chat/completions`, desktop client headers, session and
+trace shapes, `max_completion_tokens: 32000`, `reasoning_effort: "max"`,
+streamed usage, and non-strict function tools. Explicit effort, output
+budget, sampling, messages and callable tool schemas are retained. A missing
+budget or effort takes those captured defaults. Go, paid DeepSeek models,
+other free models and other hosts keep their existing behavior.
+The request's Routing record retains the effort originally asked for;
+its individual tries and usage record the final Chat effort, including
+the profile's default `max` or a value supplied by the provider's extra
+fields. An explicit effort is not replaced by that default.
+
+The gateway translates Chat, Responses and Messages callers to that Chat
+API. Only unavailable `shell` and `read` are supplied as stubs using captured
+parameter schemas; their calls never reach a client that cannot execute them.
+This preserves another agent's tools rather than giving it OpenCode's entire
+harness. Project attribution uses the resolved directory hash for sessions
+without native project metadata; parent/fork attribution and TLS fingerprint
+equivalence are not established by this capture. Provider probes use the same
+profile. These compatibility rules do not create groups, fallbacks, agent
+defaults or another provider's routing choices.
+
 Plugin ownership of the deprecated built-in subscriptions is in
 [Provider and plugin ownership](provider-plugins.md). How the gateway orders
 keys and accounts per request is in [Gateway routing and fallback](gateway-routing.md).

@@ -563,6 +563,14 @@ function routingPage(part) {
   // the model a request went on: the one asked for, or the one set for
   // an agent's subagents that magpie put a subagent on in its place
   const wentOn = (r) => (r.subagent && !r.subagent.kept ? r.subagent.to : r.model);
+  // A replaced subagent's main label follows its latest actual try,
+  // including a fallback. Before any try, show the selected override.
+  // Route.Model stays the agent's original request for the story and audit;
+  // a kept pick and ordinary groups retain their existing asked labels.
+  function requestModel(r) {
+    if (!r.subagent || r.subagent.kept) return r.model;
+    return r.tries[r.tries.length - 1]?.model || r.subagent.to || r.model;
+  }
 
   // why routing put the first where it did
   function firstWhy(r) {
@@ -1580,8 +1588,8 @@ function routingPage(part) {
       // request alone, so its others still going, or just done, count too.
       const n = now(), going = pinned ? [] : [...src().values()].filter((x) => x.agent === id && (!x.done || at(x.time) + (x.ms || 0) > n - LINGER));
       const fs = foldersOf([...new Set([...going, ...rs.filter((x) => x.agent === id)])].sort((x, y) => x.id - y.id));
-      a.sub.textContent = fs.length > 1 ? fs.map(lastLevel).join(", ") : r.model;
-      a.node.title = [agentName(id), r.model, ...fs.map((f) => t("Folder") + ": " + f)].join("\n");
+      a.sub.textContent = fs.length > 1 ? fs.map(lastLevel).join(", ") : requestModel(r);
+      a.node.title = [agentName(id), requestModel(r), ...fs.map((f) => t("Folder") + ": " + f)].join("\n");
     }
     // the account sets, the latest of each
     const latest = new Map();
@@ -2053,7 +2061,8 @@ function routingPage(part) {
       .map((x) => ({ id: x.id, tokens: x.prompt.tokens, time: x.time })) : null;
     if (series && !series.some((x) => x.id === r.id)) series.push({ id: r.id, tokens: r.prompt.tokens, time: r.time });
     if (ctxFor && ctxFor !== r.id) ctxFor = 0;
-    const key = JSON.stringify([document.documentElement.lang, ctxFor, r.id, r.done, r.prompt.tokens, r.prompt.counted, r.prompt.window, r.usage?.length, series?.map((x) => x.id + ":" + x.tokens).join()]);
+    const model = requestModel(r);
+    const key = JSON.stringify([document.documentElement.lang, ctxFor, r.id, r.done, model, r.prompt.tokens, r.prompt.counted, r.prompt.window, r.usage?.length, series?.map((x) => x.id + ":" + x.tokens).join()]);
     if (key === ctxKey) return;
     ctxKey = key;
     const still = ctxShown === r.id;
@@ -2062,7 +2071,7 @@ function routingPage(part) {
     const card = ctxBox.firstElementChild;
     const draw = card?.ctxUpdate && (still || !pinned) ? card.ctxUpdate : (r, o) => ctxBox.replaceChildren(window.ctxCard(r, o));
     draw(r, {
-      still, series, tab: ctxTab, place: "routing", foldable: true,
+      still, series, model, tab: ctxTab, place: "routing", foldable: true,
       open: ctxFor === r.id, onFold: () => { ctxFor = 0; },
       onTab: (id) => { ctxTab = id; },
       crumbs: [agentName(r.agent), sess && (sess.length > 14 ? sess.slice(0, 12) + "…" : sess), "#" + r.id],
@@ -2337,14 +2346,15 @@ function routingPage(part) {
   // once it was rerouted — not the provider it resolved to first, which
   // the row no longer says (#337)
   function reqTitle(r, how, tr) {
-    const head = `${agentName(r.agent)} · ${r.model} → `;
+    const model = requestModel(r), head = `${agentName(r.agent)} · ${model} → `;
+    const asked = model !== r.model ? "\n" + t("{agent} asked for {model}", { agent: agentName(r.agent), model: r.model }) : "";
     // the folder its agent works in, the last two levels of it (#1068)
     const folder = r.folder ? "\n" + t("Folder") + ": " + r.folder : "";
     const w = how !== "bad" && r.tries.length > 1 && tr && tried(r, tr);
-    if (!w) return head + r.provider + folder;
+    if (!w) return head + r.provider + asked + folder;
     const first = r.tries[0], f = tried(r, first);
     const from = f && seat(f) !== seat(w) ? "\n" + t("rerouted from {from}", { from: `${where(f)} · ${first.model || f.model}` }) : "";
-    return head + `${where(w)} · ${tr.model || w.model}` + from + folder;
+    return head + `${where(w)} · ${tr.model || w.model}` + asked + from + folder;
   }
 
   // the requests the gateway keeps, newest first: pick one to see how it was routed
@@ -2747,12 +2757,12 @@ function routingPage(part) {
     return isNaN(d) ? "" : clockFmt.format(d);
   };
   // what decides a row's width in each column sized by its content: its
-  // time, what was asked for, its numbers
+  // time, its model label, its numbers
   function shapes(r, key) {
     const was = probeShapes.get(r);
     if (was && was.key === key) return was.s;
     const how = outcome(r)[1], meta = r.tries.length > 1 ? t("{n} tries", { n: r.tries.length }) : "";
-    const s = ["t" + digits(rowClock(r.time)), "a" + JSON.stringify([r.model, tagKind(r) ? kindName(tagKind(r)) : ""]),
+    const s = ["t" + digits(rowClock(r.time)), "a" + JSON.stringify([requestModel(r), tagKind(r) ? kindName(tagKind(r)) : ""]),
       "m" + digits(JSON.stringify([meta, requestMetrics(r, how).map((m) => [m[0], m[2]])]))];
     probeShapes.set(r, { key, s });
     return s;
@@ -2869,7 +2879,7 @@ function routingPage(part) {
     const asked = el("span", "asked");
     const sw = el("i", "ag");
     sw.style.setProperty("--agent", hueOf(r.agent));
-    asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", r.model));
+    asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", requestModel(r)));
     if (tagKind(r)) { asked.classList.add("kinded"); asked.append(kindTag(r)); }
     // the reasoning the model was sent at — the turn's pick, or the
     // agent's fitted to the model's levels — after the one the agent
@@ -3387,7 +3397,7 @@ function routingPage(part) {
       const m = el("i", "rp-mark");
       m.style.left = (g.s / (v || 1)) * 100 + "%";
       m.style.setProperty("--agent", hueOf(g.r.agent));
-      m.title = `${clock(g.r.time)} · ${agentName(g.r.agent)} · ${g.r.model}`;
+      m.title = `${clock(g.r.time)} · ${agentName(g.r.agent)} · ${requestModel(g.r)}`;
       g.mark = m;
       return m;
     }));
@@ -3469,7 +3479,7 @@ function routingPage(part) {
       sw.style.setProperty("--agent", hueOf(r.agent));
       const [said] = outcome(r);
       row.append(el("span", "rp-n", t("request {i} of {n}", { i: g.n, n: p.plan.length })), sw,
-        el("b", "", agentName(r.agent)), el("code", "mdl", r.model), ...(tagKind(r) ? [kindTag(r)] : []), el("span", "rp-to", "→ " + said),
+        el("b", "", agentName(r.agent)), el("code", "mdl", requestModel(r)), ...(tagKind(r) ? [kindTag(r)] : []), el("span", "rp-to", "→ " + said),
         el("span", "rp-at", t("sent {time}", { time: new Date(r.time).toLocaleTimeString(intlLang(), { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) })));
       row.onclick = () => { cur = r; renderLog(); };
       return row;
@@ -5857,7 +5867,7 @@ function routingPage(part) {
 
   // ---------- the tray panel's Routing tab ----------
   // The gateway's latest requests, as they come, from the same trace the
-  // page above plays: who sent each, the model asked for, the provider and
+  // page above plays: who sent each, its model label, the provider and
   // account it went to, the model that answered (marked when the reply
   // names another), how it ended and when; today's calls and tokens over
   // them, from the Usage page's count, and between the two a small stage:
@@ -6199,7 +6209,7 @@ function routingPage(part) {
     b.type = "button";
     const ag = agentOf(r.agent);
     const asked = el("span", "pr-a");
-    asked.append(icon(ag?.icon || "generic"), el("span", "pr-who", agentName(r.agent)), el("code", "m", r.model));
+    asked.append(icon(ag?.icon || "generic"), el("span", "pr-who", agentName(r.agent)), el("code", "m", requestModel(r)));
     if (tagKind(r)) asked.append(kindTag(r));
     const when = el("span", "at", new Date(r.time).toLocaleTimeString(intlLang(), { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }));
     // where it went: the provider, the account or key, and the model that

@@ -38,6 +38,9 @@ func warmClaude(ctx context.Context, configDir string) error {
 // it is how a Claude account's model test runs (provider.ProbeClaudeVia),
 // so the test asks Anthropic as Claude Code does, through Claude Code.
 func askClaude(ctx context.Context, configDir, model string) error {
+	if err := provider.RequireAllowedClaudeModel(model); err != nil {
+		return err
+	}
 	binary, err := claudeBinary()
 	if err != nil {
 		return err
@@ -57,7 +60,7 @@ func askClaude(ctx context.Context, configDir, model string) error {
 	cmd.Env = binary.env(env, configDir)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
-	runErr := runClaudeTree(ctx, cmd, "a Claude Code test on "+model)
+	runErr := runClaudeTree(ctx, cmd, "a Claude Code test on "+model, model)
 	if res, ok := claudeResult(out.Bytes()); ok && res.IsError {
 		return errors.New("Claude Code: " + clip(res.Result))
 	}
@@ -112,7 +115,7 @@ func claudeUsage(ctx context.Context, configDir string) (string, error) {
 	cmd.Env = binary.env(env, configDir)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
-	runErr := runClaudeTree(ctx, cmd, "a Claude Code /usage read")
+	runErr := runClaudeTree(ctx, cmd, "a Claude Code /usage read", "")
 	var full *claudeFull
 	if errors.As(runErr, &full) {
 		return "", runErr
@@ -139,13 +142,19 @@ func claudeUsage(ctx context.Context, configDir string) (string, error) {
 // claude.cmd, whose node went on running with nobody waiting for it
 // (#1894). In a tree, a job on Windows and a session elsewhere, what is
 // left once the head is gone is ended with it, and on Windows when magpie
-// exits mid-run.
-func runClaudeTree(ctx context.Context, cmd *exec.Cmd, what string) error {
+// exits mid-run. A nonempty model is checked against the policy after
+// waiting for a slot; /usage asks no model and leaves it empty.
+func runClaudeTree(ctx context.Context, cmd *exec.Cmd, what, model string) error {
 	room, err := claudeRoom.take(ctx, what)
 	if err != nil {
 		return err
 	}
 	defer room(false)
+	if model != "" {
+		if err := provider.RequireAllowedClaudeModel(model); err != nil {
+			return err
+		}
+	}
 	t, err := proc.StartTree(cmd)
 	if err != nil {
 		return err
