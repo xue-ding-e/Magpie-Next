@@ -542,13 +542,22 @@ empty replacement, not by deleting files. Unix uses 0600; Windows relies on the
 user config directory's ACL (native ACL verification remains an acceptance item).
 
 The editor uses explicit Save/Cancel, file import, opt-in paged reveal, and no
-browser persistence. Closing while a save is in flight does not undo that save;
+browser persistence. Reveal and paging can refresh the displayed metadata but
+do not advance the revision attached to an unsaved draft. Reload asks before
+discarding a draft or selected file, then establishes a fresh write revision.
+Closing while a save is in flight does not undo that save;
 reopen to establish its result. No auto-upload or implicit migration occurs.
 The immutable literal matcher is compiled once per file generation and reused;
 requests already using a generation retain it until they finish. Its memory is
-larger than input bytes: a 100k synthetic library's retained trie measured about
-52 MiB. Worst-case 16 MiB input and concurrent-generation peak memory remain to
-be measured before claiming broad low-memory support. Browser/native tests and
+larger than input bytes. Exact node preallocation counts distinct reversed
+prefixes without changing the immutable generation or longest-match semantics.
+The synthetic resource validation in
+[run 41796545800](https://github.com/xue-ding-e/Magpie-Next/actions/runs/41796545800)
+passed 100k entries, 16 MiB content, held old/new generations, and released old
+generation checks with a strict 2 GiB memory limit and no swap. The cumulative
+cgroup peak was 1,500,905,472 bytes, with no memory-limit or OOM events. This is
+evidence for those synthetic workloads, not every possible dictionary or the
+whole desktop application's memory budget. Browser/native tests and
 packaging CI must pass separately; the presence of this code is not evidence of
 an installed or released feature.
 
