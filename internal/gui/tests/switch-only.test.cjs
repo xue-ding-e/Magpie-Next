@@ -64,6 +64,22 @@ const strings = [
   "{agent}'s requests go through magpie to fail over to your other accounts again",
 ];
 
+// The native tick changes before its POST completes. Follow the new
+// request by identity, without hiding an incorrect payload from the assertions.
+async function switchClick(page, click) {
+  let request;
+  const [, response] = await Promise.all([
+    page.waitForRequest((r) => {
+      if (r.url() !== "http://magpie.test/api/provider/switchonly" || r.method() !== "POST") return false;
+      request = r;
+      return true;
+    }),
+    page.waitForResponse((r) => r.request() === request),
+    click(),
+  ]);
+  assert(response.ok(), "the switch-only request succeeded");
+}
+
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const width of [1100, 420]) {
     for (const lang of Object.keys(label)) {
@@ -96,11 +112,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.ok(box.x >= 0 && box.x + box.width <= width, `the tick fits across ${width}`);
         const scrollers = () => page.evaluate(() => [...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => e.scrollTop).concat(document.scrollingElement.scrollTop));
         const before = await scrollers();
-        await only.locator("input").click();
+        await switchClick(page, () => only.locator("input").click());
         await page.waitForFunction(() => document.querySelector(".editor .accts .switch-only input")?.checked === true);
         assert.deepEqual(posts, [{ id: "codex", switchOnly: true }]);
         assert.deepEqual(await scrollers(), before, "the page doesn't move");
-        await page.locator(".editor .accts .switch-only input").click();
+        await switchClick(page, () => page.locator(".editor .accts .switch-only input").click());
         await page.waitForFunction(() => document.querySelector(".editor .accts .switch-only input")?.checked === false);
         assert.deepEqual(posts, [{ id: "codex", switchOnly: true }, { id: "codex", switchOnly: false }]);
         assert.deepEqual(errors, []);

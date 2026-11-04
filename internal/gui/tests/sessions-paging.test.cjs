@@ -90,6 +90,39 @@ const words = {
   },
 };
 
+async function inputHandlerTime(q, value) {
+  await q.evaluate((input) => {
+    const timing = input.__pagingInputTiming = { events: 0 };
+    const start = () => { timing.events++; timing.start = performance.now(); };
+    const end = (event) => {
+      if (event.target !== input) return;
+      timing.duration = performance.now() - timing.start;
+      timing.value = input.value;
+    };
+    // sessQ's handler renders synchronously. Capture and bubble bracket that
+    // real input event, excluding Node/CDP transport, focus and scrolling.
+    input.addEventListener("input", start, true);
+    window.addEventListener("input", end);
+    timing.remove = () => {
+      input.removeEventListener("input", start, true);
+      window.removeEventListener("input", end);
+    };
+  });
+  try {
+    await q.fill(value);
+    const timing = await q.evaluate((input) => {
+      const { events, duration, value } = input.__pagingInputTiming;
+      return { events, duration, value };
+    });
+    assert.equal(timing.events, 1, "one real fill input event was measured");
+    assert.equal(timing.value, value, "the input event finished for this search");
+    assert(Number.isFinite(timing.duration) && timing.duration >= 0, "input handler timing completed");
+    return timing.duration;
+  } finally {
+    await q.evaluate((input) => { input.__pagingInputTiming.remove(); delete input.__pagingInputTiming; });
+  }
+}
+
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of ["en", "zh"]) {
     test(`${engine} ${lang}: the Sessions list is drawn in pages over a long history`, async (t) => {
@@ -133,9 +166,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // 1111 of them name "Session 1" ("1", "1x", "1xx", "1xxx"), so the note
       // counts that list — 200 of 1111, not of the 2600 on the computer
       const q = page.locator("#sessQ");
-      const at = Date.now();
-      await q.fill("Session 1");
-      const took = Date.now() - at;
+      const took = await inputHandlerTime(q, "Session 1");
       assert(await rows.count() <= 200, "a search draws a page, not the history");
       assert.equal(await rows.count(), 200, "a page of the matches");
       assert.match(await page.locator("#sessNote").innerText(), w.showing(200, 1111));

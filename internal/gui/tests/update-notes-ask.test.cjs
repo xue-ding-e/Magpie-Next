@@ -54,6 +54,22 @@ const scrolls = (page) => page.evaluate(() => [window.scrollY, document.scrollin
 // the sheet's releases: each version with its notes
 const shown = (page) => page.$$eval("#modal .update-ask .wn-rel", (rs) => rs.map((r) => [r.querySelector(".wn-ver")?.textContent.trim(), r.querySelector(".wn-notes")?.textContent.trim()]));
 
+// Closing the sheet does not mean its POST has reached the fixture.
+// Match this click's request and response without filtering the body.
+async function installClick(page, click) {
+  let request;
+  const [, response] = await Promise.all([
+    page.waitForRequest((r) => {
+      if (r.url() !== "http://magpie.test/api/update/install" || r.method() !== "POST") return false;
+      request = r;
+      return true;
+    }),
+    page.waitForResponse((r) => r.request() === request),
+    click(),
+  ]);
+  assert(response.ok(), "the install request succeeded");
+}
+
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of ["en", "zh"]) {
     test(`${engine} ${lang}: what an update brings is shown before it restarts`, async (t) => {
@@ -91,8 +107,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       // the pill again, then the sheet's Restart to update
       await pill.click();
-      await ask.locator(".bar button.primary").click();
-      for (let i = 0; i < 50 && !ctl.installs.length; i++) await page.waitForTimeout(20);
+      await installClick(page, () => ask.locator(".bar button.primary").click());
       assert.equal(ctl.installs.length, 1, "the sheet's Restart to update restarts");
       await ask.waitFor({ state: "detached" });
       assert.equal(await scrolls(page), before, "no click moves the page");
@@ -104,8 +119,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await ask.waitFor();
       await page.waitForFunction(() => document.querySelectorAll("#modal .update-ask .wn-rel").length === 2);
       assert.equal(ctl.installs.length, 1, "the row's click asks first");
-      await ask.locator(".bar button.primary").click();
-      for (let i = 0; i < 50 && ctl.installs.length < 2; i++) await page.waitForTimeout(20);
+      await installClick(page, () => ask.locator(".bar button.primary").click());
       assert.equal(ctl.installs.length, 2);
       assert.deepEqual(errors, []);
     });

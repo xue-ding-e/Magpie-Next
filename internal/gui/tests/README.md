@@ -16,6 +16,13 @@ Overview load. For finite animation assertions, `sidebar.test.cjs` observes the
 real nonzero native animation at creation and waits for its natural completion;
 a later `getAnimations()` read can arrive after the animation has finished.
 
+The Sessions paging performance check brackets the real input event's capture
+and bubble phases with the page's `performance.now()`. Its 250ms budget measures
+the synchronous filtering/rendering handler; Node/CDP transport and focus time
+are not part of that handler. Keep the row limits and the handler budget asserted.
+For CSV exports followed by automatic refreshes, match the export POST itself:
+a later GET can become the last request even though the export succeeded.
+
 `plugin-gateway.test.cjs` checks gateway-only plugin identification, the existing
 JSON options editor and aggregate diagnostics in all five languages on Chromium
 and WebKit. It uses local API fixtures, saves options through the real page, and
