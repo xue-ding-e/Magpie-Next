@@ -119,7 +119,19 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(await at(), before, "the page didn't scroll under the menu");
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, "no sideways scroll");
 
-        await page.mouse.click(spot.x, spot.y);
+        // The menu closes before the asynchronous show request arrives.
+        // Observe its new identity without filtering out an incorrect body.
+        let request;
+        const [, response] = await Promise.all([
+          page.waitForRequest((r) => {
+            if (r.url() !== "http://magpie.test/api/groups/show" || r.method() !== "POST") return false;
+            request = r;
+            return true;
+          }),
+          page.waitForResponse((r) => r.request() === request),
+          page.mouse.click(spot.x, spot.y),
+        ]);
+        assert.equal(response.status(), 200, "the restore request succeeded");
         await menu.waitFor({ state: "detached" });
         assert.deepEqual(posts, [{ id: "auto-gone-30" }]);
         assert.equal(await at(), before, "no click moved the page");

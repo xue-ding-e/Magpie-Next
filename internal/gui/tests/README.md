@@ -22,6 +22,9 @@ the synchronous filtering/rendering handler; Node/CDP transport and focus time
 are not part of that handler. Keep the row limits and the handler budget asserted.
 For CSV exports followed by automatic refreshes, match the export POST itself:
 a later GET can become the last request even though the export succeeded.
+`removed-groups-menu-scroll.test.cjs` also waits for the restore POST and its
+matching successful response: closing the menu can precede fixture delivery.
+Its exact group id, real wheel input and page-scroll assertions remain required.
 
 `plugin-gateway.test.cjs` checks gateway-only plugin identification, the existing
 JSON options editor and aggregate diagnostics in all five languages on Chromium
