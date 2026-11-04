@@ -517,3 +517,64 @@ still follows the existing Not set up folding rules. The dialog explains that
 restoring visibility does not pin an unconfigured agent into the main list.
 See `agent-bulk-visibility.test.cjs` for persistence, partial selection, failed
 saves, narrow layouts and all five languages in Chromium and WebKit.
+
+## Next: local sensitive dictionary
+
+The Privacy page's separate **Local sensitive dictionary** is not the legacy
+`redactWords` setting. `internal/localdictionary` stores a private
+`local-sensitive-dictionary.json` beside settings, deliberately outside the
+backup/sync Bundle even when backup includes keys. Import accepts UTF-8 lines
+or a JSON string array (100,000 entries, 16 MiB content); line imports preserve
+spaces and commas, ignore empty lines, and normalize CRLF. JSON can represent
+literal newlines. Matching is exact and case-sensitive, with no date expansion.
+Legacy custom words and rules keep their existing behavior.
+
+`GET /api/settings/local-dictionary` returns revision/count/bytes, not entries;
+explicit `reveal=1` returns at most 100 entries. `POST` requires the revision and
+append/replace mode. A cross-process writer lock plus revision check prevents
+lost updates. New generations use private temporary files, sync, and atomic
+rename, not in-place hard-link writes. Invalid imports and stale revisions leave
+the previous generation active. Errors never echo entry text. Unreadable or
+corrupt dictionaries hold masking requests back. Deleting a previously loaded
+nonempty library also fails closed; a fresh process cannot distinguish a file
+that was removed externally from one never configured. Clear via an explicit
+empty replacement, not by deleting files. Unix uses 0600; Windows relies on the
+user config directory's ACL (native ACL verification remains an acceptance item).
+
+The editor uses explicit Save/Cancel, file import, opt-in paged reveal, and no
+browser persistence. Closing while a save is in flight does not undo that save;
+reopen to establish its result. No auto-upload or implicit migration occurs.
+The immutable literal matcher is compiled once per file generation and reused;
+requests already using a generation retain it until they finish. Its memory is
+larger than input bytes: a 100k synthetic library's retained trie measured about
+52 MiB. Worst-case 16 MiB input and concurrent-generation peak memory remain to
+be measured before claiming broad low-memory support. Browser/native tests and
+packaging CI must pass separately; the presence of this code is not evidence of
+an installed or released feature.
+
+Protection applies only to the existing masking pipeline's eligible request
+fields. Provider routes not using masking, signed reasoning/structural fields,
+original sessions, logs and telemetry keep their existing rules. This is not a
+complete data-loss prevention system and does not retroactively scrub records.
+No library terms are added to logs/errors or activity-preview hints.
+
+Runtime protection budgets are separate from import capacity: at most 32 MiB of actually scanned text
+across one outbound request (not the whole JSON body or exempt image data), 4096 literal candidate spans across all strings
+of one request, and 128 KiB of literal-placeholder growth relative to the original text/body.
+The gateway's existing total-body limit is unchanged. Exceeding a budget
+raises a fixed, non-sensitive error handled by gwmw.Safely: nothing is sent;
+no truncation or partial redaction fallback. Existing legacy rules are unchanged
+when the local library is empty. The reverse scan retains only bounded matches,
+not an array proportional to text bytes; a no-match scan allocates no spans.
+Highly overlapping candidates may hit the conservative budget even when fewer
+would survive overlap selection. Larger requests require splitting, not disabling
+protection. These limits still permit a 16 MiB literal in a bounded request.
+
+Multi-field video prompts/extras and Jev state use one request-scoped masker:
+one fixed dictionary generation and one shared input/match/growth budget, not a
+fresh allowance for every string. Scope construction is also behind gwmw.Safely.
+For signed replay whose original unsigned message was compacted away, active
+local literals are restored to placeholders only when this process still knows
+the previously generated LOCAL_TERM mapping. Unknown provenance blocks the
+request, rather than leaking a literal or arbitrarily rewriting signed content.
+This does not inspect or alter encrypted reasoning or tool call identifiers.
