@@ -1,0 +1,205 @@
+{
+  "targeted_only": true,
+  "full_suite_passed": false,
+  "state": "failed",
+  "files": [
+    {
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "file": "internal/gui/tests/quota-count-wrap.test.cjs",
+      "sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+      "state": "accepted-red",
+      "report": "base-quota-count-wrap.test",
+      "exit": 1,
+      "timeout": false,
+      "interrupted": false,
+      "process_reaped": true,
+      "elapsed_seconds": 16.769860791,
+      "accepted": true,
+      "terminal_complete": true,
+      "counts": {
+        "tests": 2,
+        "pass": 0,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "expected_red": true
+    },
+    {
+      "source": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "file": "internal/gui/tests/quota-count-wrap.test.cjs",
+      "sha256": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+      "state": "passed",
+      "report": "candidate-quota-count-wrap.test",
+      "exit": 0,
+      "timeout": false,
+      "interrupted": false,
+      "process_reaped": true,
+      "elapsed_seconds": 12.211589752000009,
+      "accepted": true,
+      "terminal_complete": true,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "expected_red": false
+    },
+    {
+      "source": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "file": "internal/gui/tests/quota-single-window.test.cjs",
+      "sha256": "61f4b8043a4642c59acef4e9ae625ba2329eeabc86ef944a6add33d8363c85c6",
+      "state": "passed",
+      "report": "candidate-quota-single-window.test",
+      "exit": 0,
+      "timeout": false,
+      "interrupted": false,
+      "process_reaped": true,
+      "elapsed_seconds": 39.118653886999994,
+      "accepted": true,
+      "terminal_complete": true,
+      "counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "expected_red": false
+    },
+    {
+      "source": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "file": "internal/gui/tests/quota-families.test.cjs",
+      "sha256": "89f4811d4c3d217efba54dfb77ea0b92cf76ed4ca16cfa0985a92cacc6366dfa",
+      "state": "passed",
+      "report": "candidate-quota-families.test",
+      "exit": 0,
+      "timeout": false,
+      "interrupted": false,
+      "process_reaped": true,
+      "elapsed_seconds": 18.440439212,
+      "accepted": true,
+      "terminal_complete": true,
+      "counts": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "expected_red": false
+    },
+    {
+      "source": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "file": "internal/gui/tests/quota-pools.test.cjs",
+      "sha256": "a5cf3594443e97ea8b904b6baf6a27b53346824bb3e408149b23ec616377de98",
+      "state": "passed",
+      "report": "candidate-quota-pools.test",
+      "exit": 0,
+      "timeout": false,
+      "interrupted": false,
+      "process_reaped": true,
+      "elapsed_seconds": 18.841967375000024,
+      "accepted": true,
+      "terminal_complete": true,
+      "counts": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "expected_red": false
+    },
+    {
+      "source": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "file": "internal/gui/tests/usage-fold.test.cjs",
+      "sha256": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+      "state": "failed",
+      "report": "candidate-usage-fold.test",
+      "exit": 1,
+      "timeout": false,
+      "interrupted": false,
+      "process_reaped": true,
+      "elapsed_seconds": 21.387912964999998,
+      "accepted": false,
+      "terminal_complete": true,
+      "counts": {
+        "tests": 6,
+        "pass": 4,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "expected_red": false
+    }
+  ],
+  "new_job_seconds": null,
+  "new_job_cost_status": "pending official completed job receipt",
+  "source_before": {
+    "base": {
+      "head": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "tree": "bc56abd9c642a1315ea3a3f32a30d9998e15137a",
+      "files": {
+        "internal/gui/tests/quota-count-wrap.test.cjs": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+        "internal/gui/tests/quota-families.test.cjs": "89f4811d4c3d217efba54dfb77ea0b92cf76ed4ca16cfa0985a92cacc6366dfa",
+        "internal/gui/tests/quota-pools.test.cjs": "a5cf3594443e97ea8b904b6baf6a27b53346824bb3e408149b23ec616377de98",
+        "internal/gui/tests/usage-fold.test.cjs": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+        "internal/gui/assets/app.css": "a99f2ff5467b337528268530761b092d5580fb52131ee2d858a76347c8a39ae9"
+      },
+      "clean": true
+    },
+    "candidate": {
+      "head": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "tree": "9982a08791c91d2c958f3c710ac8b67bbb5c22c5",
+      "files": {
+        "internal/gui/tests/quota-count-wrap.test.cjs": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+        "internal/gui/tests/quota-single-window.test.cjs": "61f4b8043a4642c59acef4e9ae625ba2329eeabc86ef944a6add33d8363c85c6",
+        "internal/gui/tests/quota-families.test.cjs": "89f4811d4c3d217efba54dfb77ea0b92cf76ed4ca16cfa0985a92cacc6366dfa",
+        "internal/gui/tests/quota-pools.test.cjs": "a5cf3594443e97ea8b904b6baf6a27b53346824bb3e408149b23ec616377de98",
+        "internal/gui/tests/usage-fold.test.cjs": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+        "internal/gui/assets/app.css": "3fe4704e3a47d068ac7020c640ce96d2d1fec82148da41fb2390e845857a9b4b"
+      },
+      "clean": true
+    }
+  },
+  "prior_test_seconds": 2424.44243178,
+  "prior_job_seconds": 3108,
+  "controller_elapsed_seconds": 126.893009289,
+  "error": "AssertionError('candidate-usage-fold.test: missing required red or green; stopped without advancing')",
+  "source_after": {
+    "base": {
+      "head": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "tree": "bc56abd9c642a1315ea3a3f32a30d9998e15137a",
+      "files": {
+        "internal/gui/tests/quota-count-wrap.test.cjs": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+        "internal/gui/tests/quota-families.test.cjs": "89f4811d4c3d217efba54dfb77ea0b92cf76ed4ca16cfa0985a92cacc6366dfa",
+        "internal/gui/tests/quota-pools.test.cjs": "a5cf3594443e97ea8b904b6baf6a27b53346824bb3e408149b23ec616377de98",
+        "internal/gui/tests/usage-fold.test.cjs": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+        "internal/gui/assets/app.css": "a99f2ff5467b337528268530761b092d5580fb52131ee2d858a76347c8a39ae9"
+      },
+      "clean": true
+    },
+    "candidate": {
+      "head": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "tree": "9982a08791c91d2c958f3c710ac8b67bbb5c22c5",
+      "files": {
+        "internal/gui/tests/quota-count-wrap.test.cjs": "3e7a452fa6a0400cdfd2d6b9f3910e80028f1203f403fb7db28af497aa529ce6",
+        "internal/gui/tests/quota-single-window.test.cjs": "61f4b8043a4642c59acef4e9ae625ba2329eeabc86ef944a6add33d8363c85c6",
+        "internal/gui/tests/quota-families.test.cjs": "89f4811d4c3d217efba54dfb77ea0b92cf76ed4ca16cfa0985a92cacc6366dfa",
+        "internal/gui/tests/quota-pools.test.cjs": "a5cf3594443e97ea8b904b6baf6a27b53346824bb3e408149b23ec616377de98",
+        "internal/gui/tests/usage-fold.test.cjs": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+        "internal/gui/assets/app.css": "3fe4704e3a47d068ac7020c640ce96d2d1fec82148da41fb2390e845857a9b4b"
+      },
+      "clean": true
+    }
+  }
+}

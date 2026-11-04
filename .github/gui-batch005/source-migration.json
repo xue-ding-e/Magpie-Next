@@ -1,0 +1,36 @@
+{
+  "old_source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "old_tree": "e7f6ad18c50979c14fc16bfb40abbd040cf57d07",
+  "current_tree": "bc56abd9c642a1315ea3a3f32a30d9998e15137a",
+  "full_tree_hashes_reconstructed": true,
+  "old_leaf_count": 5701,
+  "current_leaf_count": 5711,
+  "identical_subtrees": {
+    "internal/gui/tests/": {
+      "identical_entries": 842,
+      "path_mode_type_blob_equal": true
+    },
+    "internal/gui/assets/": {
+      "identical_entries": 218,
+      "path_mode_type_blob_equal": true
+    }
+  },
+  "changed_paths": [
+    ".github/workflows/next-windows-package.yml",
+    "build/gui-changes/offline.cjs",
+    "build/gui-changes/package-lock.json",
+    "build/gui-changes/package.json",
+    "build/gui-changes/run.py",
+    "build/gui-changes/selftest.py",
+    "build/next-package-impact.py",
+    "build/next-package-impact_test.py",
+    "docs/subsystems/gui-shell.md",
+    "internal/gui/codex_auth_export.go",
+    "internal/gui/codex_auth_export_unix.go",
+    "internal/gui/codex_auth_export_windows.go",
+    "internal/gui/codex_auth_export_windows_test.go"
+  ],
+  "coverage_policy": "Archive only. Identical GUI test/assets bytes do not prove unchanged external Go or other files read by arbitrary static tests. No prior execution is a pass on the new source.",
+  "accepted_current_source_passes": 0
+}

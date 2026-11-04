@@ -1,0 +1,49 @@
+{
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "prior_run": 41604270125,
+  "prior_head": "ffaefbfe46e748ebf0ac3c85220e7fc7b49d9049",
+  "prior_ledger_sha256": "09f5b0c0b824b8fac2b8fcaa21bc022172955d456bf622bc1bbe3c1aee3a666c",
+  "prior_outcome_sha256": "c8002cc33d205b2f9707e050fab16fd7da15c587da1ab3b773aa175a7ba3c6d8",
+  "prior_jobs_sha256": "6983c51c304a2e50c0762ac418e882c162845f145dfee65e71624652def48168",
+  "before_prior_batch_test_seconds": 1802.274778342,
+  "before_prior_batch_job_seconds": 2432,
+  "prior_batch_controller_seconds": 622.1676534379999,
+  "prior_batch_job_seconds": 676,
+  "spent_test_seconds": 2601.644705159,
+  "spent_job_seconds": 3444,
+  "maximum_test_seconds": 28800,
+  "maximum_job_seconds": 43200,
+  "history_note": "Before-prior values are frozen within the exact preceding ledger and linked previous budget receipt. They retain prior failures,32-second requiredGUI charge,35-second scheduling sentinel and16.387983831/88 quota diagnostic. No raw archives or recursively nested ledgers repeated.",
+  "before_additional_targeted_test_seconds": 2424.44243178,
+  "before_additional_targeted_job_seconds": 3108,
+  "additional_targeted_runs": [
+    {
+      "label": "quota-redgreen",
+      "run": 41621675336,
+      "head": "f028f88cf058085f21d62e6d923516f0c248d922",
+      "base": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "candidate": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "outcome_sha256": "22c4264e4d6baf2472a7113404d54710d0ea36824c6f728f3f9c7f5d48bd3ffe",
+      "summary_sha256": "40abad3a24a329178a4e68ac461de4fe860614879d69cafd481fe5aaeaf4b50e",
+      "jobs_sha256": "129c20cd630df9e08adaabe87d336d2039174f81a3fdd8cba3277dabbfa48930",
+      "controller_seconds": 126.893009289,
+      "job_seconds": 203,
+      "credit_to_827": false,
+      "purpose": "Targeted comparison resource debt only; no source migration or whole-suite acceptance."
+    },
+    {
+      "label": "quota-fold-pair",
+      "run": 41623227697,
+      "head": "449311d7036c4849760c6f6fdec233e2385482d9",
+      "base": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "candidate": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "outcome_sha256": "527c828eba48794073346dbdf1fdd5cad5792900e7743c66837d02e79858d488",
+      "summary_sha256": "afd4038fde428feb05bd21108b00368f91cdae83e9e4d443f0a4e4be71477f7a",
+      "jobs_sha256": "bf8f452f09467e91f12e3558a873965121284782710dab0ee235a573a2c11ad0",
+      "controller_seconds": 50.309264089999985,
+      "job_seconds": 133,
+      "credit_to_827": false,
+      "purpose": "Targeted comparison resource debt only; no source migration or whole-suite acceptance."
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "run": 41621675336,
+  "head": "f028f88cf058085f21d62e6d923516f0c248d922",
+  "base": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "candidate": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+  "state": "failed",
+  "baseline": {
+    "tests": 2,
+    "pass": 0,
+    "fail": 2,
+    "expected_red": true
+  },
+  "candidate_counts": {
+    "tests": 26,
+    "pass": 24,
+    "fail": 2
+  },
+  "failed_stage": "usage-fold: Chromium en/zh scroll184!=180; baseline comparison not yet performed",
+  "all_reaped": true,
+  "source_before_equals_after": true,
+  "process_seconds": 126.77042398200003,
+  "controller_seconds": 126.893009289,
+  "official_job_seconds": 203.0,
+  "charged_test_seconds": 126.893009289,
+  "cumulative_test_seconds": 2551.335441069,
+  "cumulative_job_seconds": 3311.0,
+  "zip_sha256": "c2c2ec38d1a50a862e41eb4c0fb240969598991812825f17869c20a86be21c4e",
+  "summary_sha256": "40abad3a24a329178a4e68ac461de4fe860614879d69cafd481fe5aaeaf4b50e",
+  "members_sha256": "e2ab4866ff18bae82b5fd700d8efcb720ead0ea3ebd79a39eea1b2a82d543c23",
+  "log_sha256": "546d14ed026bb04720be0da1620fb25ce6ae1a4a576db8d41aaec47baa7cfa2f",
+  "member_count": 41,
+  "full_suite_passed": false
+}

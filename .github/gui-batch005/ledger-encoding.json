@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "encoding": "gzip+base64",
+  "output": "prior-ledger.json",
+  "output_size": 835286,
+  "output_sha256": "09f5b0c0b824b8fac2b8fcaa21bc022172955d456bf622bc1bbe3c1aee3a666c",
+  "output_git_blob": "c7eb5b5acd5436c2f1e10958c4503582c66d4c1f",
+  "gzip_mtime": 0,
+  "gzip_size": 54309,
+  "gzip_sha256": "a20914c6084c1c606108f458cb26cb5025aaa96734759b90f5905160359cd180",
+  "base64_size": 72412,
+  "base64_sha256": "42a2ec0197f35bdd31b4f8322a40d8cd77805b4e32e0bb27e50d53c4abe3636b",
+  "part_size_limit": 32768,
+  "parts": [
+    {
+      "path": "ledger-parts/part-000.b64",
+      "size": 32768,
+      "sha256": "1893d857389febd2285ae739936d3736c3d66b6c807f5c6bdc5233eb0a0b3805"
+    },
+    {
+      "path": "ledger-parts/part-001.b64",
+      "size": 32768,
+      "sha256": "343e5c10b83145530bd46845fc88fa09ac30227cb1eb77b67fd1a8d5c70a86cc"
+    },
+    {
+      "path": "ledger-parts/part-002.b64",
+      "size": 6876,
+      "sha256": "ebec79c4b27602b91033c8a8b2a080ac64e5b0643e489a6a17a72d571efc0796"
+    }
+  ]
+}

@@ -1,0 +1,296 @@
+{
+  "run": 41604270125,
+  "head": "ffaefbfe46e748ebf0ac3c85220e7fc7b49d9049",
+  "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "zip_sha256": "3b4d37e1ef090ba3c96576ab1dbc516412a225c90c9bc7a1f62f99988486a514",
+  "ledger_sha256": "09f5b0c0b824b8fac2b8fcaa21bc022172955d456bf622bc1bbe3c1aee3a666c",
+  "log_sha256": "fcfec5be8f2df6c7810735dfacbd7b590c0b1538ecf37540e2ea654c2957880f",
+  "members_sha256": "38d6f3d37d39d8b1a2efd29df23c0d6a46937cfe6ab94cc78075f13c60caabbb",
+  "member_count": 172,
+  "counts": {
+    "tests": 305,
+    "pass": 293,
+    "fail": 12,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "executed_in_batch": 32,
+  "passed_files_in_batch": 26,
+  "failed_files": {
+    "internal/gui/tests/quota-name-translated.test.cjs": {
+      "state": "failed",
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "sha256": "485ce928223e9cd4276a9284a829d61efc909319dc850860c879e379ab149e89",
+      "executed_in_batch": true,
+      "previous_state": "not-loaded",
+      "old_source_provenance": {
+        "source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+        "ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+        "ledger_run": 41544763327,
+        "state": "not_run",
+        "evidence": {
+          "state": "not_run",
+          "historical_state": "not-loaded",
+          "sha256": "485ce928223e9cd4276a9284a829d61efc909319dc850860c879e379ab149e89",
+          "executed_in_batch": false
+        },
+        "accepted_on_current_source": false
+      },
+      "carried_current_source_evidence": false,
+      "report": "6b10e642450b06af",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "internal/gui/tests/quota-name-translated.test.cjs"
+      ],
+      "counts": {
+        "tests": 10,
+        "pass": 8,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "terminal_summary": true,
+      "counts_consistent": true,
+      "passed": false,
+      "exit": 1,
+      "process_reaped": true,
+      "elapsed_seconds": 31.538268821999964,
+      "file_sha256": "485ce928223e9cd4276a9284a829d61efc909319dc850860c879e379ab149e89"
+    },
+    "internal/gui/tests/readable-focus.test.cjs": {
+      "state": "failed",
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "sha256": "4f0b6dcc4cde4896f9fae31a4006e080136a3c740a6ec6d1eb5aae5938e6c88e",
+      "executed_in_batch": true,
+      "previous_state": "not-loaded",
+      "old_source_provenance": {
+        "source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+        "ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+        "ledger_run": 41544763327,
+        "state": "not_run",
+        "evidence": {
+          "state": "not_run",
+          "historical_state": "not-loaded",
+          "sha256": "4f0b6dcc4cde4896f9fae31a4006e080136a3c740a6ec6d1eb5aae5938e6c88e",
+          "executed_in_batch": false
+        },
+        "accepted_on_current_source": false
+      },
+      "carried_current_source_evidence": false,
+      "report": "5c8673fc475c33b3",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "internal/gui/tests/readable-focus.test.cjs"
+      ],
+      "counts": {
+        "tests": 8,
+        "pass": 6,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "terminal_summary": true,
+      "counts_consistent": true,
+      "passed": false,
+      "exit": 1,
+      "process_reaped": true,
+      "elapsed_seconds": 25.196085272999994,
+      "file_sha256": "4f0b6dcc4cde4896f9fae31a4006e080136a3c740a6ec6d1eb5aae5938e6c88e"
+    },
+    "internal/gui/tests/recent-calls-more.test.cjs": {
+      "state": "failed",
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "sha256": "af03a7a47286f2de1b27e8a1936ec98fba6fd19b2c07dad3c0b4c3947e6a8988",
+      "executed_in_batch": true,
+      "previous_state": "not-loaded",
+      "old_source_provenance": {
+        "source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+        "ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+        "ledger_run": 41544763327,
+        "state": "not_run",
+        "evidence": {
+          "state": "not_run",
+          "historical_state": "not-loaded",
+          "sha256": "af03a7a47286f2de1b27e8a1936ec98fba6fd19b2c07dad3c0b4c3947e6a8988",
+          "executed_in_batch": false
+        },
+        "accepted_on_current_source": false
+      },
+      "carried_current_source_evidence": false,
+      "report": "aaeb2ee3ca54623f",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "internal/gui/tests/recent-calls-more.test.cjs"
+      ],
+      "counts": {
+        "tests": 2,
+        "pass": 1,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "terminal_summary": true,
+      "counts_consistent": true,
+      "passed": false,
+      "exit": 1,
+      "process_reaped": true,
+      "elapsed_seconds": 7.8585076170001,
+      "file_sha256": "af03a7a47286f2de1b27e8a1936ec98fba6fd19b2c07dad3c0b4c3947e6a8988"
+    },
+    "internal/gui/tests/redact-rule-edit.test.cjs": {
+      "state": "failed",
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "sha256": "49390308c223f0a78d3c632cdc99d61fef4187145b8e3ea54a71891878556c8f",
+      "executed_in_batch": true,
+      "previous_state": "not-loaded",
+      "old_source_provenance": {
+        "source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+        "ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+        "ledger_run": 41544763327,
+        "state": "not_run",
+        "evidence": {
+          "state": "not_run",
+          "historical_state": "not-loaded",
+          "sha256": "49390308c223f0a78d3c632cdc99d61fef4187145b8e3ea54a71891878556c8f",
+          "executed_in_batch": false
+        },
+        "accepted_on_current_source": false
+      },
+      "carried_current_source_evidence": false,
+      "report": "35a27063dc20dc6e",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "internal/gui/tests/redact-rule-edit.test.cjs"
+      ],
+      "counts": {
+        "tests": 20,
+        "pass": 17,
+        "fail": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "terminal_summary": true,
+      "counts_consistent": true,
+      "passed": false,
+      "exit": 1,
+      "process_reaped": true,
+      "elapsed_seconds": 45.76157574499996,
+      "file_sha256": "49390308c223f0a78d3c632cdc99d61fef4187145b8e3ea54a71891878556c8f"
+    },
+    "internal/gui/tests/removed-forget.test.cjs": {
+      "state": "failed",
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "sha256": "0dd662d31fe9e47ecdfd7d55d7d4cddfee447c182625231c1d034a84a6d0501b",
+      "executed_in_batch": true,
+      "previous_state": "not-loaded",
+      "old_source_provenance": {
+        "source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+        "ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+        "ledger_run": 41544763327,
+        "state": "not_run",
+        "evidence": {
+          "state": "not_run",
+          "historical_state": "not-loaded",
+          "sha256": "0dd662d31fe9e47ecdfd7d55d7d4cddfee447c182625231c1d034a84a6d0501b",
+          "executed_in_batch": false
+        },
+        "accepted_on_current_source": false
+      },
+      "carried_current_source_evidence": false,
+      "report": "bdcbf146c08e9d58",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "internal/gui/tests/removed-forget.test.cjs"
+      ],
+      "counts": {
+        "tests": 18,
+        "pass": 16,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "terminal_summary": true,
+      "counts_consistent": true,
+      "passed": false,
+      "exit": 1,
+      "process_reaped": true,
+      "elapsed_seconds": 60.37469758600014,
+      "file_sha256": "0dd662d31fe9e47ecdfd7d55d7d4cddfee447c182625231c1d034a84a6d0501b"
+    },
+    "internal/gui/tests/removed-hide.test.cjs": {
+      "state": "failed",
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "sha256": "90ee5a82be5b0af7be90000c2e6b5beeb8efa81ad04fdf2c4eb539d2ff11c6b7",
+      "executed_in_batch": true,
+      "previous_state": "not-loaded",
+      "old_source_provenance": {
+        "source": "94e6698e22322ae4bfa09efdd3ab2bec9238919a",
+        "ledger_sha256": "fe24a4b69aa13c74835036d29e87f19772952ab4e2e2259e2f6ad04bfd0876fa",
+        "ledger_run": 41544763327,
+        "state": "not_run",
+        "evidence": {
+          "state": "not_run",
+          "historical_state": "not-loaded",
+          "sha256": "90ee5a82be5b0af7be90000c2e6b5beeb8efa81ad04fdf2c4eb539d2ff11c6b7",
+          "executed_in_batch": false
+        },
+        "accepted_on_current_source": false
+      },
+      "carried_current_source_evidence": false,
+      "report": "b451cbb5a66d55f5",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "internal/gui/tests/removed-hide.test.cjs"
+      ],
+      "counts": {
+        "tests": 14,
+        "pass": 12,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "terminal_summary": true,
+      "counts_consistent": true,
+      "passed": false,
+      "exit": 1,
+      "process_reaped": true,
+      "elapsed_seconds": 29.43155852300015,
+      "file_sha256": "90ee5a82be5b0af7be90000c2e6b5beeb8efa81ad04fdf2c4eb539d2ff11c6b7"
+    }
+  },
+  "current_source_executed": 64,
+  "current_source_passed": 57,
+  "current_source_failed": 7,
+  "not_run": 763,
+  "all_reaped": true,
+  "test_seconds": 622.1676534379999,
+  "official_job_seconds": 676.0,
+  "cumulative_test_seconds": 2424.44243178,
+  "cumulative_job_seconds": 3108.0,
+  "full_suite_gate": "RED"
+}

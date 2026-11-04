@@ -1,0 +1,37 @@
+{
+  "run": 41623227697,
+  "head": "449311d7036c4849760c6f6fdec233e2385482d9",
+  "base": "ff997c492a908293dc0de152ee20f83152b88aa9",
+  "candidate": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+  "state": "pair-complete-red",
+  "base_counts": {
+    "tests": 6,
+    "pass": 4,
+    "fail": 2,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "candidate_counts": {
+    "tests": 6,
+    "pass": 4,
+    "fail": 2,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0
+  },
+  "same_failure": "Chromium en/zh original usage-fold scroll184!=180 assertion on both sources; not caused solely by the new quota CSS, root cause unproven",
+  "all_reaped": true,
+  "source_before_equals_after": true,
+  "process_seconds": 50.184930522000016,
+  "charged_test_seconds": 50.309264089999985,
+  "official_job_seconds": 133.0,
+  "cumulative_test_seconds": 2601.644705159,
+  "cumulative_job_seconds": 3444.0,
+  "zip_sha256": "b2b51eef65e0df43275702bcd36072ad4869f6519eb510b290062403f350e3f9",
+  "summary_sha256": "afd4038fde428feb05bd21108b00368f91cdae83e9e4d443f0a4e4be71477f7a",
+  "members_sha256": "9e940e1d369f1dfa61f7fd54c5b9f6fa21948eac53cd2db25becf7ab9e491b34",
+  "log_sha256": "1753a73aa782237b7b458d2f4b38163e4f1eb80a4adae2300d5f366bc6017ad7",
+  "member_count": 9,
+  "full_suite_passed": false
+}

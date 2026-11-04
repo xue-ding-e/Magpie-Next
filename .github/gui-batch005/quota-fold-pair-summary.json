@@ -1,0 +1,103 @@
+{
+  "targeted_only": true,
+  "full_suite_passed": false,
+  "state": "pair-complete-red",
+  "files": [
+    {
+      "source": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "file": "internal/gui/tests/usage-fold.test.cjs",
+      "sha256": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+      "state": "ordinary-assertion-failed",
+      "report": "base-usage-fold.test",
+      "exit": 1,
+      "timeout": false,
+      "interrupted": false,
+      "process_reaped": true,
+      "elapsed_seconds": 27.743775289,
+      "comparable": true,
+      "terminal_complete": true,
+      "counts": {
+        "tests": 6,
+        "pass": 4,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "passed": false,
+      "ordinary_assertion_failures": 2
+    },
+    {
+      "source": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "file": "internal/gui/tests/usage-fold.test.cjs",
+      "sha256": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+      "state": "ordinary-assertion-failed",
+      "report": "candidate-usage-fold.test",
+      "exit": 1,
+      "timeout": false,
+      "interrupted": false,
+      "process_reaped": true,
+      "elapsed_seconds": 22.441155233000018,
+      "comparable": true,
+      "terminal_complete": true,
+      "counts": {
+        "tests": 6,
+        "pass": 4,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "passed": false,
+      "ordinary_assertion_failures": 2
+    }
+  ],
+  "new_job_seconds": null,
+  "new_job_cost_status": "pending official completed job receipt",
+  "prior_evidence_retained": true,
+  "source_before": {
+    "base": {
+      "head": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "tree": "bc56abd9c642a1315ea3a3f32a30d9998e15137a",
+      "files": {
+        "internal/gui/tests/usage-fold.test.cjs": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+        "internal/gui/assets/app.css": "a99f2ff5467b337528268530761b092d5580fb52131ee2d858a76347c8a39ae9"
+      },
+      "clean": true
+    },
+    "candidate": {
+      "head": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "tree": "9982a08791c91d2c958f3c710ac8b67bbb5c22c5",
+      "files": {
+        "internal/gui/tests/usage-fold.test.cjs": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+        "internal/gui/assets/app.css": "3fe4704e3a47d068ac7020c640ce96d2d1fec82148da41fb2390e845857a9b4b"
+      },
+      "clean": true
+    }
+  },
+  "prior_test_seconds": 2551.335441069,
+  "prior_job_seconds": 3311,
+  "controller_elapsed_seconds": 50.309264089999985,
+  "current_pair_passed": false,
+  "total_top_level_tests": 12,
+  "source_after": {
+    "base": {
+      "head": "ff997c492a908293dc0de152ee20f83152b88aa9",
+      "tree": "bc56abd9c642a1315ea3a3f32a30d9998e15137a",
+      "files": {
+        "internal/gui/tests/usage-fold.test.cjs": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+        "internal/gui/assets/app.css": "a99f2ff5467b337528268530761b092d5580fb52131ee2d858a76347c8a39ae9"
+      },
+      "clean": true
+    },
+    "candidate": {
+      "head": "d076db4c3cfaf85fc1def65efbe40936d2c7bf02",
+      "tree": "9982a08791c91d2c958f3c710ac8b67bbb5c22c5",
+      "files": {
+        "internal/gui/tests/usage-fold.test.cjs": "39062cc107dcdadf4de6350723061748ab0e94f5a890323cd02ca80f6fa835eb",
+        "internal/gui/assets/app.css": "3fe4704e3a47d068ac7020c640ce96d2d1fec82148da41fb2390e845857a9b4b"
+      },
+      "clean": true
+    }
+  }
+}

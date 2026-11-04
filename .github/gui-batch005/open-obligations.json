@@ -1,0 +1,142 @@
+{
+  "full_suite_gate": "RED",
+  "whole_suite_required": true,
+  "mandatory_current_source_files": 827,
+  "current_source_inherited_passes": 57,
+  "old_recovery_not_run": 803,
+  "old_recovery_executed": 24,
+  "unresolved_latest_failures": [
+    "internal/gui/tests/provider-detect-draft.test.cjs",
+    "internal/gui/tests/provider-draft-picks.test.cjs",
+    "internal/gui/tests/provider-gemini.test.cjs",
+    "internal/gui/tests/provider-levels-save.test.cjs"
+  ],
+  "latest_failures_proven_baseline": false,
+  "old_partial_run": 41438741797,
+  "old_partial_observed_top_level_failures": 105,
+  "old_partial_terminal_summary": false,
+  "old_partial_counts_are_complete_suite_totals": false,
+  "masked_preview_visual_cases_required": 10,
+  "unresolved_10px_visual_issue": true,
+  "old_or_partial_evidence_never_waives_current_source_or_visual_acceptance": true,
+  "excluded_css_commits": [
+    "2c53077ebb6bd8f34d34880a7ead19e18e54147b",
+    "75953a1f3da2e82a62c1b33559b8749a9cd5c20b"
+  ],
+  "current_source_inherited_failures": 7,
+  "current_source_not_run": 763,
+  "latest_current_source_failure": {
+    "file": "internal/gui/tests/quota-count-wrap.test.cjs",
+    "run": 41598441535,
+    "tests": 2,
+    "pass": 0,
+    "fail": 2,
+    "description": "Both engines report content cut at1100px; cause not yet established",
+    "baseline_proven": false,
+    "resolution": "unresolved; preserve failure and do not rerun/skip into green"
+  },
+  "current_source_executed": 64,
+  "current_source_failures": {
+    "internal/gui/tests/quota-count-wrap.test.cjs": {
+      "counts": {
+        "tests": 2,
+        "pass": 0,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "run": 41598441535,
+      "state": "failed",
+      "baseline_proven": false
+    },
+    "internal/gui/tests/quota-name-translated.test.cjs": {
+      "counts": {
+        "tests": 10,
+        "pass": 8,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "run": 41604270125,
+      "state": "failed",
+      "baseline_proven": false
+    },
+    "internal/gui/tests/readable-focus.test.cjs": {
+      "counts": {
+        "tests": 8,
+        "pass": 6,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "run": 41604270125,
+      "state": "failed",
+      "baseline_proven": false
+    },
+    "internal/gui/tests/recent-calls-more.test.cjs": {
+      "counts": {
+        "tests": 2,
+        "pass": 1,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "run": 41604270125,
+      "state": "failed",
+      "baseline_proven": false
+    },
+    "internal/gui/tests/redact-rule-edit.test.cjs": {
+      "counts": {
+        "tests": 20,
+        "pass": 17,
+        "fail": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "run": 41604270125,
+      "state": "failed",
+      "baseline_proven": false
+    },
+    "internal/gui/tests/removed-forget.test.cjs": {
+      "counts": {
+        "tests": 18,
+        "pass": 16,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "run": 41604270125,
+      "state": "failed",
+      "baseline_proven": false
+    },
+    "internal/gui/tests/removed-hide.test.cjs": {
+      "counts": {
+        "tests": 14,
+        "pass": 12,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "run": 41604270125,
+      "state": "failed",
+      "baseline_proven": false
+    }
+  },
+  "latest_batch_counts": {
+    "tests": 305,
+    "pass": 293,
+    "fail": 12,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "scope": "Terminal Node TAP counts include parent and child tests; not305 independent files."
+  },
+  "product_scope": "Pinnedff997 only. Unintegrated quotaCSS candidate or any future product SHA is not implicitly selected."
+}
