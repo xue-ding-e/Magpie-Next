@@ -48,7 +48,7 @@ func CompileDictionary(words []string) (*Dictionary, error) {
 		}
 		size += len(word)
 	}
-	d := &Dictionary{nodes: make([]dictionaryNode, 1)}
+	d := &Dictionary{nodes: make([]dictionaryNode, 1, dictionaryNodeCount(words))}
 	for _, word := range words {
 		at := uint32(0)
 		// Reverse byte order deliberately, not rune order: offsets remain those
@@ -84,6 +84,33 @@ func CompileDictionary(words []string) (*Dictionary, error) {
 		}
 	}
 	return d, nil
+}
+
+// dictionaryNodeCount counts distinct reversed-byte prefixes without constructing
+// a second trie. Equal suffixes are adjacent in reversed lexicographic order.
+// Sorting only a slice copy preserves caller order and immutable generations.
+// Call only after the entry and byte budgets have been validated.
+func dictionaryNodeCount(words []string) int {
+	ordered := slices.Clone(words)
+	slices.SortFunc(ordered, func(a, b string) int {
+		for i, j := len(a)-1, len(b)-1; i >= 0 && j >= 0; i, j = i-1, j-1 {
+			if a[i] != b[j] {
+				return int(a[i]) - int(b[j])
+			}
+		}
+		return len(a) - len(b)
+	})
+	count := 1
+	previous := ""
+	for _, word := range ordered {
+		shared := 0
+		for shared < len(previous) && shared < len(word) && previous[len(previous)-1-shared] == word[len(word)-1-shared] {
+			shared++
+		}
+		count += len(word) - shared
+		previous = word
+	}
+	return count
 }
 
 func (d *Dictionary) edge(at uint32, label byte) uint32 {
