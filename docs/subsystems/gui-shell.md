@@ -634,14 +634,23 @@ a simple cross-site form cannot change the library. Responses are no-store.
 The editor uses explicit Save/Cancel, file import, opt-in paged reveal, and no
 browser persistence. Reveal and pagination do not advance a draft's saving
 revision: another writer still causes a conflict until explicit Reload or a
-successful Save establishes a new baseline. Closing while a save is in flight does not undo that save;
+successful Save establishes a new baseline. Reload asks before discarding a
+draft or selected file; Cancel keeps both and does not establish a new revision.
+Dragging a selection out onto the backdrop does not close the centered dialog.
+Closing while a save is in flight does not undo that save;
 reopen to establish its result. No auto-upload or implicit migration occurs.
 The immutable literal matcher is compiled once per file generation and reused;
 requests already using a generation retain it until they finish. Its memory is
-larger than input bytes: a 100k synthetic library's retained trie measured about
-52 MiB. A 16 MiB Unicode literal retains about 385.6 MiB in matcher arrays.
-Worst-case import and concurrent-generation peak memory remain unmeasured;
-the content limit is not a low-memory guarantee. Browser/native tests and
+larger than input bytes. Exact node preallocation counts distinct reversed-byte
+prefixes without changing caller order or longest-match behavior. The synthetic
+resource validation in [run 41796545800](https://github.com/xue-ding-e/Magpie-Next/actions/runs/41796545800)
+passed 100k entries, 16 MiB content, held old/new generations and released old
+generation checks under a strict 2 GiB memory limit with no swap. Its cumulative
+cgroup peak was 1,500,905,472 bytes, with no memory-limit or OOM events; owned
+process and container cleanup completed. This measures those synthetic workloads,
+including their test/build overhead, and does not establish every possible
+dictionary's or the whole desktop application's memory budget. The content
+limit is not a low-memory guarantee. Browser/native tests and
 packaging CI must pass separately; the presence of this code is not evidence of
 an installed or released feature.
 

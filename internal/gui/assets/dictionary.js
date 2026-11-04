@@ -58,7 +58,11 @@ function openLocalDictionary() {
   cancel.onclick = close;
   d.addEventListener("cancel", (e) => { e.preventDefault(); close(); });
   d.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Escape") { e.preventDefault(); close(); } });
-  d.addEventListener("click", (e) => { if (e.target === d) { const r=d.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) close(); } });
+  const onBackdrop = backdropClick(d, (e) => {
+    const r=d.getBoundingClientRect();
+    return e.target===d && (e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom);
+  });
+  d.addEventListener("click", (e) => { if(onBackdrop(e))close(); });
   file.onchange = async () => {
     const f = file.files?.[0]; if (!f) return;
     error.textContent = "";
@@ -77,7 +81,14 @@ function openLocalDictionary() {
     finally{if(active())lock(false);}
   };
   reveal.onclick = () => { shown=!shown;offset=0;reveal.textContent=t(shown?"Hide entries":"Reveal entries");if(!shown){++request;preview.textContent="";preview.hidden=true;if(state)delete state.words;lock(false);return;}load(); };
-  prev.onclick = () => {offset=Math.max(0,offset-100);load();}; next.onclick = () => {offset+=100;load();}; reload.onclick=()=>{offset=0;load(true);};
+  prev.onclick = () => {offset=Math.max(0,offset-100);load();}; next.onclick = () => {offset+=100;load();}; reload.onclick=async()=>{
+    if(busy)return;
+    lock(true);
+    if((input.value || file.value) && !(await confirmDiscard())) { if(active())lock(false);return; }
+    if(!active())return;
+    input.value=file.value=preview.textContent="";offset=0;
+    await load(true);
+  };
   buttons.append(save,cancel,reload,reveal,prev,next);
   d.append(heading,note,boundary,limits,summary,mode,format,file,input,error,buttons,preview);document.body.append(d);d.showModal();load();
 }

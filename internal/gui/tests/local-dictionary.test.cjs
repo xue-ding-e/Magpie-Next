@@ -5,7 +5,7 @@ const path = require('node:path');
 const { test } = require('node:test');
 const { chromium, webkit } = require('playwright');
 const { reach, watchSettingsReads, settingsDrawn } = require('./reader.cjs');
-const assets=path.resolve(__dirname,'../assets');
+const assets=path.resolve(process.env.MAGPIE_DICTIONARY_ASSETS||path.join(__dirname,'../assets'));
 for (const engine of (process.env.BROWSER?[process.env.BROWSER]:['chromium','webkit'])) {
  for (const lang of ['en','zh','zh-TW','ja','de']) {
  const labels={
@@ -16,12 +16,13 @@ for (const engine of (process.env.BROWSER?[process.env.BROWSER]:['chromium','web
   de:{open:'Lokales Wörterbuch verwalten',save:'Speichern',cancel:'Abbrechen',reveal:'Einträge anzeigen',hide:'Einträge verbergen',reload:'Neu laden'},
  }[lang];
  test(`${engine} ${lang}: local dictionary explicit save, conflict, reveal, cancellation`,{timeout:60000},async(t)=>{
-  const browser=await(engine==='webkit'?webkit.launch():chromium.launch({channel:'chromium'}));t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width:420,height:760}});page.setDefaultTimeout(5000);
-  let revision='new',words=[],writes=0,conflict=false,reads=0,holdSave=false,releaseSave;
+  const browser=await(engine==='webkit'?webkit.launch():chromium.launch({channel:'chromium'}));
+  let page,releaseSave;
+  t.after(async()=>{releaseSave?.();try{await page?.context().close();}finally{await browser.close();}});
+  page=await browser.newPage({viewport:{width:420,height:760}});page.setDefaultTimeout(5000);
+  let revision='new',words=[],writes=0,conflict=false,reads=0,holdSave=false;
   let saveStartedResolve;const saveStarted=new Promise(resolve=>{saveStartedResolve=resolve;});
   let saveFinishedResolve;const saveFinished=new Promise(resolve=>{saveFinishedResolve=resolve;});
-  t.after(()=>releaseSave?.());
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',async r=>{
    const u=new URL(r.request().url()),p=u.pathname,json=x=>r.fulfill({json:x});
@@ -56,12 +57,34 @@ for (const engine of (process.env.BROWSER?[process.env.BROWSER]:['chromium','web
   await page.goto('http://magpie.test/?view=settings&tab=privacy');await settingsDrawn(page);
   const open=async()=>{const b=page.getByRole('button',{name:labels.open,exact:true});await reach(page,b);await b.click();};
   await open();const d=page.locator('dialog.local-dictionary');await d.getByRole('button',{name:labels.save,exact:true}).waitFor();
-  await d.locator('textarea').fill('unsaved synthetic');await d.getByRole('button',{name:labels.cancel,exact:true}).click();assert.equal(writes,0);
+  const centered=await d.evaluate((e)=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,viewport:[innerWidth,innerHeight]};});
+  assert(Math.abs(centered.x+centered.width/2-centered.viewport[0]/2)<=1,'dictionary dialog is centered horizontally');
+  assert(Math.abs(centered.y+centered.height/2-centered.viewport[1]/2)<=1,'dictionary dialog is centered vertically');
+  const backdrop=await d.evaluate((e)=>{const r=e.getBoundingClientRect();const x=Math.max(1,Math.min(innerWidth-1,r.right+Math.max(1,(innerWidth-r.right)/2)));const y=Math.max(1,Math.min(innerHeight-1,(r.top+r.bottom)/2));return {x,y,inside:x>r.left&&x<r.right&&y>r.top&&y<r.bottom};});
+  assert.equal(backdrop.inside,false,'backdrop point is outside the dialog');
+  await page.mouse.click(backdrop.x,backdrop.y);await d.waitFor({state:'detached'});
+  await open();
+  await d.locator('textarea').fill('unsaved synthetic');
+  await d.evaluate((e)=>{window.__dictionaryGesture=[];for(const kind of ['pointerdown','pointerup','click'])e.addEventListener(kind,(event)=>{const r=e.getBoundingClientRect();window.__dictionaryGesture.push({kind,trusted:event.isTrusted,outside:event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom});},true);});
+  const field=await d.locator('textarea').boundingBox();assert(field);
+  await page.mouse.move(field.x+field.width/2,field.y+field.height/2);await page.mouse.down();await page.mouse.move(backdrop.x,backdrop.y,{steps:8});await page.mouse.up();
+  assert.equal(await d.count(),1,'dragging a selection out must not dismiss the dictionary');
+  assert.equal(await d.locator('textarea').inputValue(),'unsaved synthetic');
+  const gesture=await page.evaluate(()=>window.__dictionaryGesture);
+  assert(gesture.every(e=>e.trusted),'the backdrop regression uses trusted pointer events');
+  assert(gesture.some(e=>e.kind==='pointerdown'&&!e.outside)&&gesture.some(e=>e.kind==='pointerup'&&e.outside),'the gesture starts inside and ends on the backdrop');
+  await d.getByRole('button',{name:labels.cancel,exact:true}).click();assert.equal(writes,0);
   await open();await d.locator('textarea').fill('synthetic,password\n保密词');await d.getByRole('button',{name:labels.save,exact:true}).click();await page.waitForFunction(()=>document.querySelector('dialog .dictionary-buttons button')?.disabled===false);assert.equal(writes,1);assert.deepEqual(words,['synthetic,password','保密词']);
   assert.equal(await d.locator('pre').isVisible(),false);
   await d.getByRole('button',{name:labels.reveal,exact:true}).click();await d.locator('pre').waitFor();assert.match(await d.locator('pre').textContent(),/synthetic,password/);
   const beforeHide=reads;await d.getByRole('button',{name:labels.hide,exact:true}).click();assert.equal(await d.locator('pre').isVisible(),false);assert.equal(await d.locator('pre').textContent(),'');assert.equal(reads,beforeHide);
   await d.locator('textarea').fill('do not overwrite');conflict=true;await d.getByRole('button',{name:labels.save,exact:true}).click();await d.getByRole('alert').filter({hasText:'dictionary changed'}).waitFor();assert.equal(await d.locator('textarea').inputValue(),'do not overwrite');assert.deepEqual(words,['synthetic,password','保密词']);
+  // Reload must ask before discarding a draft. Cancel keeps the draft, and
+  // accepting the same confirmation is what establishes a fresh revision.
+  const discard=await page.evaluate(()=>t('Discard')), reload=d.getByRole('button',{name:labels.reload,exact:true});
+  const readsBeforeCancel=reads,writesBeforeCancel=writes;
+  await reload.click();const confirm=page.locator('dialog.action-confirm');await confirm.waitFor();await confirm.getByRole('button',{name:await page.evaluate(()=>t('Cancel')),exact:true}).click();await confirm.waitFor({state:'detached'});assert.equal(await d.locator('textarea').inputValue(),'do not overwrite');
+  assert.equal(reads,readsBeforeCancel,'cancel does not establish a new revision');assert.equal(writes,writesBeforeCancel,'cancel sends no mutation');
   // Revealing or paging a newer generation must not silently rebase a draft.
   conflict=false;
   const bulk=Array.from({length:205},(_,i)=>`synthetic-page-${i}`);
@@ -74,7 +97,9 @@ for (const engine of (process.env.BROWSER?[process.env.BROWSER]:['chromium','web
   await d.getByRole('button',{name:labels.save,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('dialog textarea').disabled);
   assert.deepEqual(words,bulk,'paging rebased a stale replacement and lost another writer\'s entries');
   assert.match(await d.getByRole('alert').textContent(),/dictionary changed/);assert.equal(await d.locator('textarea').inputValue(),'do not overwrite');
-  await d.getByRole('button',{name:labels.reload,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('dialog textarea').disabled);
+  await reload.click();await confirm.waitFor();await confirm.getByRole('button',{name:discard,exact:true}).click();await confirm.waitFor({state:'detached'});await page.waitForFunction(()=>!document.querySelector('dialog textarea').disabled);
+  assert.equal(await d.locator('textarea').inputValue(),'','accepted reload discards the old draft');assert.deepEqual(words,bulk,'reload does not modify the saved dictionary');
+  await d.locator('textarea').fill('do not overwrite');
   await d.getByRole('button',{name:labels.save,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('dialog textarea').disabled);
   assert.deepEqual(words,['do not overwrite']);
   // Import all entries, reveal only one page, then append without replacing.
@@ -82,6 +107,14 @@ for (const engine of (process.env.BROWSER?[process.env.BROWSER]:['chromium','web
   await d.locator('input[type="file"]').setInputFiles({name:'synthetic.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bulk))});
   await page.waitForFunction(()=>!document.querySelector('dialog textarea').disabled);
   assert.equal(await d.locator('[role="radio"][data-value="json"]').getAttribute('aria-checked'),'true');
+  // A selected file also makes Reload destructive, even if its text was cleared.
+  await d.locator('textarea').fill('');const selectedFile=await d.locator('input[type="file"]').inputValue(),beforeFileReload=reads;
+  await reload.click();await confirm.waitFor();await confirm.getByRole('button',{name:await page.evaluate(()=>t('Cancel')),exact:true}).click();await confirm.waitFor({state:'detached'});
+  assert.equal(await d.locator('input[type="file"]').inputValue(),selectedFile,'cancel keeps the selected file');assert.equal(reads,beforeFileReload);
+  await reload.click();await confirm.waitFor();await confirm.getByRole('button',{name:discard,exact:true}).click();await confirm.waitFor({state:'detached'});await page.waitForFunction(()=>!document.querySelector('dialog textarea').disabled);
+  assert.equal(await d.locator('input[type="file"]').inputValue(),'','accepted reload clears the selected file');assert.equal(await d.locator('textarea').inputValue(),'');assert.deepEqual(words,['do not overwrite']);
+  await d.locator('input[type="file"]').setInputFiles({name:'synthetic.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bulk))});
+  await page.waitForFunction(()=>!document.querySelector('dialog textarea').disabled);
   await d.getByRole('button',{name:labels.save,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('dialog textarea').disabled);
   assert.deepEqual(words,bulk);
   await d.getByRole('button',{name:labels.reveal,exact:true}).click();await d.locator('pre').waitFor();

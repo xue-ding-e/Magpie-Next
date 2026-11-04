@@ -31,8 +31,9 @@ func sandboxHome(t *testing.T) string {
 	for _, v := range agentenv.Vars {
 		t.Setenv(v, "")
 	}
-	t.Setenv("APPDATA", "")
-	t.Setenv("LOCALAPPDATA", "")
+	// Windows config/cache lookups need private roots, not missing OS folders.
+	t.Setenv("APPDATA", filepath.Join(h, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(h, "AppData", "Local"))
 	return h
 }
 
