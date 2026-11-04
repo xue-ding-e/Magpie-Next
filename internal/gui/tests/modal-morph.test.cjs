@@ -54,7 +54,9 @@ const shown = (page, at) => page.evaluate((at) => {
   for (const a of [...d.parentElement.getAnimations(), ...d.getAnimations()]) { a.pause(); a.currentTime = at * a.effect.getTiming().duration; }
   const box = d.getBoundingClientRect(), s = box.width / d.offsetWidth;
   const clip = getComputedStyle(d).clipPath;
-  const m = clip.match(/^inset\(([-\d.]+)px(?: ([-\d.]+)px)?(?: ([-\d.]+)px)?(?: ([-\d.]+)px)?/);
+  // Computed CSS may serialize a near-zero inset as 2.84217e-14px.
+  const number = String.raw`[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?`;
+  const m = clip.match(new RegExp(String.raw`^inset\((${number})px(?: (${number})px)?(?: (${number})px)?(?: (${number})px)?(?= round |\))`));
   if (!m) return { clip, top: box.top, bottom: box.bottom, left: box.left, right: box.right };
   const [t, r = t, b = t, l = r] = m.slice(1).map((v) => v === undefined ? undefined : +v);
   return { clip, top: box.top + Math.max(0, t) * s, bottom: box.bottom - Math.max(0, b) * s, left: box.left + Math.max(0, l) * s, right: box.right - Math.max(0, r) * s };
@@ -83,6 +85,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.goto("http://magpie.test/?view=providers");
       const row = page.locator('.row.provider[data-id="delta"]');
       await row.waitFor();
+      // Sample a settled source row, not the page's translateY entrance.
+      // Cancellation is idle/absent; a paused animation times out instead of hanging.
+      await page.waitForFunction(() => document.querySelector("#view-providers").getAnimations()
+        .every((a) => a.playState === "finished" || a.playState === "idle"), null, { timeout: 5000 });
       await page.evaluate(() => { window.__hold = true; });
       const r = await row.boundingBox();
 

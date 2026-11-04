@@ -135,31 +135,41 @@ for (const engine of process.env.BROWSER ? [process.env.BROWSER] : ["chromium", 
     await t.test("keyboard focus can enter the view without allowing pointer clicks to scroll", async () => {
       // each step starts from a fresh page: macOS WebKit doesn't Tab to
       // buttons, and the page keeps the reader's place against a script's scroll
-      const setup = async () => {
+      const setup = async (reverse = false, tall = false) => {
         await watchSettingsReads(page);
         await page.goto("http://magpie.test/?view=settings");
         await settingsDrawn(page); // rows found are the ones that stay (#1659)
         await page.locator(":is(#setTab-general, .nav-s[data-of=setTab-general]):visible").waitFor();
-        await page.locator("#view-settings").evaluate((v) => {
-          const first = document.createElement("button"); first.id = "focus-start"; first.textContent = "Edit";
+        await page.locator("#view-settings").evaluate((v, { reverse, tall }) => {
+          const first = document.createElement(reverse ? "input" : "button"); first.id = "focus-start"; first.textContent = "Edit";
           const spacer = document.createElement("div"); spacer.style.cssText = "flex:none;height:1400px";
           const field = document.createElement("input"); field.id = "focus-end";
           first.onclick = () => field.focus();
-          v.replaceChildren(first, spacer, field);
-        });
+          // Reverse Tab must use inputs: macOS WebKit skips buttons.
+          const above = document.createElement("div"); above.style.cssText = "flex:none;height:700.1875px";
+          if (tall) { first.style.cssText = "flex:none;height:900.1875px;box-sizing:border-box"; spacer.style.height = "40px"; }
+          v.replaceChildren(...(reverse ? [above] : []), first, spacer, field);
+        }, { reverse, tall });
       };
       const start = page.locator("#focus-start"), end = page.locator("#focus-end");
       const scroll = () => page.locator("#view-settings").evaluate((v) => v.scrollTop);
-      const visibleFocus = () => end.evaluate((f) => {
+      const visibleFocus = (target = end, ring = true) => target.evaluate((f, ring) => {
         const r = f.getBoundingClientRect(), v = f.closest(".view").getBoundingClientRect();
-        // Native scrolling rounds scrollTop to CSS pixels in these engines.
-        return document.activeElement === f && r.top >= v.top - 2 && r.bottom <= v.bottom + 2;
-      });
+        // A rounded native scroll can still clip the field or its focus ring.
+        const s = getComputedStyle(f);
+        const gap = ring ? Math.max(0, parseFloat(s.outlineWidth) + parseFloat(s.outlineOffset)) : 0;
+        return document.activeElement === f && r.top - gap >= v.top && r.bottom + gap <= v.bottom;
+      }, ring);
       const focusDetails = () => end.evaluate((f) => ({ focus: document.activeElement.id, scroll: f.closest(".view").scrollTop, top: f.getBoundingClientRect().top, bottom: f.getBoundingClientRect().bottom, view: f.closest(".view").getBoundingClientRect().bottom }));
+      const frames = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const focused = async (target = end) => {
+        await page.waitForFunction(id => document.activeElement.id === id, await target.getAttribute("id"));
+        await frames(); // keyboardFocus and the click guard run before this paint
+      };
       await setup();
       await start.focus();
       await page.keyboard.press("Tab");
-      await page.waitForTimeout(600);
+      await focused();
       assert.equal(await visibleFocus(), true, "Tab's focused field stays in sight: " + JSON.stringify(await focusDetails()));
       await setup();
       await start.click();
@@ -169,8 +179,46 @@ for (const engine of process.env.BROWSER ? [process.env.BROWSER] : ["chromium", 
         await setup();
         await start.focus();
         await page.keyboard.press(key);
-        await page.waitForTimeout(600);
+        await focused();
         assert.equal(await visibleFocus(), true, `${key}: the field focused by the keyboard action is in sight: ${JSON.stringify(await focusDetails())}`);
+      }
+
+      // The restoration path must also reveal the last fractional border.
+      await setup();
+      await end.evaluate(f => {
+        const v = f.closest(".view");
+        f.focus({ preventScroll: true }); readerAt.set(v, 920); backToReader(v);
+      });
+      await frames();
+      assert.equal(await visibleFocus(end, false), true, "backToReader keeps the full focused border in sight");
+
+      for (const tall of [false, true]) {
+        await setup(true, tall);
+        await page.mouse.move(600, 300);
+        await page.mouse.wheel(0, 3000);
+        await page.waitForFunction(() => document.querySelector("#view-settings").scrollTop > 1000);
+        await end.evaluate(f => f.focus({ preventScroll: true }));
+        await page.keyboard.press("Shift+Tab");
+        await focused(start);
+        if (!tall) {
+          assert.equal(await visibleFocus(start), true, "Shift+Tab keeps the upper border and focus ring in sight");
+          continue;
+        }
+        // Watch beyond the 1s restoration window: a field larger than the
+        // view cannot fit both edges and must keep one native alignment.
+        const still = await start.evaluate(f => new Promise(resolve => {
+          const v = f.closest(".view"), until = performance.now() + 1250;
+          let min = v.scrollTop, max = min;
+          const frame = () => {
+            min = Math.min(min, v.scrollTop); max = Math.max(max, v.scrollTop);
+            if (performance.now() < until) { requestAnimationFrame(frame); return; }
+            const r = f.getBoundingClientRect(), b = v.getBoundingClientRect();
+            resolve({ min, max, taller: r.height > b.height, visible: r.top < b.bottom && r.bottom > b.top });
+          };
+          requestAnimationFrame(frame);
+        }));
+        assert.ok(still.taller && still.visible, "the oversized focused field stays partly in sight");
+        assert.equal(still.max - still.min, 0, "oversized focus does not oscillate between its edges");
       }
     });
     assert.deepEqual(errors, []);

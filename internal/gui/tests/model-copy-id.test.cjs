@@ -83,6 +83,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.goto("http://magpie.test/?view=providers");
       await page.locator(".row.provider", { hasText: "Relay" }).click();
       await page.locator(".editor .mchips .mchip").first().waitFor();
+      // A short window needs a scrollbar; restoring it must keep the chips still.
+      await page.setViewportSize({ width: 900, height: 650 });
+      await page.waitForFunction(() => { const b = document.querySelector(".editor .ebody"); return b.scrollHeight > b.clientHeight; });
+      await page.setViewportSize({ width: 900, height: 760 });
       const chip = (text) => page.locator(".editor .mchips .mchip", { hasText: text });
       const menu = page.locator(".pop.row-menu");
       const picked = () => page.locator(".editor .mchips .mchip.on").count();

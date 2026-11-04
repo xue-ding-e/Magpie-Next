@@ -128,7 +128,21 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.deepEqual(fx.posts.at(-1), { hidden: ["relay/m2"] });
 
         // switched on, by its words too: the models shown stay as they are
-        await only.locator("span").click();
+        // WebKit can stop producing frames under load while these words stay
+        // visible. Check the hit target, then send a real click on the words.
+        const words = only.locator("span");
+        assert(await words.isVisible(), "the switch's words are visible");
+        assert(await sw.isEnabled(), "the switch is enabled");
+        const point = await words.evaluate((e) => {
+          const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+          const hit = document.elementFromPoint(x, y);
+          return { x, y, width: r.width, height: r.height,
+            inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+            clear: !!hit && (e === hit || e.contains(hit)) };
+        });
+        assert(point.width > 0 && point.height > 0 && point.inside && point.clear,
+          "the switch's words can receive the pointer: " + JSON.stringify(point));
+        await page.mouse.click(point.x, point.y);
         await settle();
         assert.deepEqual(fx.posts.at(-1), { only: true });
         assert.equal(await sw.getAttribute("aria-checked"), "true");

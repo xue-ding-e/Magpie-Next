@@ -11,6 +11,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
+const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 
@@ -85,7 +86,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         for (const { name } of presets) {
           await page.goto("http://magpie.test/?view=providers");
           await page.locator("#addProvider").click();
-          await sheet.locator(".tile .n", { hasText: new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$") }).click();
+          const tile = sheet.locator(".tile .n", { hasText: new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$") });
+          await reach(page, tile);
+          await tile.click();
           await ed.locator(".ehead b", { hasText: name }).waitFor();
           const got = await decideField(ed);
           if (jevs.includes(name)) {

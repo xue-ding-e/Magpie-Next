@@ -156,7 +156,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const modal = page.locator("#modal");
         const view = modal.locator(".ctx-view");
         const close = async () => {
-          await view.locator(".bar button", { hasText: w.close }).click();
+          const button = view.locator(".bar button", { hasText: w.close });
+          assert.equal(await button.isVisible(), true, "Close is visible");
+          assert.equal(await button.isEnabled(), true, "Close is enabled");
+          // As openPart in reader.cjs does, use the keyboard for cleanup:
+          // a busy WebKit can withhold the frames click() needs to prove
+          // a stationary button stable. Enter activates the real handler;
+          // the hidden wait below still checks that Close did its job.
+          await button.press("Enter");
           await modal.waitFor({ state: "hidden" });
         };
 

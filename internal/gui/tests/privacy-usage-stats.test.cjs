@@ -9,7 +9,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { watchSettingsReads, settingsDrawn } = require("./reader.cjs");
+const { reach, watchSettingsReads, settingsDrawn } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 
@@ -65,29 +65,25 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(names.indexOf(w.share), names.indexOf(w.count) + 1, names.join(" | "));
 
       // below the card, scrolled to with the wheel as a reader does
-      const reveal = async (name) => {
-        await page.mouse.move(450, 300);
-        for (let i = 0; i < 20 && (await row(name).boundingBox()).y > 600; i++) {
-          await page.mouse.wheel(0, 200);
-          await page.waitForTimeout(80);
-        }
+      const choose = async (name, value) => {
+        const button = row(name).getByRole("button", { name: value, exact: true });
+        await reach(page, button); // also clears the sticky header above it
+        await button.click();
       };
-      await reveal(w.share);
-      await row(w.share).getByRole("button", { name: w.off, exact: true }).click();
+      await choose(w.share, w.off);
       await isOff(w.share);
       assert.equal(saved.at(-1).noUsageStats, true, JSON.stringify(saved));
       assert.ok(!saved.at(-1).noStats);
 
       // another setting saved keeps it off
-      await row(w.personal).getByRole("button", { name: w.on, exact: true }).click();
+      await choose(w.personal, w.on);
       await isOn(w.personal);
       assert.equal(saved.at(-1).noUsageStats, true, JSON.stringify(saved.at(-1)));
 
       // not counted at all: nothing to share, no switch. With personal data
       // masked, its kinds' rows put this one below the window: scrolled to
       // as a reader does, since a script doesn't scroll Settings in WebKit
-      await reveal(w.count);
-      await row(w.count).getByRole("button", { name: w.off, exact: true }).click();
+      await choose(w.count, w.off);
       await isOff(w.count);
       await row(w.share).waitFor({ state: "detached" });
       assert.equal(saved.at(-1).noStats, true);

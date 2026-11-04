@@ -43,6 +43,12 @@ function fixture(lang) {
   const route = async (route) => {
     const request = route.request(), url = new URL(request.url());
     const json = (data) => route.fulfill({ json: data });
+    // Windows paints its native title bar at startup; this changes no config.
+    if (url.pathname === "/api/window/titlebar") {
+      assert.equal(request.method(), "POST");
+      assert.deepEqual(request.postDataJSON(), {});
+      return json({ ok: true });
+    }
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:false};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json(state);

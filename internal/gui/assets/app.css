@@ -3628,6 +3628,9 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .modal .editor.framed > .ehead { border-bottom: 1px solid var(--line-2); }
 .modal .editor.framed > .bar { border-top: 1px solid var(--line-2); }
 .modal .editor.framed > .editor-error { flex: none; padding: 8px 18px; border-top: 1px solid var(--line-2); }
+/* Keep a provider editor's Windows scrollbar room when its height changes:
+   WebKit otherwise retains narrower grid tracks until the next interaction. */
+html.win .modal .editor.provider-editor > .ebody { overflow-y: scroll; padding-right: 8px; }
 /* what's new after an update: each release's notes, one under another,
    divided by a hairline, the text selectable */
 .modal .editor.whatsnew > .ebody { gap: 0; }

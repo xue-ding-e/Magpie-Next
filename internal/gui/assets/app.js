@@ -8691,7 +8691,9 @@ function openModal(content) {
   const focus = focusID && content.querySelector("#" + CSS.escape(focusID))
     || focusLabel && [...content.querySelectorAll("[aria-label]")].find((element) => element.getAttribute("aria-label") === focusLabel)
     || focusIndex >= 0 && content.querySelectorAll("input, textarea, select, button")[focusIndex];
-  (focus || content.querySelector("input:not([disabled]), textarea, select, button:not([disabled])") || d).focus({ preventScroll: true });
+  const initial = content.initialFocus;
+  const intended = initial && content.contains(initial) && !initial.disabled && initial.getClientRects().length ? initial : null;
+  (focus || intended || content.querySelector("input:not([disabled]), textarea, select, button:not([disabled])") || d).focus({ preventScroll: true });
   const body = content.querySelector(":scope > .ebody");
   if (body) body.scrollTop = top; // a re-render keeps the place
   const nextNames = content.querySelector(".mnames:not([hidden])");
@@ -9003,7 +9005,7 @@ function drawEditor(p, presetID) {
     : pr
       ? { id: pr.id, name: pr.name, preset: pr.id, key: "", chosen: [], extra: [], headers: [] }
       : { id: "", name: "", preset: "", chat: "", responses: "", anthropic: "", decide: "", catalog: "", key: "", api: "openai", chosen: [], extra: [], headers: [], icon: "" });
-  const ed = el("div", "editor" + (isNew ? " new" : ""));
+  const ed = el("div", "editor provider-editor" + (isNew ? " new" : ""));
   ed.onclick = (e) => e.stopPropagation();
 
   {
@@ -9981,7 +9983,10 @@ function drawEditor(p, presetID) {
   // a plugin's panels for a provider (magpie.panels' provider), told which
   if (p) { const slot = magpie.slot?.("provider", { provider: { id: p.id, name: p.name || p.id } }); if (slot) ed.append(slot); }
   ed.append(bar);
-  setTimeout(() => (isNew ? (custom || another ? name : endpoint || vertexProject || key) : null)?.focus(), 0);
+  // openModal applies this synchronously after it restores focus from a
+  // redraw. Keeping the intended field on the editor lets a paste or other
+  // user action take focus afterward without a deferred task stealing it.
+  ed.initialFocus = isNew ? (custom || another ? name : endpoint || vertexProject || key) : null;
   return ed;
 }
 
@@ -14698,10 +14703,11 @@ function protoPicker(p, value, onChange) {
 // redrawn under a still pointer (a search narrowing it) gets a mouseenter
 // too, which took the focus out of the search mid-word (#2439); one where
 // the last mousemove was is a redraw's (mouseenter comes before its move).
+// Viewport coordinates also identify moves when an engine gives no screen coordinates.
 let pointerAt = "";
-addEventListener("mousemove", (e) => { pointerAt = e.screenX + "," + e.screenY; }, true);
+addEventListener("mousemove", (e) => { pointerAt = e.clientX + "," + e.clientY; }, true);
 function hoverFocus(b) {
-  b.onmouseenter = (e) => { if (e.screenX + "," + e.screenY !== pointerAt) b.focus({ preventScroll: true }); };
+  b.onmouseenter = (e) => { if (e.clientX + "," + e.clientY !== pointerAt) b.focus({ preventScroll: true }); };
 }
 let protoMenu = null;
 function closeProtoMenu() {
@@ -19412,7 +19418,7 @@ function renderCLI(r) {
 // Settings' Download source (#893): where an update's file is downloaded
 // from — GitHub, or a GitHub download mirror put before its URL, the same
 // setting `magpie update mirror` writes. magpie names no mirror of its
-// own; the feed and each file's SHA-256 still come from usemagpie.ai, and a
+// own; the feed and each file's SHA-256 come from this build's release source, and a
 // file that doesn't match is never installed. A draft and its error are
 // kept across the page being drawn again.
 let mirrorEditing = false, mirrorDraft = "", mirrorErr = "";
@@ -19428,10 +19434,10 @@ function renderUpdateMirror(r, s) {
   const sub = el("div", "sub");
   who.append(sub);
   const m = s.updateMirror || "";
-  sub.textContent = mirrorErr || (m ? t("Updates are downloaded through this mirror, each checked against usemagpie.ai's checksum")
+  sub.textContent = mirrorErr || (m ? t("Updates are downloaded through this mirror, each checked against the release manifest")
     : t("Updates are downloaded from GitHub; a mirror can be used where GitHub is slow"));
   sub.classList.toggle("err", !!mirrorErr);
-  sub.title = t("The update and its checksum always come from usemagpie.ai; a file from the mirror that doesn't match it is not installed.");
+  sub.title = t("The release manifest supplies the checksum; a file from the mirror that doesn't match it is not installed.");
   if (!mirrorEditing) {
     if (m) {
       const official = el("button", "text", t("Use GitHub"));
@@ -23539,7 +23545,18 @@ function arrived(v) {
   purposeUntil = performance.now();
 }
 const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", " "]);
-// Enter/Space can move focus to another field (opening a form, or validation).
+// Reveal a field inside its view without truncating the last fractional pixel.
+// Callers keep their own conditions and scroll permission; gap is their ring.
+function revealFocus(f, v, gap = 0) {
+  f.scrollIntoView({ block: "nearest" });
+  const r = f.getBoundingClientRect(), b = v.getBoundingClientRect();
+  // A field taller than the view keeps native nearest alignment; correcting
+  // each edge in turn would pull it between the two edges.
+  if (r.height + 2 * gap > b.height) return;
+  const by = r.top - gap < b.top ? Math.floor(r.top - gap - b.top) : Math.max(0, Math.ceil(r.bottom + gap - b.bottom));
+  if (by) v.scrollTop += by;
+}
+// Tab/Enter/Space can move focus to another field (opening a form, or validation).
 // Reveal that field only when the keyboard action moved it out of sight.
 function keyboardFocus(e) {
   const before = document.activeElement;
@@ -23550,7 +23567,11 @@ function keyboardFocus(e) {
     const v = focused?.closest(".view");
     if (!v || v.hidden) return;
     const r = focused.getBoundingClientRect(), b = v.getBoundingClientRect();
-    if ((r.top < b.top || r.bottom > b.bottom) && scrollOnPurpose(e, 400)) focused.scrollIntoView({ block: "nearest" });
+    const style = getComputedStyle(focused);
+    const gap = Math.max(0, parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset));
+    if ((r.top - gap < b.top || r.bottom + gap > b.bottom) && scrollOnPurpose(e, 400)) {
+      revealFocus(focused, v, gap);
+    }
   }));
 }
 // A wheel or a touch can scroll the view before the page is told of it: the
@@ -23630,7 +23651,7 @@ addEventListener("pointermove", (e) => {
 addEventListener("keydown", (e) => {
   const typing = e.target.closest?.("input, textarea, select, [contenteditable]");
   if (e.key === "Tab" || (!typing && SCROLL_KEYS.has(e.key))) readerScrolls(400);
-  if (e.isTrusted && e.key === "Enter") keyboardFocus(e);
+  if (e.isTrusted && (e.key === "Tab" || e.key === "Enter")) keyboardFocus(e);
 }, true);
 addEventListener("keyup", (e) => {
   if (e.isTrusted && e.key === " " && !e.target.closest?.("input, textarea, select, [contenteditable]")) keyboardFocus(e);
@@ -23680,7 +23701,7 @@ function backToReader(v) {
   const f = document.activeElement;
   if (f && f !== document.body && v.contains(f)) {
     const r = f.getBoundingClientRect(), b = v.getBoundingClientRect();
-    if (r.bottom > b.bottom || r.top < b.top) { readerScrolls(1000); guardUntil = purposeUntil; f.scrollIntoView({ block: "nearest" }); }
+    if (r.bottom > b.bottom || r.top < b.top) { readerScrolls(1000); guardUntil = purposeUntil; revealFocus(f, v); }
   }
 }
 // Where an element is on the screen in its view. What's held is the element
@@ -23957,6 +23978,8 @@ function setGatewayMode(on) {
 function navHides() {
   if (mode !== "window") return;
   for (const b of $("#nav").querySelectorAll("button[data-view]")) b.hidden = (gatewayMode && GATEWAY_HIDES.includes(b.dataset.view)) || featureHides(b);
+  // Visible tabs can change width while the header and its actions keep theirs.
+  fitTop();
 }
 // applyFeatures takes the built-in plugins' state from a read of the
 // settings, or a switch on Plugins › Built-in:

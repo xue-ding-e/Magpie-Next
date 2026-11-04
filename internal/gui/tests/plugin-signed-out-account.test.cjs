@@ -40,6 +40,15 @@ function serve(lang, login, usage, posts) {
     if (url.pathname === "/api/providers") return json(providers());
     if (url.pathname === "/api/groups") return json({ groups: [], pools: [] });
     if (url.pathname === "/api/login/usage") return json(usage);
+    // Windows paints its title bar at startup. This changes window chrome,
+    // not account/configuration data; every other POST stays in posts.
+    if (url.pathname === "/api/window/titlebar") {
+      assert.equal(route.request().method(), "POST");
+      assert.deepEqual(route.request().postDataJSON(), {});
+      assert.match(url.searchParams.get("c"), /^\d+,\d+,\d+,255$/);
+      assert.ok(["0", "1"].includes(url.searchParams.get("dark")));
+      return json({ ok: true });
+    }
     if (route.request().method() === "POST") {
       const body = route.request().postDataJSON();
       posts.push({ path: url.pathname, body });

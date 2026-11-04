@@ -91,7 +91,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const langs = await connect.locator(".segs").nth(1).locator(".opt").allTextContents();
         assert.deepEqual(langs, ["curl", "Python", "Node"], "no shell variables");
         let s = await snippet();
-        assert.match(s, /curl http:\/\/127\.0\.0\.1:3999\/v1\/systemone/);
+        assert.match(s, /curl(?:\.exe)? http:\/\/127\.0\.0\.1:3999\/v1\/systemone/);
         assert.match(s, /"model": "cf\/@cf\/typesafe\/jev"/);
         assert.match(s, /"questions"/);
         assert.match(s, /Authorization: Bearer magpie/);
