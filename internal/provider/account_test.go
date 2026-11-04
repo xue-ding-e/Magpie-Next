@@ -261,6 +261,9 @@ func claudeSignIn(t *testing.T, home string, expiry time.Time) string {
 		// what magpie must not clobber when it writes a refreshed token back
 		"mcpOAuth": map[string]any{"plugin:slack:slack|x": map[string]any{"serverName": "Slack"}},
 	})
+	// Discovery may have cached the empty home while the fixture was being
+	// populated. The newly written sign-in must be seen by the next lookup.
+	forgetClaudeCredential()
 	return path
 }
 

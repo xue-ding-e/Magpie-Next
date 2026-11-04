@@ -338,6 +338,16 @@ node --test internal/gui/tests/extra-body.test.cjs
 
 The package's tests use a home of their own (`testenv`). Never point them at
 real `~/.codex`, `~/.claude`, `~/.config/gcloud` or `~/.config/magpie` files.
+The `claudeSignIn` fixture in `account_test.go` invalidates a cached absent
+credential after writing its login: discovery can read the temporary home
+before the test populates it. `TestClaudeSignInFixtureInvalidatesAnEmptyRead`
+holds that ordering without sleeps. Storage tests set `secret_auth_storage`
+explicitly when simulating ordinary keyring; its Windows default is encrypted
+storage, whose behavior is checked separately in `TestSavedButSignedOut`.
+`TestCodexListTagKeptWhileNothingChanged` measures the required two file and
+environment stamps separately from the cached tags. Windows copies each
+environment entry, so inherited environment size must not look like a catalog
+rebuild; the allowance for work beyond stamping remains 200 allocations.
 Vertex AI's tests send Vertex AI, Google's token endpoint and IAM Credentials
 to a server of their own (`VertexForTest`). Check a change
 against real accounts in a sandbox HOME, as [Code standards](../code-standards.md#acceptance-criteria) describes.

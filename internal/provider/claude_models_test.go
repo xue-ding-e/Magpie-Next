@@ -37,6 +37,21 @@ func writeAnthropicCatalog(t *testing.T, rows ...string) {
 	catalog.Reset()
 }
 
+// A read of an empty fixture home must not hide the login written next.
+// Background discovery can make that read before the test supplies its file.
+func TestClaudeSignInFixtureInvalidatesAnEmptyRead(t *testing.T) {
+	home := claudeHome(t)
+	if _, _, ok := claudeCredential(); ok {
+		t.Fatal("the empty fixture home already has Claude credentials")
+	}
+	claudeSignIn(t, home, time.Now().Add(time.Hour))
+	writeAnthropicCatalog(t, mdOpus55)
+	p, ok := find(All(), "claude")
+	if !ok || p.Account == nil {
+		t.Fatal("the written fixture sign-in was hidden by the earlier empty read")
+	}
+}
+
 // A Claude model models.dev lists after the Claude account's list was
 // last fetched is served at once, as the catalog has it: the copy a fetch
 // keeps doesn't hold it out until the next Refresh (wakaka on Discord:
