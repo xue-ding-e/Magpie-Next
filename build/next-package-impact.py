@@ -9,7 +9,8 @@ TEST=re.compile(rb'internal/gui/tests/[A-Za-z0-9_-]+\.test\.cjs\Z')
 GO_TEST=re.compile(rb'internal/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_]+_test\.go\Z')
 DOC=re.compile(rb'docs/subsystems/[A-Za-z0-9_-]+\.md\Z')
 DOCS={b'README.md',b'README.zh-CN.md',b'internal/gui/tests/README.md'}
-CI={b'.github/workflows/next-windows-package.yml',b'build/next-package-impact.py',b'build/next-package-impact_test.py'}
+CI={b'.github/workflows/next-windows-package.yml',b'build/next-package-impact.py',b'build/next-package-impact_test.py',
+    b'.github/workflows/test-ui.yml',b'build/ui-test-shard.mjs',b'build/ui-test-shard.test.mjs'}
 def product_path(path):
  # Only identified inputs consumed by the existing native package build.
  return path in {b'main.go',b'go.mod',b'go.sum',b'LICENSE'} or (path.startswith(b'internal/') and path.endswith(b'.go') and not path.endswith(b'_test.go')) or path.startswith((b'internal/gui/assets/',b'internal/omarchy/widget/')) or path.startswith(b'build/windows/')

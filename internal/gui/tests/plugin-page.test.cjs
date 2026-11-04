@@ -171,7 +171,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.evaluate(() => show("plugin-glance"));
         const glance = await frameReady(page, GLANCE);
         assert.equal(await page.locator("#view-plugin-glance iframe").getAttribute("sandbox"), "allow-scripts", where);
-        await glance.waitForFunction(() => document.getElementById("cost").textContent === "$0.50");
+        // The frame URL can commit before its parser reaches the body.
+        await glance.waitForFunction(() => document.getElementById("cost")?.textContent === "$0.50");
         assert.equal(await glance.locator("#calls").textContent(), "12 calls, 1234 tokens", where);
         assert.deepEqual(seen.reads.map((r) => [r.spec, r.read]), [["/x/glance", "usage:summary"]], where);
         assert.equal(await glance.evaluate(() => document.documentElement.lang), lang, `${where}: the window's language`);
@@ -180,7 +181,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await glance.waitForFunction(() => document.documentElement.dataset.theme === "dark");
         assert.ok((await glance.evaluate(() => document.documentElement.style.getPropertyValue("--magpie-bg"))).length > 0, `${where}: the tokens`);
         await glance.locator("#hide").click();
-        await glance.waitForFunction(() => document.getElementById("cost").textContent === "");
+        await glance.waitForFunction(() => document.getElementById("cost")?.textContent === "");
         assert.deepEqual(seen.options.map((o) => [o.spec, o.options.hideCost]), [["/x/glance", true]], `${where}: its own options`);
         // the frame fits the window
         assert.ok(await page.evaluate(() => { const v = document.querySelector("#view-plugin-glance"); const f = v.querySelector("iframe"); return f.getBoundingClientRect().width <= v.clientWidth + 1 && v.scrollWidth <= v.clientWidth + 1 && f.getBoundingClientRect().height > 200; }), `${where}: fits`);

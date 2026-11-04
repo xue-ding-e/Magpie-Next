@@ -24216,7 +24216,12 @@ function fitTop() {
   top.classList.add("crowded");
   if (!fits()) top.classList.add("packed");
 }
-const topFit = new ResizeObserver(fitTop);
+// fitTop changes the observed brand/actions widths. Fit on the next frame
+// so observer delivery does not resize its own targets in the same round.
+let topFitFrame = 0;
+const topFit = new ResizeObserver(() => {
+  if (!topFitFrame) topFitFrame = requestAnimationFrame(() => { topFitFrame = 0; fitTop(); });
+});
 for (const e of [".top", ".brand", ".actions"]) topFit.observe($(e));
 document.fonts?.ready.then(fitTop);
 // a font picked later (Settings' Font) can still be loading when it's applied

@@ -21,7 +21,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { watchSettingsReads, settingsDrawn } = require("./reader.cjs");
+const { watchSettingsReads, settingsDrawn, reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
@@ -375,8 +375,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.match(sub, /arno/);
       const box = await page.locator("#qoderCheckinRow").boundingBox();
       assert(box.width > 0 && box.x + box.width <= 440, "the row fits at 440px");
+      const on = page.locator("#qoderCheckinSegs button").nth(1);
+      // Bring the control clear of the window's foot before starting the
+      // request deadline; Playwright's unsolicited scroll is put back.
+      await reach(page, on);
       const saved = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/settings" && r.method() === "POST");
-      await page.locator("#qoderCheckinSegs button").nth(1).click();
+      await on.click();
       await saved;
       assert.deepEqual(asked, [true]);
       assert.deepEqual(errors, []);

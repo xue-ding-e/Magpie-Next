@@ -50,14 +50,18 @@ function HEAT() {
   return { from: iso(from), to: iso(to), days };
 }
 
-function serve(lang) {
+function serve(lang, costForRequest) {
   return async (route) => {
     const url = new URL(route.request().url());
     const json = (data) => route.fulfill({ json: data });
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:false};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme: "light" } });
-    if (url.pathname === "/api/usage/requests") return json(LEDGER(url.searchParams.get("period")));
+    if (url.pathname === "/api/usage/requests") {
+      const ledger = LEDGER(url.searchParams.get("period"));
+      if (costForRequest) ledger.cost = costForRequest();
+      return json(ledger);
+    }
     if (url.pathname === "/api/usage/heatmap") return json(HEAT());
     if (url.pathname === "/api/usage/quotas") return json([]);
     if (url.pathname === "/api/usage") return json({ calls: 0, errors: 0, input: 0, output: 0, reasoning: 0, unpriced: 0, cost: 0, bucket: "day", series: [], agents: [], models: [], path: "" });
@@ -78,17 +82,54 @@ const CONTENT = () => {
   for (const k of v.querySelectorAll(":scope > *, :scope > * > *")) { const r = k.getBoundingClientRect(); if (r.height) b = Math.max(b, r.bottom - top + v.scrollTop); }
   return Math.ceil(b + parseFloat(getComputedStyle(v).paddingBottom));
 };
+// Finish the resize before watching a refresh. Waiting here does not skip
+// any of the 36 refresh frames or tolerate any movement during them.
+async function headSettled(page) {
+  await page.waitForFunction(() => document.fonts.status === "loaded", null, { polling: 100, timeout: 8000 });
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    let previous = "", stable = 0, frameId = 0, done = false;
+    const finish = (error) => {
+      if (done) return;
+      done = true; clearTimeout(timer); cancelAnimationFrame(frameId);
+      error ? reject(error) : resolve();
+    };
+    const timer = setTimeout(() => finish(new Error("Usage resize did not settle: " + previous)), 8000);
+    const frame = () => {
+      try {
+        const v = document.querySelector("#view-usage"), head = document.querySelector(".usage-head"), every = document.querySelector("#usageEvery");
+        const signature = JSON.stringify([v.clientWidth, v.scrollWidth, v.clientHeight, v.scrollHeight, head.className,
+          ...[head, every, document.querySelector("#ledHeat")].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })]);
+        stable = signature === previous ? stable + 1 : 0;
+        previous = signature;
+        if (stable >= 2) return finish();
+        frameId = requestAnimationFrame(frame);
+      } catch (error) { finish(error); }
+    };
+    frameId = requestAnimationFrame(frame);
+  }));
+}
 // every frame for ~0.6s: where the head ends, where the interval sits, and
 // whether the view is laid out wider than it shows
-const WATCH = () => new Promise((res) => {
+const WATCH = () => new Promise((res, reject) => {
   const v = document.querySelector("#view-usage"), head = document.querySelector(".usage-head"), every = document.querySelector("#usageEvery");
-  const seen = new Set();
-  let f = 0;
+  const seen = new Set(), trace = [];
+  let f = 0, frameId = 0;
+  const timer = setTimeout(() => { cancelAnimationFrame(frameId); reject(new Error("36 refresh frames did not arrive: " + JSON.stringify(trace))); }, 8000);
   const tick = () => {
-    seen.add(`head ends ${Math.round(head.getBoundingClientRect().right)}, interval at ${Math.round(every.getBoundingClientRect().left)}, view ${v.clientWidth}/${v.scrollWidth}`);
-    if (++f < 36) requestAnimationFrame(tick); else res([...seen]);
+    const key = `head ends ${Math.round(head.getBoundingClientRect().right)}, interval at ${Math.round(every.getBoundingClientRect().left)}, view ${v.clientWidth}/${v.scrollWidth}`;
+    if (!seen.has(key)) {
+      const cost = document.querySelector("#usageCost"), number = cost.querySelector("b");
+      trace.push({ frame: f, at: performance.now(), key, head: head.getBoundingClientRect().toJSON(), interval: every.getBoundingClientRect().toJSON(),
+        cost: cost.textContent, costRect: cost.getBoundingClientRect().toJSON(), number: number?.getBoundingClientRect().toJSON(),
+        headClass: head.className, busy: document.querySelector("#usageReload").classList.contains("busy"),
+        font: getComputedStyle(every).font, numberFont: number && getComputedStyle(number).font,
+        numberVariant: number && getComputedStyle(number).fontVariantNumeric, fonts: document.fonts.status });
+    }
+    seen.add(key);
+    if (++f < 36) frameId = requestAnimationFrame(tick);
+    else { clearTimeout(timer); window.__usageHeadTrace = trace; res([...seen]); }
   };
-  requestAnimationFrame(tick);
+  frameId = requestAnimationFrame(tick);
 });
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -112,22 +153,57 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // 1044 is where it showed at the reporter's zoom; 828 and 936 are narrower windows
       for (const w of [1044, 936, 828]) {
         await page.setViewportSize({ width: w, height: 300 });
-        await page.waitForTimeout(150);
+        await headSettled(page);
         const tall = await page.evaluate(CONTENT);
         await page.setViewportSize({ width: w, height: 3000 });
-        await page.waitForTimeout(150);
+        await headSettled(page);
         const short = await page.evaluate(CONTENT);
         for (let h = Math.min(tall, short) + extra - 2; h <= Math.max(tall, short) + extra + 2; h++) {
           await page.setViewportSize({ width: w, height: h });
-          await page.waitForTimeout(120);
+          await headSettled(page);
           const watch = page.evaluate(WATCH);
           await page.locator("#usageReload").click();
           const seen = await watch;
-          if (seen.length > 1) shook.push(`${w}x${h}: ${seen.join(" | ")}`);
+          if (seen.length > 1) {
+            shook.push(`${w}x${h}: ${seen.join(" | ")}`);
+            console.log("USAGE_HEAD_SHIFT " + JSON.stringify({ engine, lang, width: w, height: h, trace: await page.evaluate(() => __usageHeadTrace) }));
+          }
         }
       }
       assert.deepEqual(shook, [], "the head moved sideways during a refresh");
       assert.deepEqual(errors, []);
     });
   }
+  // Fixed amounts catch font advance changes without depending on earlier reads.
+  test(`${engine} de: equal-length refreshed costs keep the interval still`, async (t) => {
+    let amount = 0.176;
+    const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium", ignoreDefaultArgs: ["--hide-scrollbars"] }));
+    t.after(() => browser.close());
+    const page = await (await browser.newContext({ viewport: { width: 828, height: 1388 } })).newPage();
+    page.setDefaultTimeout(8000);
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => { localStorage.setItem("magpie.navLayout", "top"); localStorage.setItem("magpie.usageTab", "requests"); });
+    await page.route("**/*", serve("de", () => amount));
+    await page.goto("http://magpie.test/?view=usage");
+    await page.locator("#usageCost b").waitFor();
+    await headSettled(page);
+    const geometry = () => page.evaluate(() => {
+      const number = document.querySelector("#usageCost b");
+      return { amount: number.textContent, width: number.getBoundingClientRect().width,
+        interval: document.querySelector("#usageEvery").getBoundingClientRect().x };
+    });
+    const before = await geometry();
+    assert.equal(before.amount, "≈$0.176");
+    const watch = page.evaluate(WATCH);
+    amount = 0.177;
+    await page.locator("#usageReload").click();
+    await page.waitForFunction(() => document.querySelector("#usageCost b").textContent === "≈$0.177");
+    const seen = await watch, after = await geometry();
+    assert.equal(after.amount, "≈$0.177", "the new real amount is displayed");
+    assert.equal(after.width, before.width, "equal-length amounts have equal advance widths");
+    assert.equal(after.interval, before.interval, "the interval keeps its exact position");
+    assert.equal(seen.length, 1, "the head keeps still across all original 36 refresh frames");
+    assert.deepEqual(errors, []);
+  });
 }

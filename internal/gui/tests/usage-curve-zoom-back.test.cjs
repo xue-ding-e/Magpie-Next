@@ -62,19 +62,27 @@ function serve(lang, data) {
 // the cards' heights and the list's, once the page has settled: two frames
 // with nothing moving
 async function settled(page) {
-  return page.evaluate(() => new Promise((done) => {
+  return page.evaluate(() => new Promise((done, fail) => {
+    const list = document.querySelector("#subscriptionUsage");
     const read = () => JSON.stringify({
-      list: Math.round(document.querySelector("#subscriptionUsage").getBoundingClientRect().height),
-      cards: [...document.querySelectorAll("#subscriptionUsage > .subscription-card")].map((c) => [c.dataset.key, Math.round(c.getBoundingClientRect().height)]),
+      list: Math.round(list.getBoundingClientRect().height),
+      cards: [...list.children].map((c) => [c.dataset.key, Math.round(c.getBoundingClientRect().height)]),
+      plots: [...list.querySelectorAll(".qc-plot")].map((g) => Math.round(g.getBoundingClientRect().height)),
     });
+    // A packed card can absorb the first part of the curve's height animation
+    // in its empty space. Its unchanged outer height is not yet settled.
+    const moving = () => [...list.querySelectorAll(".qc-plot")].some((g) =>
+      g.getAnimations().some((a) => a.pending || a.playState === "running"));
     let last = read(), still = 0;
+    let frame;
+    const timeout = setTimeout(() => { cancelAnimationFrame(frame); fail(new Error("the Usage cards and curves did not settle")); }, 5000);
     const tick = () => {
-      const now = read();
-      if (now === last && ++still >= 4) return done(JSON.parse(now));
-      if (now !== last) { last = now; still = 0; }
-      requestAnimationFrame(tick);
+      const now = read(), playing = moving();
+      if (now === last && !playing && ++still >= 4) { clearTimeout(timeout); done(JSON.parse(now)); return; }
+      if (now !== last || playing) { last = now; still = 0; }
+      frame = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    frame = requestAnimationFrame(tick);
   }));
 }
 

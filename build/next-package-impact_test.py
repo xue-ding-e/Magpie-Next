@@ -17,6 +17,11 @@ test=raw(b'internal/gui/tests/proto-menu-overflow.test.cjs');expect(test,(False,
 ci=b''.join(raw(p) for p in sorted(m.CI));expect(ci,(True,False));expect(ci+test,(True,False));expect(ci+raw(b'go.mod'),(True,True))
 for p in m.CI:
  expect(raw(p,b'A',b'000000'),(True,False));reject(raw(p,b'D',after=b'000000'))
+# These exact UI gate controls package but never publish by themselves.
+for p in [b'.github/workflows/test-ui.yml',b'build/ui-test-shard.mjs',b'build/ui-test-shard.test.mjs']:
+ expect(raw(p),(True,False));expect(raw(p)+test,(True,False))
+for p in [b'build/ui-test-shard-helper.mjs',b'build/ui-test-shard.test.mjs.extra',b'.github/workflows/test-ui-other.yml']:
+ reject(raw(p))
 for p in [b'main.go',b'internal/gui/web.go',b'internal/gui/assets/app.js',b'build/windows/winres.json',b'go.mod',b'go.sum',b'LICENSE']:
  expect(raw(p),(True,True))
 expect(raw(b'internal/new.go',b'A',b'000000'),(True,True));expect(raw(b'internal/old.go',b'D',after=b'000000'),(True,True))

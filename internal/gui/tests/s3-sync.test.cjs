@@ -8,7 +8,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { openPart } = require("./reader.cjs");
+const { openPart, reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 
@@ -90,11 +90,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       // picking S3 moves nothing on the page
       const top = () => page.evaluate(() => document.querySelector("#view-settings").scrollTop);
-      // at the page's end, then back up by the wheel till the choice is in sight
+      // at the page's end, then back up by the wheel till the choice is
+      // wholly in sight and clear of Settings' sticky heading
       await toEnd();
-      const segTop = () => page.evaluate(() => document.querySelector(".sync-form .segs").getBoundingClientRect().top - document.querySelector("#view-settings").getBoundingClientRect().top);
-      for (let i = 0; i < 40 && (await segTop()) < 10; i++) { await page.mouse.wheel(0, -40); await page.waitForTimeout(15); }
-      await page.waitForTimeout(300);
+      await reach(page, form.locator(".segs .opt", { hasText: "S3" }));
       const before = await top();
       assert.ok(before > 0, "the settings page must be scrolled");
       await form.locator(".segs .opt", { hasText: "S3" }).click();
@@ -127,9 +126,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // the WebDAV address typed before is still there, and isn't sent;
       // going back and forth, the shorter form too, moves nothing
       // the fields filled scrolled the choice out of sight: wheeled back to it
-      await page.mouse.move(450, 300);
-      for (let i = 0; i < 40 && (await segTop()) < 10; i++) { await page.mouse.wheel(0, -40); await page.waitForTimeout(15); }
-      await page.waitForTimeout(300);
+      await reach(page, form.locator(".segs .opt", { hasText: "WebDAV" }));
       const at = await top();
       assert.ok(at > 0, "the settings page must still be scrolled");
       await form.locator(".segs .opt", { hasText: "WebDAV" }).click();

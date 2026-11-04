@@ -47,6 +47,23 @@ Export initiates a download on the browser's computer, not on the web server.
 | Built-in plugins | Plugins › Built-in, the page's first tab (`drawBuiltin` in `plugins.js`, rows by `renderBuiltins` in `app.js`), lists magpie's built-in plugins, each with a name, a line on what it is and a switch: Routing groups, Library, Observability, Sessions, Warm-up and check-in, and the Gateway and Routing pages (Essential). A plugin on with settings has their rows under its row, drawn from its schema by the kernel's `ui.form`, and a change posts `{id, config}`. The Gateway page is drawn by its plugin's own scripts through the window's kernel (`kernel.js`, `assets/plugins/gateway/`); see the [plugin runtime](plugin-runtime.md), "The window's kernel". They are `plugins/*` registered with the [plugin runtime](plugin-runtime.md); `GET /api/plugins/builtin` says each one (`builtinJSON`: on is active, the user's own choice, what of it is in use) and `POST {id, on}` (or `{id, config}`) writes plugins.yml. A page marks what goes with a plugin `data-feature="<id>"`. Off, `featureStyle` hides everything so marked (rows drawn later too), `navHides` leaves its page's tab out of the sidebar and the header, `show` opens Agents for an address kept for it, and `setSetTab`, `partShows` and `findSettings` leave its Settings tab and rows out, of the search too. One in use stays on: its switch is disabled and the row says what uses it, and the POST refuses it off. A plugins.yml that doesn't parse is said above the list and no switch moves. `boot.js` says which are off (`featuresOff`) and their settings (`pluginConfig`) before the first paint, and `settings.builtins` carries the list on every state read. The TUI doesn't follow them. See `builtins.test.cjs`, `builtins_test.go`. | [`builtins.go`](../../internal/gui/builtins.go), [`assets/plugins.js`](../../internal/gui/assets/plugins.js), [`assets/app.js`](../../internal/gui/assets/app.js) |
 | No GUI build | `-tags nogui` builds magpie without the GUI: `hasGUI` is false and `runGUI` says to use `magpie tui`. The files of `internal/gui` that need Wails build under `!nogui`. | [`gui_off.go`](../../internal/cli/gui_off.go) |
 
+## Native validation boundaries
+
+On Windows, `Run` calls `registerScheme` in [scheme_windows.go](../../internal/gui/scheme_windows.go),
+which writes the current user's `HKCU\Software\Classes\magpie` association.
+A private portable data directory separates settings, WebView2 storage and the
+single-instance identity, but does not isolate this registry write. Native GUI
+validation that must leave those user-wide registrations untouched needs a
+separate Windows test user or VM; a private HOME alone is insufficient.
+
+Disable subscription account discovery before an isolated launch with
+`MAGPIE_NO_ACCOUNTS=1` or `noAccountDiscovery`, and WSL discovery separately with
+`noWSLAgents` in the private settings. These gates do not make the GUI read-only:
+installed CLI version detection can still consult Windows' registry PATH and
+run a detected tool's version command. See [accounts.go](../../internal/settings/accounts.go),
+[agent/wsl.go](../../internal/agent/wsl.go) and [proc/path_windows.go](../../internal/proc/path_windows.go).
+Do not call a same-user portable launch a complete operating-system sandbox.
+
 ## Runtime path
 
 1. `magpie` with no arguments, `magpie app` or `magpie tray` calls `runGUI`, which calls `gui.Run`. A `nogui` build runs the TUI instead. A second launch hands over to the instance already running. On Windows, before any window is made, `webView2Check` asks Wails whether the WebView2 runtime is there (`Env.Info().PlatformInfo["WebView2"]`, "" when its lookup fails; a key Wails doesn't set counts as there). Without it Wails would exit on the first window with nothing on screen, so magpie logs it, shows a Windows message box in the reader's language naming the runtime, Microsoft's download page (`webView2Page`) and `magpie web` / `magpie tui`, opens the page on Yes, and `Run` ends (#1806, `webview2.go`, `TestWebView2MissingFromWails` on Windows). The box can't come from `ErrorHandler`, which runs on the thread Wails makes its windows on.
@@ -377,7 +394,10 @@ covers it in both engines, every language and a narrow window.
 ### Shared UI rules
 
 - `navHides` refits the top navigation after built-in plugin visibility changes,
-  even when the header's outer size has not changed. Provider editors reserve
+  even when the header's outer size has not changed. `topFit` coalesces resize
+  observations onto the next animation frame: fitting changes the observed
+  brand and actions, so it must not resize them during observer delivery.
+  Provider editors reserve
   their Windows scrollbar room across height changes (`provider-editor` in
   app.css), so WebKit does not leave model chips in stale, narrower grid tracks.
   See `images-library-way.test.cjs` and `model-copy-id.test.cjs`.
@@ -394,6 +414,13 @@ covers it in both engines, every language and a narrow window.
   correct fractional native scrolling outward when the field fits in the view;
   taller fields keep native nearest alignment. A pointer click retains the reader's position.
   See `readable-focus.test.cjs`.
+- Unhiding one Usage client while others remain hidden keeps the persistent
+  hidden-list heading at its previous position. The removed row's list container
+  cannot serve as that anchor. See `usage-agents-hide.test.cjs`.
+- Usage costs use the code font so equal-length amounts keep equal advance
+  widths when the total refreshes. The calendar stretches across its card when
+  its facts move underneath in a narrow window. See `usage-head-steady.test.cjs`
+  and `sessions-calendar-fill.test.cjs`.
 - Settings' Download source describes the release manifest as the checksum
   source. Next's fixed repository supplies it; a mirror changes executable
   downloads only. The CLI names the build's `update.Site`. See
@@ -529,9 +556,17 @@ BROWSER=webkit node --test internal/gui/tests/click-scroll.test.cjs
 ```
 
 `make test-ui` needs Node.js and Playwright (`playwright install chromium
-webkit`). Set `NODE_PATH` when Playwright is installed outside the repo. The
-Test workflow in CI does not run this suite, so a GUI change must run it
-locally and report the result. See [`tests/README.md`](../../internal/gui/tests/README.md).
+webkit`). Set `NODE_PATH` when Playwright is installed outside the repo.
+Next's [UI workflow](../../.github/workflows/test-ui.yml) runs all 829 test
+files on four Windows workers, each with concurrency two, using both default
+engines and the languages each fixture specifies. Its runner checks the complete
+flat and recursive inventory, disjoint shard ownership, individual file results,
+the requested source commit and unchanged input hashes. Logs and input reports
+are retained as artifacts. The Next package workflow requires all four shards
+and their coverage check in addition to the Go workflow; a CI-only change does
+not authorize a release. Update the reviewed inventory count when adding a file.
+Local GUI verification still reports the exact command and result. See
+[`tests/README.md`](../../internal/gui/tests/README.md).
 
 `TestMainWindowCorners` and `TestMainWindowRightToLeft` run on a Mac with a
 desktop session, as CI's macOS job has, and show a few windows for some

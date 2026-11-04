@@ -160,8 +160,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert(!clipped, "the floor fits its cell");
 
         // the row's details say it too
-        // the first cell, not the time's link: at a narrow window the row is brought into sight first
-        await reader.click(p, p.locator(".led tbody tr.led-row").first().locator("td").nth(1));
+        // The first cell, not the time's link, must clear the overlay scrollbar too.
+        const first = p.locator(".led tbody tr.led-row").first().locator("td").nth(1);
+        await reader.reach(p, first);
+        await first.click();
         const detail = p.locator(".led tbody tr.led-detail").first();
         await detail.waitFor();
         const pairs = await detail.locator("dt").evaluateAll((dts) => dts.map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]));

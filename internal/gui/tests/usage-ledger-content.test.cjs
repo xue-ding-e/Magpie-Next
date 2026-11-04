@@ -220,7 +220,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await p.locator('[data-view="usage"]').first().click();
       await p.locator(":is(#usageTab .opt, .nav-s):visible").nth(1).click();
       await p.locator("#ledWrap .led tbody tr").first().waitFor();
-      await reader.click(p, p.locator(".led tbody tr.led-row").nth(0));
+      // The row spans the horizontally scrolling table. Its visible time
+      // cell is the reader's target, clear of the sticky horizontal scrollbar.
+      const first = p.locator(".led tbody tr.led-row").first();
+      const when = first.locator("td.when");
+      await reader.reach(p, when);
+      await when.click();
       await p.locator(".led-cx .cx-sec").first().waitFor();
       const box = await p.locator(".led-box").boundingBox(), wrap = await p.locator("#ledWrap").boundingBox();
       assert(box.x >= wrap.x - 1 && box.x + box.width <= wrap.x + wrap.width + 1, `the details fit the box at 560: ${box.width} in ${wrap.width}`);

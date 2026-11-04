@@ -593,6 +593,12 @@ async function hideUsageAgent(id, hide) {
   const prev = state.settings || {};
   const cur = (prev.usageAgentsHidden || []).filter((k) => k !== id);
   const agentsHidden = hide ? [...cur, id] : cur;
+  // Unhide removes the pressed row. Anchor its persistent heading before
+  // the list whose height changes, so the click guard follows that line.
+  const line = $("#usageAgentsHid .us-hidline");
+  if (!hide && agentsHidden.length && line?.offsetParent && held?.v === $("#view-usage")) {
+    held.chain.unshift([line, onScreen(line, held.v), pathIn(held.v, line)]);
+  }
   state.settings = { ...prev, usageAgentsHidden: agentsHidden };
   const again = () => {
     if (!usage) return;

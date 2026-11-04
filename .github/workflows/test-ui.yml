@@ -1,0 +1,101 @@
+name: UI fixtures
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-fixtures-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  shards:
+    name: Windows UI shard ${{ matrix.shard }} of 4
+    runs-on: windows-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - name: Check runner contracts without browsers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((node --version) -cne 'v26.13.0') { throw 'Unexpected Node version' }
+          if ((git rev-parse HEAD) -cne $env:GITHUB_SHA) { throw 'Source SHA mismatch' }
+          node --test --test-concurrency=1 build/ui-test-shard.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install only the existing fixed Playwright dependency
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Get-Content .github/ui-preview/package.json -Raw | ConvertFrom-Json
+          if ($package.dependencies.playwright -cne '1.61.1') { throw 'Unexpected Playwright version' }
+          npm install --prefix .github/ui-preview --ignore-scripts --no-audit --no-fund --package-lock=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node -e "if(require('./.github/ui-preview/node_modules/playwright/package.json').version!=='1.61.1')process.exit(1)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "PLAYWRIGHT_BROWSERS_PATH=$(Join-Path $env:RUNNER_TEMP 'magpie-ui-browsers')" >> $env:GITHUB_ENV
+      - name: Install both fixture engines
+        shell: pwsh
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE '.github/ui-preview/node_modules/.bin/playwright.cmd') install chromium webkit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run the complete modulo shard, concurrency 2
+        shell: pwsh
+        run: |
+          node build/ui-test-shard.mjs --source-sha $env:GITHUB_SHA --shard-index ${{ matrix.shard }} --shard-count 4 --expected-files 829 --output (Join-Path $env:RUNNER_TEMP 'ui-shard-${{ matrix.shard }}')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-tests-${{ github.sha }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/ui-shard-${{ matrix.shard }}/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+
+  coverage:
+    name: All four UI shards and all 829 files
+    if: always()
+    needs: shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ui-tests-${{ github.sha }}-shard-*
+          path: ${{ runner.temp }}/ui-shards
+      - name: Require success and verify disjoint complete coverage
+        env:
+          SHARDS_RESULT: ${{ needs.shards.result }}
+        run: |
+          test "$SHARDS_RESULT" = success
+          node build/ui-test-shard.mjs --source-sha "$GITHUB_SHA" --shard-count 4 --expected-files 829 --verify-artifacts "$RUNNER_TEMP/ui-shards" --output "$RUNNER_TEMP/ui-coverage"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-coverage-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-coverage/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14

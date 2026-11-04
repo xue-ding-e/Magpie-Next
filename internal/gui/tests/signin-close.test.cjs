@@ -31,6 +31,14 @@ function serve(lang, ctl) {
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
+    // Windows title-bar tint changes native chrome, not sign-in or saved data.
+    if (url.pathname === "/api/window/titlebar") {
+      assert.equal(req.method(), "POST");
+      assert.deepEqual(req.postDataJSON(), {});
+      assert.match(url.searchParams.get("c"), /^\d+,\d+,\d+,255$/);
+      assert.match(url.searchParams.get("dark"), /^(0|1)$/);
+      return json({ ok: true });
+    }
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:false};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme: "light" } });

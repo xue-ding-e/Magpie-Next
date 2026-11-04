@@ -1025,7 +1025,7 @@ body.window .field.solo { grid-column: auto; }
 .loading-kpi .sk-label { width: 36%; height: 8px; }
 #view-usage.loading .opt { cursor: default; }
 .usage-cost { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
-.usage-cost b { font-size: 15px; font-weight: 600; color: var(--fg); }
+.usage-cost b { font-family: var(--code); font-size: 15px; font-weight: 600; color: var(--fg); }
 /* a tab with no sum leaves the refresh at the content's right edge (a
    class app.js sets, not :has(), which Safari before 15.4 can't parse) */
 .usage-cost:empty { display: none; }
@@ -1494,7 +1494,7 @@ details.cx-part[open] > summary .cx-h { margin-bottom: 2px; }
 .sess-cal-side b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .sess-cal-side span { font-size: 10.5px; color: var(--muted); }
 .sess-cal-side small { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
-@container (max-width: 560px) { .sess-cal-wrap { flex-direction: column; gap: 10px; } .sess-cal-side { flex-direction: row; flex-wrap: wrap; gap: 16px; padding-top: 0; } }
+@container (max-width: 560px) { .sess-cal-wrap { flex-direction: column; gap: 10px; } .sess-cal { align-self: stretch; } .sess-cal-side { flex-direction: row; flex-wrap: wrap; gap: 16px; padding-top: 0; } }
 .sess-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
 .sess-grid[hidden] { display: none; }
 .sess-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px; min-width: 0; display: flex; flex-direction: column; }

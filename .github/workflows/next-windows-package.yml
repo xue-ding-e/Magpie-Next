@@ -53,8 +53,10 @@ jobs:
           python3 -I -B build/next-package-impact.py
   validation:
     uses: ./.github/workflows/test.yml
+  ui-validation:
+    uses: ./.github/workflows/test-ui.yml
   package:
-    needs: [validation, impact]
+    needs: [validation, ui-validation, impact]
     if: needs.impact.outputs.package == 'true' && github.repository == 'xue-ding-e/Magpie-Next'
     runs-on: windows-latest
     timeout-minutes: 60

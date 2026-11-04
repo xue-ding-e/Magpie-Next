@@ -44,12 +44,16 @@ function server(lang, ctl) {
       ctl.installs++;
       return json({ ...ctl.update });
     }
-    if (url.pathname === "/api/update") return json({ ...ctl.update });
+    if (url.pathname === "/api/update") {
+      ctl.updateArrived?.();
+      if (ctl.updateGate) await ctl.updateGate;
+      return json({ ...ctl.update });
+    }
     if (url.pathname === "/api/plugins") return json({ plugins: [] });
     if (url.pathname === "/api/usage/quotas") return json([]);
     if (url.pathname === "/api/groups") return json({ groups: [], models: [] });
     if (url.pathname.startsWith("/api/")) return json({});
-    const file = path.join(assets, url.pathname === "/" ? "index.html" : url.pathname);
+    const file = url.pathname === "/app.js" && ctl.appJs ? ctl.appJs : path.join(assets, url.pathname === "/" ? "index.html" : url.pathname);
     const contentType = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" }[path.extname(file)];
     await route.fulfill({ body: await fs.readFile(file), contentType });
   };
@@ -58,6 +62,81 @@ function server(lang, ctl) {
 const scrolls = (page) => page.evaluate(() => [window.scrollY, document.scrollingElement.scrollTop, ...[...document.querySelectorAll(".view")].map((v) => v.scrollTop)].join(","));
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  if (engine === "webkit") test("webkit: a late initial update response settles the header without native ResizeObserver errors", async (t) => {
+    const browser = await webkit.launch();
+    let context, page, release, arrive, closing = false;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const arrived = new Promise((resolve) => { arrive = resolve; });
+    const bounded = (promise, label) => {
+      let timer;
+      return Promise.race([promise, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label + " timed out")), 5000);
+      })]).finally(() => clearTimeout(timer));
+    };
+    t.after(async () => {
+      closing = true; release();
+      try { if (page) await bounded(page.unrouteAll({ behavior: "wait" }), "route cleanup"); }
+      finally {
+        try { if (context) await bounded(context.close(), "context close"); }
+        finally { await bounded(browser.close(), "browser close"); }
+      }
+    });
+    context = await browser.newContext({ viewport: { width: 683, height: 560 }, reducedMotion: "reduce" });
+    page = await context.newPage();
+    page.setDefaultTimeout(5000);
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      // Observe the real callbacks without changing delivery or layout.
+      const Native = window.ResizeObserver;
+      window.__topFitObservers = [];
+      window.ResizeObserver = class extends Native {
+        constructor(callback) {
+          const record = { targets: [], deliveries: 0 };
+          super((entries, watcher) => { record.deliveries++; return callback.call(watcher, entries, watcher); });
+          this.record = record;
+          window.__topFitObservers.push(record);
+        }
+        observe(target, options) { this.record.targets.push(target); return super.observe(target, options); }
+      };
+    });
+    const ctl = { installs: 0, update: { state: "error", retry: true, current: "0.1.400", latest: "0.1.401", error: "timed out" },
+      updateGate: gate, updateArrived: arrive, appJs: process.env.TOPFIT_APP_JS };
+    if (ctl.appJs) assert(path.isAbsolute(ctl.appJs), "TOPFIT_APP_JS must name an absolute controlled app asset");
+    const serve = server("en", ctl);
+    await page.route("**/*", async (route) => { try { await serve(route); } catch (error) { if (!closing) throw error; } });
+    let sample = 0;
+    const stable = async () => {
+      const state = await page.waitForFunction((sample) => {
+        const targets = [".top", ".brand", ".actions"].map((s) => document.querySelector(s));
+        const observer = window.__topFitObservers.find((r) => targets.every((e) => e && r.targets.includes(e)));
+        if (!observer || !observer.deliveries) return false;
+        const classes = targets[0].className, deliveries = observer.deliveries;
+        const boxes = targets.map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; });
+        const key = JSON.stringify([classes, deliveries, boxes]), previous = window.__topFitStable;
+        const frames = previous?.sample === sample && previous.key === key ? previous.frames + 1 : 1;
+        window.__topFitStable = { sample, key, frames };
+        return frames >= 8 ? { classes, deliveries, boxes } : false;
+      }, ++sample, { timeout: 5000, polling: "raf" });
+      try { return await state.jsonValue(); } finally { await state.dispose(); }
+    };
+    await page.goto("http://magpie.test/");
+    await bounded(arrived, "initial update GET");
+    await bounded(page.evaluate(() => document.fonts.ready.then(() => true)), "native font readiness");
+    const before = await stable();
+    assert.equal(await page.locator("#update").isHidden(), true, "the initial update response remains held");
+    assert.equal(before.classes.split(" ").includes("tight"), false, "the hidden-pill header fits at this boundary");
+    assert.deepEqual(errors, [], "observer initialization has no native errors");
+    ctl.updateGate = null;
+    release();
+    await page.locator("#update").waitFor({ state: "visible" });
+    assert.equal((await page.locator("#update span").innerText()).trim(), words.en.update);
+    const after = await stable();
+    assert.equal(after.classes.split(" ").includes("tight"), true, "the late update pill crosses the compact boundary");
+    assert(after.deliveries > before.deliveries, "the native header observer received the update's size change");
+    assert.deepEqual(errors, [], "the late response must not cause native ResizeObserver errors");
+  });
+
   test(engine + ": a downloading update never says NaN", async (t) => {
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
     t.after(() => browser.close());

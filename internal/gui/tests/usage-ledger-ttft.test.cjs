@@ -57,6 +57,33 @@ const L = {
   de: { head: "TTFT", detail: "Erstes Token", duration: "Dauer", hint: "Schmales Fenster: Gesendet, Effort, erstes Token und Cache stehen in den Details jeder Zeile" },
 };
 
+// Observe a completed native fit, without asking for any particular column
+// visibility. Short translated headers can fit at widths that hide English.
+async function ledgerSettled(page) {
+  await page.waitForFunction(() => document.fonts.status === "loaded", null, { polling: 100, timeout: 5000 });
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    let previous = "", stable = 0, frameId = 0, done = false, snapshot;
+    const finish = (error) => {
+      if (done) return;
+      done = true; clearTimeout(timer); cancelAnimationFrame(frameId);
+      error ? reject(error) : resolve(snapshot);
+    };
+    const timer = setTimeout(() => finish(new Error("ledger fit did not settle: " + previous)), 5000);
+    const frame = () => {
+      try {
+        const wrap = document.querySelector("#ledWrap"), table = wrap.querySelector("table.led");
+        snapshot = { viewport: innerWidth, width: wrap.clientWidth, scroll: wrap.scrollWidth, table: table.getBoundingClientRect().width,
+          classes: table.className, columns: [...table.querySelectorAll("thead th")].map((e) => [e.className, e.getBoundingClientRect().width]) };
+        const signature = JSON.stringify(snapshot);
+        stable = signature === previous ? stable + 1 : 0; previous = signature;
+        if (stable >= 2) return finish();
+        frameId = requestAnimationFrame(frame);
+      } catch (error) { finish(error); }
+    };
+    frameId = requestAnimationFrame(frame);
+  }));
+}
+
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": each request's first token, a column of its own", async (t) => {
     assert(["chromium", "webkit"].includes(engine), "BROWSER must be chromium or webkit");
@@ -71,12 +98,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const p = await ctx.newPage();
         p.setDefaultTimeout(5000);
         p.on("pageerror", (e) => errors.push(e.message));
+        await p.addInitScript(() => {
+          localStorage.setItem("magpie.navLayout", "side");
+          localStorage.setItem("magpie.usageTab", "requests");
+        });
         await p.route("**/*", server(lang));
-        await p.goto("http://magpie.test/");
-        await p.locator('[data-view="usage"]').first().click();
-        await p.locator(":is(#usageTab .opt, .nav-s):visible").nth(1).click();
+        await p.goto("http://magpie.test/?view=usage");
         await p.locator("#ledWrap .led tbody tr").first().waitFor();
-        await p.waitForTimeout(200);
+        await ledgerSettled(p);
 
         // the column, just before the duration it is part of
         const heads = await p.locator(".led thead th").allTextContents();
@@ -105,14 +134,24 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // numbers line up as the duration's do
         assert.deepEqual(await cell(0).evaluate((c) => getComputedStyle(c).textAlign), await rows.nth(0).locator("td.duration").evaluate((c) => getComputedStyle(c).textAlign));
 
-        // a narrow window: the column goes, the details keep it, the hint says so
-        await p.setViewportSize({ width: 760, height: 800 });
-        await p.waitForTimeout(300);
-        assert.equal(await cell(0).isVisible(), false, "a narrow window leaves it out");
+        // Constrain the real sidebar layout until the native fitter needs
+        // its second stage; 760px alone can still fit short CJK headers.
+        let restricted;
+        for (const width of [760, 640, 560]) {
+          await p.setViewportSize({ width, height: 800 });
+          restricted = await ledgerSettled(p);
+          if (!(await cell(0).isVisible())) break;
+          assert(restricted.scroll <= restricted.width + 1, "retaining TTFT must fit: " + JSON.stringify(restricted));
+        }
+        assert.equal(await cell(0).isVisible(), false, "a sufficiently constrained window leaves it out: " + JSON.stringify(restricted));
         assert.equal((await p.locator("#ledTight").textContent()).trim(), w.hint);
         await reader.click(p, rows.nth(0).locator("td").nth(2));
         const shown = await p.locator(".led tbody tr.led-detail dt").evaluateAll((dts) => dts.filter((x) => x.offsetParent).map((x) => x.textContent));
         assert(shown.includes(w.detail), "the details still say it: " + shown.join(", "));
+        const timings = await p.locator(".led tbody tr.led-detail dt").evaluateAll((dts) => dts.map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]));
+        assert.deepEqual(timings.find(([name]) => name === w.detail), [w.detail, first], "hidden first-token timing keeps its value in details");
+        const clipped = await rows.locator("td.n:visible").evaluateAll((cells) => cells.filter((c) => c.scrollWidth > c.clientWidth + 1).map((c) => ({ text: c.textContent, width: c.clientWidth, scroll: c.scrollWidth })));
+        assert.deepEqual(clipped, [], "visible numeric columns are not truncated");
         assert.equal(await p.locator("#view-usage").evaluate((v) => v.scrollWidth <= v.clientWidth + 1), true, "the page doesn't scroll sideways");
         assert.deepEqual(errors, []);
       });
