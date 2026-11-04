@@ -1,0 +1,109 @@
+name: Local dictionary combined candidate validation
+on:
+  push:
+    branches: [validation/local-dictionary-integrated-v6-20261104]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: magpie-local-dictionary-integration
+  cancel-in-progress: false
+jobs:
+  browser:
+    if: github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/validation/local-dictionary-integrated-v6-20261104'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Bound shared work budget with cleanup reserve
+        run: |
+          python3 - <<'PY'
+          import os,time
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              start=time.monotonic()
+              f.write(f'DICTIONARY_JOB_START_MONOTONIC={start:.6f}\nDICTIONARY_JOB_DEADLINE_MONOTONIC={start+720:.6f}\nDICTIONARY_JOB_CAP_SECONDS=900\n')
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - run: python3 -B .github/dictionary-integration/gate.py
+      - run: python3 -I -B .github/dictionary-integration/owned-selftest.py --require-native
+      - name: Verify nested browser reaper without browser workload
+        run: |
+          python3 -I -B .github/dictionary-integration/reaper-selftest.py
+          python3 -I -B .github/dictionary-integration/reaper-native-selftest.py
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: bash .github/dictionary-integration/prepare-env.sh
+      - name: Install pinned public browser tooling
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          timeout 90 npm ci --prefix .github/dictionary-integration --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+          node -e "for (const n of ['playwright','playwright-core']) if (require(n+'/package.json').version !== '1.61.1') process.exit(1)"
+          unset PLAYWRIGHT_DOWNLOAD_HOST PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST
+          timeout 180 node .github/dictionary-integration/node_modules/playwright/cli.js install-deps chromium webkit
+          timeout 240 node .github/dictionary-integration/node_modules/playwright/cli.js install chromium webkit
+      - name: Real Chromium and WebKit with synthetic API only
+        timeout-minutes: 6
+        run: python3 -I -B .github/dictionary-integration/run.py browser
+      - name: Remove only recorded temporary directory
+        if: always() && env.AUTH_TMP_RECORD != ''
+        run: bash .github/dictionary-integration/prepare-env.sh cleanup
+  core:
+    needs: browser
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+      GOMAXPROCS: '2'
+      GOFLAGS: '-mod=readonly'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Bound shared work budget with cleanup reserve
+        run: |
+          python - <<'PY'
+          import os,time
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              start=time.monotonic()
+              f.write(f'DICTIONARY_JOB_START_MONOTONIC={start:.6f}\nDICTIONARY_JOB_DEADLINE_MONOTONIC={start+720:.6f}\nDICTIONARY_JOB_CAP_SECONDS=900\n')
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - run: python -B .github/dictionary-integration/gate.py
+      - if: runner.os == 'Linux'
+        run: python -I -B .github/dictionary-integration/owned-selftest.py --require-native
+      - if: runner.os == 'Windows'
+        run: python -I -B .github/dictionary-integration/windows-selftest.py
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Record isolated synthetic home
+        id: home
+        run: |
+          echo "GOPATH=$(go env GOPATH)" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$(go env GOMODCACHE)" >> "$GITHUB_ENV"
+          echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          python -I -B build/ci_home.py create
+      - name: Scoped race, CAS, masking, backup and API regressions
+        timeout-minutes: 11
+        run: python -I -B .github/dictionary-integration/run.py core
+      - name: Remove only recorded synthetic home
+        if: always() && steps.home.outputs.record != ''
+        env:
+          MAGPIE_CI_HOME_RECORD: ${{ steps.home.outputs.record }}
+        run: python -I -B build/ci_home.py cleanup
