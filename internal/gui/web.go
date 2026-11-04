@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
@@ -242,7 +243,8 @@ func webGuard(cookie, key string, keep time.Duration, next http.Handler) http.Ha
 		sent := r.CookiesNamed(cookie)
 		for _, c := range sent {
 			if same(c.Value) {
-				next.ServeHTTP(rw, r)
+				ctx := context.WithValue(r.Context(), authenticatedWebKey{}, true)
+				next.ServeHTTP(rw, r.WithContext(ctx))
 				return
 			}
 		}

@@ -582,8 +582,8 @@ func importAccounts(args []string) error {
 	var say []string
 	switch id {
 	case "codex":
-		say = []string{"Each account's sign-in is refreshed with ChatGPT before it is added, as signing in does.",
-			"That spends the file's sign-in: the tool it came from (Codex CLI on another computer, codexbar, Cockpit Tools, CLIProxyAPI) is signed out of that account and has to sign in again. From then on the account is magpie's.",
+		say = []string{"Access tokens are verified first. Only a missing or unauthorized access token needs a refresh.",
+			"Refreshing a sign-in can invalidate the source tool's copy. Two tools must not refresh the same session independently; sign in separately for continued use in both.",
 			"The files are only read, never changed. An account magpie holds already is left as it is."}
 	case "claude":
 		say = []string{provider.ClaudeRisk,

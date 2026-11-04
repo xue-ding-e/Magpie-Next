@@ -153,7 +153,35 @@ func TestImportCodexbarConfig(t *testing.T) {
 	defer fake.Close()
 	t.Cleanup(CodexTokenURLForTest(fake.URL))
 
-	rs, err := ImportLogins(context.Background(), "codex", []string{codexbarConfig})
+	// Keep the literal export above for parser coverage. For this renewal
+	// scenario, only renewable accounts have no access token left; an
+	// access-only account must still be refused as such.
+	var renewing any
+	if err := json.Unmarshal([]byte(codexbarConfig), &renewing); err != nil {
+		t.Fatal(err)
+	}
+	var expire func(any)
+	expire = func(value any) {
+		switch value := value.(type) {
+		case map[string]any:
+			if token, _ := value["refreshToken"].(string); token != "" {
+				value["accessToken"] = ""
+			}
+			for _, child := range value {
+				expire(child)
+			}
+		case []any:
+			for _, child := range value {
+				expire(child)
+			}
+		}
+	}
+	expire(renewing)
+	input, err := json.Marshal(renewing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs, err := ImportLogins(context.Background(), "codex", []string{string(input)})
 	if err != nil {
 		t.Fatal(err)
 	}
