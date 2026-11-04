@@ -1,6 +1,7 @@
 // Package update keeps magpie current. Builds are published as GitHub
 // releases of yetone/magpie-releases; usemagpie.ai/api/latest describes the
-// newest one: its version, notes, and every file with its SHA-256.
+// newest one. Next builds use xue-ding-e/Magpie-Next's source-bound manifest
+// instead. Both paths supply a version, notes and files with their SHA-256.
 //
 // The macOS app replaces its own bundle: the new zip is downloaded, checked
 // against its hash, unpacked, and accepted only if it is signed by the same
@@ -34,14 +35,15 @@ import (
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/source"
+	"github.com/yetone/magpie/internal/update/nextrelease"
 )
 
-// Site is magpie's home; its /api/latest is the update feed.
-const Site = "https://usemagpie.ai"
-
-// Feed is where the newest release is described. MAGPIE_UPDATE_FEED points
-// it elsewhere, for testing an update against a local server.
+// Feed is where the newest release is described. Upstream builds may override it
+// with MAGPIE_UPDATE_FEED for tests; Next always uses its own GitHub repository.
 func Feed() string {
+	if nextDistribution {
+		return nextFeed
+	}
 	if f := os.Getenv("MAGPIE_UPDATE_FEED"); f != "" {
 		return f
 	}
@@ -82,7 +84,7 @@ func Latest(ctx context.Context) (*Release, error) { return LatestIn(ctx, "") }
 // InLang): the app's language, which What's new follows.
 func LatestIn(ctx context.Context, lang string) (*Release, error) {
 	if nextDistribution {
-		return nil, fmt.Errorf("Magpie Next uses manual updates: https://github.com/xue-ding-e/Magpie-Next/releases")
+		return latestNext(ctx, lang)
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", withLang(Feed(), lang), nil)
 	if err != nil {
@@ -111,8 +113,8 @@ func LatestIn(ctx context.Context, lang string) (*Release, error) {
 // source ("dev", "0bcb2cc-dirty", git describe's "v0.1.0-3-g0bcb2cc");
 // only releases update themselves.
 func Released(v string) bool {
-	if nextDistribution {
-		return false
+	if nextDistribution && strings.Contains(v, "-next") {
+		return nextrelease.VersionSequence(v) > 0
 	}
 	s := parse(v)
 	return s != nil && !describe.MatchString(s.pre) && !strings.Contains(s.pre, "dirty")
@@ -121,9 +123,15 @@ func Released(v string) bool {
 // describe matches what git describe adds after a tag: commits since, hash.
 var describe = regexp.MustCompile(`^\d+-g[0-9a-f]+`)
 
-// Newer reports whether version a comes after b. A pre-release comes before
-// the release it leads up to.
+// Newer reports whether version a comes after b. Next versions use their workflow
+// sequence across upstream bases. Other versions follow semver prerelease order.
 func Newer(a, b string) bool {
+	if nextDistribution {
+		x, y := nextrelease.VersionSequence(a), nextrelease.VersionSequence(b)
+		if x > 0 || y > 0 {
+			return x > 0 && y > 0 && x > y
+		}
+	}
 	x, y := parse(a), parse(b)
 	if x == nil || y == nil {
 		return false
@@ -205,6 +213,12 @@ var GUI bool
 // AppAsset and BinaryAsset name the files this machine would install.
 func AppAsset() string { return "magpie-darwin-" + runtime.GOARCH + ".zip" }
 func BinaryAsset() string {
+	if nextDistribution {
+		if GUI {
+			return "Magpie-Next.exe"
+		}
+		return "magpie-next-cli.exe"
+	}
 	name := "magpie-cli-" + runtime.GOOS + "-" + runtime.GOARCH
 	if GUI && runtime.GOOS != "darwin" {
 		name = "magpie-" + runtime.GOOS + "-" + runtime.GOARCH
@@ -406,6 +420,9 @@ func ReplaceBinary(ctx context.Context, rel *Release) error {
 // StageBinary downloads the release's build for this binary next to it (or
 // to the cache, where magpie may not write there), ready for InstallBinary.
 func StageBinary(ctx context.Context, rel *Release) (string, error) {
+	if nextDistribution && (runtime.GOOS != "windows" || runtime.GOARCH != "amd64") {
+		return "", errors.New("Magpie Next self-updates are published for Windows x64 only")
+	}
 	a, ok := rel.Assets[BinaryAsset()]
 	if !ok {
 		return "", fmt.Errorf("release %s has no %s", rel.Version, BinaryAsset())
@@ -780,7 +797,22 @@ func fetch(ctx context.Context, a Asset, path string) error {
 	if err != nil {
 		return err
 	}
-	res, err := source.Do(client, req)
+	downloadClient := client
+	if nextDistribution && u == a.URL && strings.HasPrefix(a.URL, Site+"/download/") {
+		copy := *client
+		copy.Jar = nil
+		copy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("too many download redirects")
+			}
+			if len(via) > 0 && via[0].URL.String() == a.URL {
+				return nextrelease.AssetRedirect(req, via)
+			}
+			return nil // a mirror the user configured; still checked against the manifest
+		}
+		downloadClient = &copy
+	}
+	res, err := source.Do(downloadClient, req)
 	if err != nil {
 		if u != a.URL {
 			return &MirrorError{Mirror: strings.TrimSuffix(u, a.URL), Err: err}
@@ -808,7 +840,10 @@ func fetch(ctx context.Context, a Asset, path string) error {
 		body = &counter{r: res.Body, total: max(total, 0), report: report}
 		report(0, max(total, 0))
 	}
-	_, err = io.Copy(io.MultiWriter(f, h), body)
+	if nextDistribution && a.Size > 0 {
+		body = io.LimitReader(body, a.Size+1)
+	}
+	n, err := io.Copy(io.MultiWriter(f, h), body)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -817,6 +852,9 @@ func fetch(ctx context.Context, a Asset, path string) error {
 		if u != a.URL {
 			err = fmt.Errorf("%s from the mirror %s does not match its checksum from %s; not installed", filepath.Base(path), strings.TrimSuffix(u, a.URL), Site)
 		}
+	}
+	if err == nil && nextDistribution && a.Size > 0 && n != a.Size {
+		err = fmt.Errorf("%s does not match its manifest size", filepath.Base(path))
 	}
 	if err != nil && u != a.URL && !errors.As(err, new(*MirrorError)) {
 		err = &MirrorError{Mirror: strings.TrimSuffix(u, a.URL), Err: err}

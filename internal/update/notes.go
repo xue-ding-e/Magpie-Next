@@ -20,9 +20,12 @@ type Note struct {
 	URL     string `json:"url,omitempty"`
 }
 
-// NotesFeed is where the notes of past releases are listed: beside the
-// update feed, on magpie's site. MAGPIE_NOTES_FEED points it elsewhere.
+// NotesFeed is where releases' notes are listed. Next reads its own GitHub
+// releases; upstream builds allow MAGPIE_NOTES_FEED to override magpie's site.
 func NotesFeed() string {
+	if nextDistribution {
+		return nextFeed
+	}
 	if f := os.Getenv("MAGPIE_NOTES_FEED"); f != "" {
 		return f
 	}
@@ -32,6 +35,9 @@ func NotesFeed() string {
 // ReleasePage is version's page on GitHub, where its notes are when the
 // site can't give them (#661).
 func ReleasePage(version string) string {
+	if nextDistribution {
+		return Site
+	}
 	return "https://github.com/yetone/magpie-releases/releases/tag/v" + strings.TrimPrefix(strings.TrimSpace(version), "v")
 }
 
@@ -39,6 +45,9 @@ func ReleasePage(version string) string {
 // (none when "") up to and including upto, newest first, in lang (see
 // InLang).
 func NotesBetween(ctx context.Context, after, upto, lang string) ([]Note, error) {
+	if nextDistribution {
+		return nextNotes(ctx, after, upto, lang)
+	}
 	q := url.Values{"upto": {upto}}
 	if after != "" {
 		q.Set("after", after)

@@ -1,4 +1,4 @@
-"""Only verified regular GUI-test modifications may omit a redundant package.
+"""Reviewed GUI tests and documentation do not change package bytes.
 Go regression inputs require packaging, but do not authorize publication alone.
 All unknown/invalid diff evidence fails the impact job, blocking packaging.
 Validation is a separate job and is never path-filtered by this script.
@@ -7,6 +7,8 @@ import os,re,subprocess
 SHA=re.compile(r'[0-9a-f]{40}\Z')
 TEST=re.compile(rb'internal/gui/tests/[A-Za-z0-9_-]+\.test\.cjs\Z')
 GO_TEST=re.compile(rb'internal/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_]+_test\.go\Z')
+DOC=re.compile(rb'docs/subsystems/[A-Za-z0-9_-]+\.md\Z')
+DOCS={b'README.md',b'README.zh-CN.md',b'internal/gui/tests/README.md'}
 CI={b'.github/workflows/next-windows-package.yml',b'build/next-package-impact.py',b'build/next-package-impact_test.py'}
 def product_path(path):
  # Only identified inputs consumed by the existing native package build.
@@ -27,8 +29,11 @@ def classify(raw):
   if path in CI:
    assert regular or added,'Deleting classification controls needs separate review'
    ci_changed=True
-  elif TEST.fullmatch(path):
-   assert regular,'Adding/deleting/renaming tests needs separate review'
+  elif TEST.fullmatch(path) or DOC.fullmatch(path) or path in DOCS:
+   # Mode/type checks above still reject executable files and symlinks.
+   # A test or reference added beside product code must not block its
+   # release; alone it never authorizes publishing another executable.
+   pass
   # Directory embeds may contain Go-test-looking resource names. Product
   # inputs must win over the test-only classification.
   elif product_path(path):
@@ -39,7 +44,7 @@ def classify(raw):
  if product_changed:return True,True,'identified-product-input'
  if ci_changed:return True,False,'reviewed-ci-controls-only'
  if go_tests_changed:return True,False,'go-regression-inputs-only'
- return False,False,'regular-gui-test-only'
+ return False,False,'tests-or-documentation-only'
 def git(*args):return subprocess.check_output(['git',*args],stderr=subprocess.PIPE)
 def main():
  assert os.environ['GITHUB_REPOSITORY']=='xue-ding-e/Magpie-Next','Wrong repository'
