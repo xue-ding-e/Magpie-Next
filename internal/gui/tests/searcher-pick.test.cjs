@@ -301,7 +301,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(posted.at(-1).searcher, "off");
       await page.reload();
       await row.waitFor();
-      await row.scrollIntoViewIfNeeded();
+      // The reload draws settings twice; reacquire the row if the first one is
+      // replaced while Chromium is waiting for it to become stable (#1659).
+      for (let i = 0; ; i++) {
+        try { await row.scrollIntoViewIfNeeded({ timeout: 1000 }); break; } catch (e) { if (i >= 4) throw e; }
+      }
       assert.equal(await row.locator("button.searcher-pick").innerText(), w.off);
       assert.equal(await row.locator(".searcher-own, .searcher-unused, .searcher-relays, .searcher-left-out").count(), 0);
       assert.equal(await page.locator("#searchFirstRow").count(), 0);

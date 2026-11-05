@@ -143,7 +143,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const row = page.locator(".rt-act", { hasText: "me@x.test" });
         const btn = row.locator(".fix button", { hasText: go[lang] });
         await reach(page, btn);
+        const request = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/gateway/unrest");
         await btn.click();
+        assert.deepEqual((await request).postDataJSON(), { key: opusRest.key });
         assert.deepEqual(await posted(lifted), [{ key: opusRest.key }]);
         await row.locator(".st.part").waitFor({ state: "detached" });
         assert.deepEqual(errors, []);

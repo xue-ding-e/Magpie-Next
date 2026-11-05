@@ -51,6 +51,13 @@ final geometry and pointer hit remain checked. Routing rule keyboard menus wait
 for Tab's scroll/focus reveal to finish before opening, so a late outside scroll
 cannot close the new menu.
 
+`routing-model-rest.test.cjs` captures the new `/api/gateway/unrest` request before
+the real Try now click and checks its exact key body before reading the fixture's
+record. `searcher-pick.test.cjs` gives the post-reload settings row a finite set
+of one-second `scrollIntoViewIfNeeded` attempts; each locator action re-resolves
+the current row and the last error is preserved. These waits cover redraw timing
+and keep the original selection, POST, no-scroll and layout assertions.
+
 The Sessions paging performance check brackets the real input event's capture
 and bubble phases with the page's `performance.now()`. Its 250ms budget measures
 the synchronous filtering/rendering handler; Node/CDP transport and focus time
