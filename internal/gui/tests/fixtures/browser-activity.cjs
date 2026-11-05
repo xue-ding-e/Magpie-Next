@@ -40,6 +40,8 @@ async function foreground(page, budget = setupMax) {
     check();
     assert.equal(state.visibility, "visible", "fixture page must be visible before its real click");
     assert.equal(state.focus, true, "fixture page must be focused before its real click");
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(true))));
+    check();
   };
   try {
     await Promise.race([work(), new Promise((_, reject) => { timer = setTimeout(() => { cancelled = true; reject(expired()); }, Math.max(1, deadline - performance.now())); })]);

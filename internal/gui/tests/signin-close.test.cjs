@@ -147,7 +147,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       // and again, for a second sign-in
       const box2 = await begin();
+      const cancel2 = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/signin/q2/cancel" && r.method() === "POST");
       await box2.locator(":scope > button", { hasText: w.cancel }).click();
+      const cancel2Request = await cancel2;
+      const cancel2Response = await cancel2Request.response();
+      assert.ok(cancel2Response?.ok(), "the second cancel request succeeded");
       await page.locator(".editor .accts .acc.add", { hasText: w.add }).waitFor();
       assert.deepEqual(ctl.canceled, ["q1", "q2"]);
 
