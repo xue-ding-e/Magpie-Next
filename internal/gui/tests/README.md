@@ -43,8 +43,13 @@ target's current position and hit test within the existing five-second readiness
 budget. Their real pointer clicks and scroll checks remain, with delayed redraw,
 offscreen and covering-overlay controls. Plugin GitHub filter initialization
 waits for a non-ghost card: three loading placeholders are not the 31 fixture
-repositories. Routing rule keyboard menus wait for Tab's scroll/focus reveal to
-finish before opening, so a late outside scroll cannot close the new menu.
+repositories. Both GitHub Show all actions wait for the input to clear before
+the unchanged field, counts and selected-filter assertions. Routing rule controls
+wait for each real wheel to move their view before sending another or opening
+a menu; a late queued wheel would otherwise dismiss the opening menu. Their
+final geometry and pointer hit remain checked. Routing rule keyboard menus wait
+for Tab's scroll/focus reveal to finish before opening, so a late outside scroll
+cannot close the new menu.
 
 The Sessions paging performance check brackets the real input event's capture
 and bubble phases with the page's `performance.now()`. Its 250ms budget measures

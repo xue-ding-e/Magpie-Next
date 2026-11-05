@@ -129,9 +129,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           // a reader scrolls to what's under the footer with the wheel; a
           // scroll by code, as a click's own scrolling into view, is put
           // back (no unasked scroll), and the footer took WebKit's click
-          const press = async (b) => {
+          const showAll = async (b) => {
             await reach(page, b);
             await b.click();
+            // Wait for the field's clear before reading the resulting grid
+            // and both picks; a click's return alone is not that state.
+            await page.waitForFunction(() => document.querySelector("#view-plugins .pm-ghfind input")?.value === "");
           };
           const field = sec.locator(".pm-ghfind input");
           assert.equal(await field.getAttribute("placeholder"), await tr("Filter by name, author or description"));
@@ -159,7 +162,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           const none0 = sec.locator(".pm-ghnone");
           assert.equal((await none0.locator("span").textContent()).trim(), await tr("No plugin on GitHub matches"));
           // Show all puts back both strips and the field
-          await press(none0.locator("button"));
+          await showAll(none0.locator("button"));
           assert.equal(await field.inputValue(), "");
           assert.equal(await cards.count(), GH.repos.length);
           assert.equal(await sec.locator(".pm-ghhave .opt.on").textContent(), (await wantHave(GH.repos))[0]);
@@ -197,7 +200,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           // Show all puts back every kind and every card
           await kinds.nth(3).click();
           await field.fill("zzz-nothing");
-          await press(none.locator("button"));
+          await showAll(none.locator("button"));
           assert.equal(await field.inputValue(), "");
           assert.equal(await cards.count(), 31);
           assert.equal(await sec.locator(".pm-ghkinds .opt.on").textContent(), (await want(GH.repos))[0]);

@@ -77,14 +77,45 @@ function serve(lang, posts) {
 // other scroll), and return where it is
 async function reach(page, loc) {
   const height = page.viewportSize().height;
+  const deadline = performance.now() + 5000;
+  const remaining = () => {
+    const ms = deadline - performance.now();
+    assert(ms > 0, "the control must be reached within five seconds");
+    return ms;
+  };
   await page.mouse.move(Math.min(550, (page.viewportSize().width / 2) | 0), 300);
   for (let i = 0; i < 30; i++) {
-    const y = (await loc.boundingBox()).y;
-    if (y > 80 && y < height - 160) break;
-    await page.mouse.wheel(0, y < 80 ? -300 : 300);
-    await page.waitForTimeout(150);
+    const scroller = await loc.evaluateHandle((e) => e.closest(".view"));
+    try {
+      const before = await loc.evaluate((e) => {
+        const v = e.closest(".view"), r = e.getBoundingClientRect();
+        return { y: r.y, top: v.scrollTop, max: Math.max(0, v.scrollHeight - v.clientHeight) };
+      }, null, { timeout: remaining() });
+      if (before.y > 80 && before.y < height - 160) break;
+      const direction = before.y < 80 ? -1 : 1;
+      if (direction < 0 ? before.top <= 0 : before.top >= before.max) break;
+      await page.mouse.wheel(0, direction * 300);
+      // Delivery can precede the native scroll. Do not queue another wheel
+      // or open a menu until this one has moved the view: a late wheel would
+      // otherwise dismiss the menu while its opening animation is playing.
+      await page.waitForFunction(({ scroller, top }) => !scroller.isConnected || scroller.scrollTop !== top,
+        { scroller, top: before.top }, { polling: 50, timeout: remaining() });
+    } finally {
+      await scroller.dispose();
+    }
   }
-  return loc.boundingBox();
+  const box = await loc.boundingBox({ timeout: remaining() });
+  assert(box, "the reached control has a box");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const reached = await loc.evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height,
+      hit: e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) };
+  }, null, { timeout: remaining() });
+  assert([reached.x, reached.y, reached.width, reached.height].every(Number.isFinite)
+    && reached.width > 0 && reached.height > 0 && reached.x >= 0 && reached.x + reached.width <= page.viewportSize().width && reached.y >= 0
+    && reached.y + reached.height <= height && reached.hit, "the control is in view and under the pointer: " + JSON.stringify({ box, reached }));
+  return reached;
 }
 
 // reached, then clicked with the mouse
