@@ -80,7 +80,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       try {
         await page.goto("http://magpie.test/?view=plugins");
         const sec = page.locator("#view-plugins .pm-ghsec");
-        await sec.locator(".pm-card").first().waitFor();
+        // The loading section has three ghost cards before GitHub answers.
+        await sec.locator(".pm-card:not(.ghost)").first().waitFor();
         assert.equal(await sec.locator(".pm-ghkinds").count(), 1);
         assert.equal(await sec.locator(".pm-ghhave").count(), 0);
         assert.equal(await sec.locator(".pm-card").count(), GH.repos.length);
@@ -101,7 +102,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.goto("http://magpie.test/?view=plugins");
           const sec = page.locator("#view-plugins .pm-ghsec");
           const cards = sec.locator(".pm-card");
-          await cards.first().waitFor();
+          // A ghost is visible while GitHub is still answering.
+          await sec.locator(".pm-card:not(.ghost)").first().waitFor();
           assert.equal(await cards.count(), 31);
           const tr = (s) => page.evaluate((s) => t(s), s);
           if (lang !== "en") for (const s of ["Kind of plugin", "Installed or not", "Not installed", "Filter by name, author or description", "Filter the plugins on GitHub", "No plugin on GitHub matches"]) assert.notEqual(await tr(s), s, `${s} in ${lang}`);

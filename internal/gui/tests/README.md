@@ -36,6 +36,16 @@ reason controls still fail. Row containment does not prove every clipping
 ancestor is safe. Register each context's cleanup before assertions, and wait
 for returned sign-in content before judging the completed click's scroll state.
 
+`switch-only.test.cjs` waits for the fixture's non-loading allowance line before
+scrolling to its switch; its account row exists before the usage reply redraws
+it. Library row pointer actions reacquire a missing box and verify the hovered
+target's current position and hit test within the existing five-second readiness
+budget. Their real pointer clicks and scroll checks remain, with delayed redraw,
+offscreen and covering-overlay controls. Plugin GitHub filter initialization
+waits for a non-ghost card: three loading placeholders are not the 31 fixture
+repositories. Routing rule keyboard menus wait for Tab's scroll/focus reveal to
+finish before opening, so a late outside scroll cannot close the new menu.
+
 The Sessions paging performance check brackets the real input event's capture
 and bubble phases with the page's `performance.now()`. Its 250ms budget measures
 the synchronous filtering/rendering handler; Node/CDP transport and focus time

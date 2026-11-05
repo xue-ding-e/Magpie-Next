@@ -149,6 +149,29 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         row = ed.locator(".rt-rule").first();
         await row.locator(".rt-model").focus({ preventScroll: true });
         for (let i = 0; i < 6 && !(await row.locator(".rt-rmore").evaluate((b) => b === document.activeElement)); i++) await page.keyboard.press(TAB);
+        // Tab scrolls a reopened editor into view. Let that scroll and the
+        // keyboard's two-frame focus reveal finish before opening a menu:
+        // a late scroll outside it would close it and leave body focused.
+        await page.waitForFunction(() => new Promise((resolve) => {
+          const view = document.querySelector("#view-routing");
+          let top = view.scrollTop, still = 0, scrolling = false;
+          const moved = () => { scrolling = true; still = 0; };
+          const ended = () => { scrolling = false; };
+          view.addEventListener("scroll", moved);
+          view.addEventListener("scrollend", ended);
+          const frame = () => {
+            const next = view.scrollTop, r = document.activeElement.getBoundingClientRect(), v = view.getBoundingClientRect();
+            still = !scrolling && next === top && r.top >= v.top && r.bottom <= v.bottom ? still + 1 : 0;
+            top = next;
+            if (still === 3) {
+              view.removeEventListener("scroll", moved);
+              view.removeEventListener("scrollend", ended);
+              resolve(true);
+            }
+            else requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        }));
         assert(await row.locator(".rt-rmore").evaluate((b) => b === document.activeElement), "Tab reaches the rule's ⋯");
         await page.keyboard.press("Enter");
         await page.locator(".row-menu").waitFor();

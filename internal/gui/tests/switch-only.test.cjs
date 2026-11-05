@@ -94,6 +94,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.goto("http://magpie.test/?view=providers");
         await page.locator(".row.provider", { hasText: "Codex" }).first().click();
         await page.locator(".editor .acc").first().waitFor();
+        // The empty allowance reply redraws the editor. The first account
+        // is visible before it; its non-loading line is visible afterwards.
+        await page.locator(".editor .acc .aq-none").first().waitFor();
         return { page, errors, posts };
       };
 
