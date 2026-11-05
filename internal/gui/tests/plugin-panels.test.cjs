@@ -202,7 +202,20 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // drawn when the window opened, before the note was written
         await sets.locator("#count").filter({ hasText: /^\d+ notes?$/ }).waitFor();
         await page.waitForTimeout(1100); // options are set once a second at most
+        // "0 notes" can already be drawn: wait for this click's write to
+        // finish, not the panel's count from before the note was saved.
+        const cleared = page.waitForRequest((req) => {
+          if (req.method() !== "POST" || new URL(req.url()).pathname !== "/api/plugin-pages/options") return false;
+          const body = req.postDataJSON();
+          return body && typeof body === "object" && Object.hasOwn(body, "options");
+        });
         await sets.locator("#clear").click();
+        const clearRequest = await cleared;
+        const clearResponse = await clearRequest.response();
+        assert.ok(clearResponse, `${where}: clear returned a response`);
+        assert.equal(clearResponse.status(), 200, `${where}: clear succeeded`);
+        assert.deepEqual(clearRequest.postDataJSON(), { spec: "/x/magpie-provider-notes", options: { notes: {} } }, `${where}: clear writes its own options`);
+        await clearResponse.finished();
         await sets.locator("#count").filter({ hasText: "0 notes" }).waitFor();
         assert.deepEqual(seen.options.at(-1).options.notes, {}, `${where}: cleared`);
         assert.ok(await page.locator("#setPage-plugins").isVisible(), where);

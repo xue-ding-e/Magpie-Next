@@ -9,6 +9,13 @@ fixture, `response.finished()` remained pending after a simulated 204; waiting
 for that matching response and checking its successful status completed. This
 observation applies to that fixture/runtime, not every response or browser.
 
+`plugin-panels.test.cjs` identifies the new options-write Request before Clear,
+then checks that request's successful completed response and exact body. An
+already-rendered `0 notes` label can precede the write. `rest-try-now.test.cjs`
+waits for the target scroll container to move after each real wheel event;
+wheel delivery alone can precede the committed scroll. Both its Routing view
+and framed provider editor keep the final viewport and pointer-hit assertions.
+
 Finish the fixture's initial state and geometry-changing provider reads before
 measuring scroll ranges or retaining tab elements. `sidebar-overlay-scrollbar`
 waits for its Gateway foot and fonts; `usage-focus-steady` waits for its initial
@@ -658,6 +665,16 @@ come and are answered, and 2 are still under way. When the page is seen
 again, at most two magpies per request still under way fly at once, those
 requests do fly, and all 33 are listed. It runs in English and Chinese.
 Before the fix, 39 to 62 birds flew at once.
+The covered-page fixture waits for the next `after=33` long poll to prove
+the page consumed the batch before timing its no-frame gap. A fixture queue
+emptied before returning JSON does not establish that boundary. Peak counts
+are sampled in resumed animation-frame callbacks, including the first one
+after the queued application callback, and at least one sample is required.
+A timer can otherwise count queued DOM before the application resumes it.
+Delaying the first resumed frame by 250ms makes the old timer check fail with
+32, while the frame sampler passes. Disabling only the application's gap-resume
+branch still fails with 62 against the unchanged limit of 4. These are callback
+and DOM observations, not proof of every compositor presentation.
 
 `routing-busy.test.cjs` streams requests into the Routing page, one trace
 update each (#308). The row of a request that hasn't changed stays the same

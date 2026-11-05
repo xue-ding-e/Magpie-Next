@@ -119,20 +119,38 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // out of sight: many requests come and are answered, one update
         // each as the gateway sends them, and a couple still under way
         await how.hide(page);
+        // Taking the fixture queue is earlier than consuming the reply.
+        // A covered, still-visible page acknowledges that batch with its
+        // next long poll before the no-frame gap is measured. Hidden pages
+        // deliberately stop polling, so they acknowledge only after showing.
+        const consumed = way === "the window covered, drawing no frames"
+          ? page.waitForRequest((r) => {
+            const u = new URL(r.url());
+            return u.pathname === "/api/gateway/trace" && u.searchParams.get("after") === String(1 + DONE + LIVE) && u.searchParams.get("wait") === "1";
+          }) : null;
         for (let i = 0; i < DONE; i++) feed.q.push(req(2 + i, false));
         for (let i = 0; i < LIVE; i++) feed.q.push(req(2 + DONE + i, true));
         for (let i = 0; i < 100 && feed.q.length; i++) await page.waitForTimeout(50);
         assert.equal(feed.q.length, 0, "the page must have taken every update");
+        if (consumed) await consumed;
         await page.waitForTimeout(1500);
 
-        // back in sight: the birds in the sky, looked at every 40ms
+        // Count resumed frame callbacks. A timer can see queued DOM before
+        // the application's first resumed frame has cleared it.
         await page.evaluate(() => {
-          window.__most = 0;
-          window.__look = setInterval(() => { window.__most = Math.max(window.__most, document.querySelectorAll(".rt-sky .rt-flier").length); }, 40);
+          window.__most = 0; window.__samples = 0; window.__sampling = true;
+          const look = () => {
+            if (!window.__sampling) return;
+            window.__samples++;
+            window.__most = Math.max(window.__most, document.querySelectorAll(".rt-sky .rt-flier").length);
+            requestAnimationFrame(look);
+          };
+          requestAnimationFrame(look);
         });
         await how.show(page);
         await page.waitForTimeout(3000);
-        const most = await page.evaluate(() => { clearInterval(window.__look); return window.__most; });
+        const { most, samples } = await page.evaluate(() => { window.__sampling = false; return { most: window.__most, samples: window.__samples }; });
+        assert(samples > 0, "the resumed page must have delivered animation frames");
         // at most the ones under way: a carrier each, and one let go
         assert(most <= 2 * LIVE, `${most} magpies flew at once after coming back (at most ${2 * LIVE})`);
         assert(most >= 1, "the requests still under way must fly");

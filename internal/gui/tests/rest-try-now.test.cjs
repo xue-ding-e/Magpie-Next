@@ -88,9 +88,37 @@ const sideways = (page) => page.evaluate(() => document.documentElement.scrollWi
 // a reader wheels down to it, and it is the button under the pointer
 async function reach(page, go) {
   await page.mouse.move(200, 300);
-  for (let i = 0; i < 30 && !(await go.evaluate((e) => e.getBoundingClientRect().bottom < innerHeight - 80)); i++) await page.mouse.wheel(0, 200);
+  for (let i = 0; i < 30; i++) {
+    // Routing scrolls its view; a provider's keys scroll the framed editor.
+    // Resolve it afresh with the button if an asynchronous redraw replaced it.
+    const scroller = await go.evaluateHandle((e) => e.closest(".view, .ebody"));
+    try {
+      if (!(await scroller.evaluate((v) => v?.isConnected))) continue;
+      const before = await go.evaluate((e) => {
+        const r = e.getBoundingClientRect();
+        const v = e.closest(".view, .ebody");
+        return {
+          ready: r.top >= 0 && r.bottom < innerHeight - 80,
+          scrollTop: v?.scrollTop || 0,
+          max: v ? Math.max(0, v.scrollHeight - v.clientHeight) : 0,
+        };
+      });
+      if (before.ready || before.scrollTop >= before.max) break;
+      await page.mouse.wheel(0, 200);
+      // mouse.wheel can return before the browser commits the scroll. Wait for
+      // the page's real scroll state, so a loaded runner cannot batch the next
+      // wheel into the same layout frame and leave the button out of reach.
+      await page.waitForFunction(({ scroller, scrollTop, max }) => !scroller.isConnected || scroller.scrollTop !== scrollTop || scroller.scrollTop >= max,
+        { scroller, ...before });
+    } finally {
+      await scroller.dispose();
+    }
+  }
   await page.waitForTimeout(200);
-  assert(await go.evaluate((e) => { const r = e.getBoundingClientRect(); return e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }), "the button can't be reached");
+  assert(await go.evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= innerHeight && e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+  }), "the button can't be reached");
 }
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
