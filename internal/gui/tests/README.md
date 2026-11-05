@@ -16,6 +16,19 @@ Overview load. For finite animation assertions, `sidebar.test.cjs` observes the
 real nonzero native animation at creation and waits for its natural completion;
 a later `getAnimations()` read can arrive after the animation has finished.
 
+Account editors also redraw when their allowance reply arrives. The revoked,
+plugin signed-out and Copilot signed-out fixtures read the current row, reason
+and actions together in one synchronous browser callback after scrolling.
+Separate `boundingBox()` calls can describe different DOM generations: in
+Playwright 1.61.1, a Locator first resolves a handle, and a reply can replace that
+node before the native box request returns. The controlled late-allowance reply
+reproduces a native null box without hiding the current reason. Keep visible,
+finite positive geometry, overlap, row containment and document-width checks;
+do not retry until a bad layout passes. Real overlap, row overflow and hidden
+reason controls still fail. Row containment does not prove every clipping
+ancestor is safe. Register each context's cleanup before assertions, and wait
+for returned sign-in content before judging the completed click's scroll state.
+
 The Sessions paging performance check brackets the real input event's capture
 and bubble phases with the page's `performance.now()`. Its 250ms budget measures
 the synchronous filtering/rendering handler; Node/CDP transport and focus time
