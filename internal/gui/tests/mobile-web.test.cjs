@@ -22,6 +22,7 @@ const base = execFileSync("git", ["rev-parse", "--verify", `${baseRef}^{commit}`
 }).trim();
 const playwright = require("playwright");
 const { chromium, webkit } = playwright;
+const { foreground: ownedForeground } = require("./fixtures/browser-activity.cjs");
 const { reach } = require("./reader.cjs");
 const { PNG } = require("playwright-core/lib/utilsBundle");
 const baseline = new Map();
@@ -144,12 +145,9 @@ async function open(browser, lang, width, { original = false, touch = true, open
 // exact native command used by this pinned SDK's page initialization. This
 // only configures our isolated headless page; clicks and their checks stay real.
 async function foreground(page) {
-  await page.bringToFront();
   if (process.platform === "win32" && page.context().browser().browserType().name() === "webkit") {
-    assert.equal(require("playwright/package.json").version, "1.61.1", "recheck WebKit's native activity contract when updating Playwright");
-    const wk = playwright._connection.toImpl(page).delegate;
-    await wk._pageProxySession.send("Emulation.setActiveAndFocused", { active: true });
-  }
+    await ownedForeground(page);
+  } else await page.bringToFront();
   await page.waitForFunction(() => document.visibilityState === "visible" && document.hasFocus(), null, { polling: 50 });
 }
 

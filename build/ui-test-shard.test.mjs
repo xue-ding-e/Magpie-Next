@@ -150,6 +150,25 @@ test("native child exit code is preserved instead of turning failure green", asy
   assert.equal(code, 7);
 });
 
+test("explicit preload reaches both real test children and preserves a deliberate failure", async (t) => {
+  const root = await fixture(t);
+  const setup = path.join(root, "fixture-setup.cjs"), receipt = path.join(root, "setup-receipts.jsonl");
+  await fs.writeFile(setup, `globalThis.fixtureReady = true; require('node:fs').appendFileSync(process.env.FIXTURE_SETUP_RECEIPT,
+    JSON.stringify({ pid:process.pid, entry:process.argv[1], context:process.env.NODE_TEST_CONTEXT })+'\\n');\n`);
+  for (const name of ["a", "b"]) await fs.writeFile(path.join(root, `internal/gui/tests/${name}.test.cjs`),
+    `const assert=require('node:assert/strict'); require('node:test')('${name}',()=>{ assert.equal(globalThis.fixtureReady,true); ${name === "b" ? "assert.fail('preloaded failure sentinel');" : ""} });\n`);
+  const env = { ...process.env, FIXTURE_SETUP_RECEIPT: receipt };
+  delete env.NODE_TEST_CONTEXT; delete env.NODE_OPTIONS; delete env.BROWSER;
+  const selected = ["internal/gui/tests/a.test.cjs", "internal/gui/tests/b.test.cjs"];
+  const result = await executeTests({ repo: root, selected, output: path.join(root, "results"), env, browserSetup: setup });
+  assert.equal(result.exitCode, 1);
+  assert.deepEqual(result.results.map((r) => r.success), [true, false]);
+  assert.match(await fs.readFile(path.join(root, "results/spec.log"), "utf8"), /preloaded failure sentinel/);
+  const entries = (await fs.readFile(receipt, "utf8")).trim().split("\n").map(JSON.parse).filter((r) => r.context);
+  assert.deepEqual(entries.map((r) => path.basename(r.entry)).sort(), ["a.test.cjs", "b.test.cjs"]);
+  assert.equal(new Set(entries.map((r) => r.pid)).size, 2, "both isolated test-file processes received the preload");
+});
+
 test("baseline policy pins main and uses its first parent when main is the candidate", () => {
   assert.deepEqual(chooseBaseline(source, pinned), { sourceSHA: source, mainSHA: pinned,
     baselineSHA: pinned, policy: "origin/main" });

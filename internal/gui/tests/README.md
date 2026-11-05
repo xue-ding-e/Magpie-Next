@@ -2217,6 +2217,15 @@ On Windows WebKit, the fixture reasserts the native active/focused page state
 before interaction. Playwright 1.61.1 initializes that state through
 `playwright._connection.toImpl(page).delegate._pageProxySession.send("Emulation.setActiveAndFocused", { active: true })`;
 this private adapter is pinned and must be checked again on an SDK update.
+The UI shard runner preloads the same bounded activity helper for every Windows
+WebKit test file. It owns only pages from a local headless `webkit.launch()`
+instance, including later frames and popups; Chromium, headed, persistent and
+connected browser paths are excluded. Before an original unforced `click`, it
+reasserts the native state within a bounded setup budget and preserves the
+remaining click timeout, options and actionability checks. Hidden, disabled and
+covered targets still fail normally. A failed setup or click records a bounded
+visibility/focus/paint probe and rethrows the primary error. The helper is a
+test-runner fixture, not an application behavior change.
 In a controlled native-inactive page, the same element retained its geometry
 while visibility became hidden and animation frames stopped; the original
 click stalled at its 5s stability check, and `bringToFront()` alone did not

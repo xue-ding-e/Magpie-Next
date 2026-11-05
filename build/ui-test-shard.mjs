@@ -169,7 +169,7 @@ export async function fileResults(repo, selected, eventFile) {
   return selected.map((file) => found.get(file));
 }
 
-export async function executeTests({ repo, selected, output, home = path.join(output, "home"), env, baselineSHA }) {
+export async function executeTests({ repo, selected, output, home = path.join(output, "home"), env, baselineSHA, browserSetup }) {
   await fs.mkdir(output, { recursive: true });
   const childEnv = { ...(env || childEnvironment(repo, home)), ...(baselineSHA ? { BASE_REF: baselineSHA } : {}) };
   if (!env) {
@@ -183,7 +183,8 @@ export async function executeTests({ repo, selected, output, home = path.join(ou
   const log = createWriteStream(path.join(output, "process.log"));
   let exitCode;
   try {
-    exitCode = await runCommand(process.execPath, ["--test", "--test-concurrency=2",
+    const setup = browserSetup ? ["--require", browserSetup] : [];
+    exitCode = await runCommand(process.execPath, [...setup, "--test", "--test-concurrency=2",
       "--test-reporter=spec", `--test-reporter-destination=${spec}`,
       `--test-reporter=${pathToFileURL(SELF).href}`, `--test-reporter-destination=${events}`,
       ...selected.map((name) => path.join(repo, name))], { cwd: repo, env: childEnv, log });
@@ -302,7 +303,8 @@ async function main(argv) {
     await json(path.join(o.output, "inputs-before.json"), before);
     console.log(`UI shard ${o.index}/${o.count}: ${report.selected.length}/${report.inventory.length} files; both default engines; concurrency 2`);
     const execution = await executeTests({ repo: o.repo, selected: report.selected, output: o.output,
-      home: path.join(path.dirname(o.output), `ui-home-${o.index}`), baselineSHA: report.baseline.baselineSHA });
+      home: path.join(path.dirname(o.output), `ui-home-${o.index}`), baselineSHA: report.baseline.baselineSHA,
+      browserSetup: path.join(o.repo, "internal/gui/tests/fixtures/browser-activity.cjs") });
     Object.assign(report, execution);
     const after = await inputSnapshot(o.repo, await baselineSnapshot(o.repo, o.sourceSHA, o.mainSHA, o.baselineSHA));
     await json(path.join(o.output, "inputs-after.json"), after);
