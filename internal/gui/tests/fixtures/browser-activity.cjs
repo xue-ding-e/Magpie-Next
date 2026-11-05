@@ -36,12 +36,23 @@ async function foreground(page, budget = setupMax) {
     const native = playwright._connection.toImpl(page).delegate;
     await native._pageProxySession.send("Emulation.setActiveAndFocused", { active: true });
     check();
-    const state = await page.evaluate(() => ({ visibility: document.visibilityState, focus: document.hasFocus() }));
-    check();
-    assert.equal(state.visibility, "visible", "fixture page must be visible before its real click");
-    assert.equal(state.focus, true, "fixture page must be focused before its real click");
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(true))));
-    check();
+    for (;;) {
+      check();
+      const state = await page.evaluate(() => ({ visibility: document.visibilityState, focus: document.hasFocus() }));
+      check();
+      assert.equal(state.visibility, "visible", "fixture page must be visible before its real click");
+      assert.equal(state.focus, true, "fixture page must be focused before its real click");
+      let frame;
+      try {
+        frame = await Promise.race([
+          page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(true)))),
+          new Promise((resolve) => setTimeout(() => resolve(false), 250)),
+        ]);
+      } catch { frame = false; }
+      if (frame) break;
+      check();
+      await native._pageProxySession.send("Emulation.setActiveAndFocused", { active: true });
+    }
   };
   try {
     await Promise.race([work(), new Promise((_, reject) => { timer = setTimeout(() => { cancelled = true; reject(expired()); }, Math.max(1, deadline - performance.now())); })]);
