@@ -57,6 +57,9 @@ record. `searcher-pick.test.cjs` gives the post-reload settings row a finite set
 of one-second `scrollIntoViewIfNeeded` attempts; each locator action re-resolves
 the current row and the last error is preserved. These waits cover redraw timing
 and keep the original selection, POST, no-scroll and layout assertions.
+`market-have.test.cjs` matches the market response body to the expected `have`
+state for each add/remove operation; a response with the right URL can still be
+an older market snapshot.
 
 The Sessions paging performance check brackets the real input event's capture
 and bubble phases with the page's `performance.now()`. Its 250ms budget measures

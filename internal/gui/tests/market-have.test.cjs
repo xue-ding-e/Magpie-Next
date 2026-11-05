@@ -105,14 +105,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // the mark. A 2s bound on the whole was a busy machine's to miss
       // (#1631); what this checks is that the mark comes with no focus, not
       // how fast.
-      const answered = (kind) => page.waitForResponse((r) => new URL(r.url()).pathname === "/api/library/market/" + kind, { timeout: 10000 });
+      const answered = (kind, expected) => page.waitForResponse(async (r) => {
+        if (new URL(r.url()).pathname !== "/api/library/market/" + kind) return false;
+        const body = await r.json();
+        return Object.entries(expected).every(([name, have]) => body.items?.some((x) => x.name === name && x.have === have));
+      }, { timeout: 10000 });
 
       await t.test("a server removed is no longer marked added", async () => {
         const top = await view.evaluate((e) => e.scrollTop);
         const before = calls.filter((c) => c === "market/servers").length;
         await view.locator(".lib-row", { hasText: "playwright" }).click();
         await page.getByRole("button", { name: words[lang].remove, exact: true }).click();
-        const market = answered("servers");
+        const market = answered("servers", { playwright: "" });
         await page.locator("dialog.action-confirm[open] button").last().click();
         await market;
         await card("mcp", "playwright").locator(".mk-add").waitFor();
@@ -128,7 +132,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const ed = page.locator(".lib-editor");
         await ed.locator('input[placeholder="e.g. github"], input[placeholder="例如 github"]').fill("fetch");
         await ed.locator('input[placeholder="npx -y @modelcontextprotocol/server-github"]').fill("uvx mcp-server-fetch");
-        const market = answered("servers");
+        const market = answered("servers", { fetch: "fetch" });
         await ed.getByRole("button", { name: words[lang].add, exact: true }).click();
         await market;
         await card("mcp", "fetch").locator(".mk-have").waitFor();
@@ -138,7 +142,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await view.page().locator(":is(.lib-tabs .opt, .nav-s):visible").nth(2).click();
         await card("skills", "acme/skills/pdf").locator(".mk-have").waitFor();
         await view.locator(".lib-row", { hasText: "pdf" }).locator(".lib-icon.danger").click();
-        const market = answered("skills");
+        const market = answered("skills", { pdf: "" });
         await page.locator(".lib-editor").getByRole("button", { name: words[lang].removeSkill, exact: true }).click();
         await market;
         await card("skills", "acme/skills/pdf").locator(".mk-add").waitFor();
