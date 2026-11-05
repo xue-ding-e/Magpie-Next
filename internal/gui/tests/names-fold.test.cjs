@@ -87,7 +87,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.ok(Math.abs(hTop - nTop) <= 2, `the head scrolled away: ${hTop} vs ${nTop}`);
       if (w.own) {
         // picking Provider in model names leaves it open, and foldable
+        const saved = page.waitForResponse((r) => {
+          const u = new URL(r.url());
+          return u.pathname === "/api/settings/plain-names" && r.request().method() === "POST";
+        });
         await open.locator(".msuffix .opt", { hasText: w.own }).click();
+        await saved;
         await page.locator(".mnames:not([hidden]) .msuffix .opt.on", { hasText: w.own }).waitFor();
         assert.deepEqual(posts, [{ mode: "own" }]);
       }

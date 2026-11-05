@@ -131,6 +131,21 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           // back (no unasked scroll), and the footer took WebKit's click
           const showAll = async (b) => {
             await reach(page, b);
+            // reach leaves the control clear for a reader, but a redraw can
+            // still replace its hit target before WebKit dispatches the
+            // click. Check the actual point immediately before pressing it;
+            // an invalid/stale point must not be allowed to reset the field.
+            const hit = await b.evaluate((e) => {
+              if (!e.isConnected) return false;
+              const r = e.getBoundingClientRect();
+              const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+              return at === e || e.contains(at);
+            });
+            assert.equal(hit, true, "Show all was not the actual hit target");
+            const before = await field.inputValue();
+            assert.notEqual(before, "", "Show all must start with a filtered field");
+            await page.mouse.click(1, 1);
+            assert.equal(await field.inputValue(), before, "an invalid click changed the stale field");
             await b.click();
             // Wait for the field's clear before reading the resulting grid
             // and both picks; a click's return alone is not that state.
