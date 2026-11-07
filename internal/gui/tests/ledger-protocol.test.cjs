@@ -83,7 +83,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         }
         await browser.close();
       });
-      await page.goto("http://magpie.test/?view=usage");
+      // The page loads the real asset set before its API fixture settles;
+      // under the complete Windows matrix that can exceed the action budget
+      // without making the page unusable. Keep the 5s action checks below,
+      // but give navigation its own bounded loading budget.
+      await page.goto("http://magpie.test/?view=usage", { timeout: 15000 });
       await page.locator(":is(#usageTab .opt, .nav-s):visible").nth(1).click();
       const rows = page.locator(".led tbody tr.led-row");
       await rows.nth(ROWS.length - 1).waitFor({ timeout: 15000 });
