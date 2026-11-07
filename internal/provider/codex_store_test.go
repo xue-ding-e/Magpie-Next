@@ -583,7 +583,9 @@ func TestCodexSignInKnown(t *testing.T) {
 	check("logged out", false, true)
 
 	codexKeychain, codexKeychainHere = &fakeKeychain{}, true
-	os.WriteFile(filepath.Join(dir, "config.toml"), []byte("cli_auth_credentials_store = \"keyring\"\n"), 0o600)
+	// Keep this ordinary keychain case explicit on Windows, whose production
+	// encrypted-storage default is covered by TestCodexStoreNotReadIsLeftAlone.
+	os.WriteFile(filepath.Join(dir, "config.toml"), []byte("cli_auth_credentials_store = \"keyring\"\n[features]\nsecret_auth_storage = false\n"), 0o600)
 	resetCodexKeychain()
 	check("keyring, no item", false, true)
 	codexKeychain = &fakeKeychain{findErr: errKeychainRefused, items: map[string][]byte{codexKeychainAccount(dir): []byte(`{}`)}}

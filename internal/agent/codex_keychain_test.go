@@ -13,7 +13,9 @@ import (
 // all the same, from the item (a fake: no test reads the real keychain);
 // an API key kept there is told as a key.
 func TestCodexSignInInKeychain(t *testing.T) {
-	home, _ := codexHome(t, "", "cli_auth_credentials_store = \"keyring\"\n")
+	// This is the ordinary macOS-style keychain fixture on every OS;
+	// Windows' encrypted-storage default is tested separately.
+	home, _ := codexHome(t, "", "cli_auth_credentials_store = \"keyring\"\n[features]\nsecret_auth_storage = false\n")
 	dir := filepath.Join(home, ".codex")
 	item := ""
 	defer provider.CodexKeychainForTest(func(service, account string) ([]byte, error) {
