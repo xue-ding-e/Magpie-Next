@@ -80,6 +80,23 @@ const posted = async (lifted) => {
   for (let i = 0; i < 60 && !lifted.length; i++) await new Promise((r) => setTimeout(r, 50));
   return lifted;
 };
+// The routing rows can be redrawn after reach's final sample. Re-read the
+// current button and retry the real reader scroll while a replacement is
+// between the pointer and the control; clicking a stale point must not lose
+// the unrest request.
+const reachCurrent = async (page, button) => {
+  let hit = false;
+  for (let attempt = 0; attempt < 4 && !hit; attempt++) {
+    await reach(page, button);
+    hit = await button.evaluate((e) => {
+      if (!e.isConnected) return false;
+      const r = e.getBoundingClientRect();
+      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return at === e || e.contains(at);
+    });
+  }
+  assert.equal(hit, true, "Try now was not the actual hit target");
+};
 const sideways = (page) => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -142,7 +159,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // Try now lifts the model's own rest
         const row = page.locator(".rt-act", { hasText: "me@x.test" });
         const btn = row.locator(".fix button", { hasText: go[lang] });
-        await reach(page, btn);
+        await reachCurrent(page, btn);
         const request = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/gateway/unrest");
         await btn.click();
         assert.deepEqual((await request).postDataJSON(), { key: opusRest.key });

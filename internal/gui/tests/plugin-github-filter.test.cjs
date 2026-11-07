@@ -130,17 +130,20 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           // scroll by code, as a click's own scrolling into view, is put
           // back (no unasked scroll), and the footer took WebKit's click
           const showAll = async (b) => {
-            await reach(page, b);
             // reach leaves the control clear for a reader, but a redraw can
             // still replace its hit target before WebKit dispatches the
             // click. Check the actual point immediately before pressing it;
             // an invalid/stale point must not be allowed to reset the field.
-            const hit = await b.evaluate((e) => {
-              if (!e.isConnected) return false;
-              const r = e.getBoundingClientRect();
-              const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-              return at === e || e.contains(at);
-            });
+            let hit = false;
+            for (let attempt = 0; attempt < 4 && !hit; attempt++) {
+              await reach(page, b);
+              hit = await b.evaluate((e) => {
+                if (!e.isConnected) return false;
+                const r = e.getBoundingClientRect();
+                const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                return at === e || e.contains(at);
+              });
+            }
             assert.equal(hit, true, "Show all was not the actual hit target");
             const before = await field.inputValue();
             assert.notEqual(before, "", "Show all must start with a filtered field");
