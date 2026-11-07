@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -26,6 +27,7 @@ func TestUltraOnModelsThatOfferIt(t *testing.T) {
 	for id, want := range map[string]bool{
 		"gpt-6.1-sol": true, "openai/gpt-6.1-sol": true, "GPT-6.1-Sol": true, "gpt-6.1-sol-2026-09-14": true,
 		"gpt-6-astra": true, "gpt-6-sol": true, "gpt-5.6-sol": true, "gpt-5.6-terra": true,
+		"gpt-6.1-terra": true, "relay/gpt-6.1-terra": true,
 		"gpt-6-luna": false, "gpt-5.6-luna": false, "gpt-6.1-sol-mini": false, "claude-opus-5-5": false, "": false,
 	} {
 		if OffersUltra(id) != want {
@@ -39,6 +41,10 @@ func TestUltraOnModelsThatOfferIt(t *testing.T) {
 	sol := entryFor(copilot, catalog.Model{ID: "gpt-6.1-sol", Efforts: upToMax}, s)
 	if !slices.Equal(sol.Efforts, append(slices.Clone(upToMax), "ultra")) || !sol.AgentsV2 {
 		t.Fatalf("copilot/gpt-6.1-sol: %v v2=%v", sol.Efforts, sol.AgentsV2)
+	}
+	terra := entryFor(copilot, catalog.Model{ID: "gpt-6.1-terra", Efforts: upToMax}, s)
+	if !slices.Equal(terra.Efforts, append(slices.Clone(upToMax), "ultra")) || !terra.AgentsV2 {
+		t.Fatalf("copilot/gpt-6.1-terra: %v v2=%v", terra.Efforts, terra.AgentsV2)
 	}
 	luna := entryFor(copilot, catalog.Model{ID: "gpt-6-luna", Efforts: upToMax}, s)
 	if !slices.Equal(luna.Efforts, upToMax) || luna.AgentsV2 {
@@ -69,5 +75,29 @@ func TestUltraOnModelsThatOfferIt(t *testing.T) {
 	}
 	if g := group(sol, own); !slices.Contains(g.Efforts, "ultra") || g.AgentsV2 {
 		t.Fatalf("group with a ChatGPT account's: %v v2=%v", g.Efforts, g.AgentsV2)
+	}
+}
+
+func TestDatedCodexRelayBorrowsKnownEfforts(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	if err := os.MkdirAll(filepath.Dir(catalog.CachePath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(catalog.CachePath(), []byte(`{
+  "openai": {"id": "openai", "models": {
+    "gpt-6.1-sol": {"id": "gpt-6.1-sol", "reasoning_options": [{"type": "effort", "values": ["low", "medium", "high", "xhigh", "max"]}]}
+  }}
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	catalog.Reset()
+	t.Cleanup(catalog.Reset)
+	want := []string{"low", "medium", "high", "xhigh", "max"}
+	if got := borrowedEfforts("gpt-6.1-sol-2026-09-29"); !slices.Equal(got, want) {
+		t.Fatalf("dated relay model efforts = %v, want %v", got, want)
 	}
 }

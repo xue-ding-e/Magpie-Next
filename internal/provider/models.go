@@ -1740,6 +1740,11 @@ func borrowedEfforts(id string) []string {
 	// one newer than this machine's catalog: its maker's line's levels
 	// (gpt-6.1-sol, NextCommit on Discord)
 	e, _ := catalog.KinEfforts(makerCatalogs(), id)
+	// A dated snapshot of a known model, as OpenAI's own list names it and a
+	// relay passes it on (gpt-6.1-sol-2026-09-29): use the base model's levels.
+	if base := datedSuffix.ReplaceAllString(id, ""); base != id && base != "" {
+		return borrowedEfforts(base)
+	}
 	return e
 }
 
