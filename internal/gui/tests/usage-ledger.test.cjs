@@ -132,6 +132,49 @@ async function wheelTo(page, loc) {
   assert.fail("the row never came up");
 }
 
+// A viewport resize can leave the font and the ResizeObserver's next fit in
+// different frames. Wait for the browser's font promise, then two unchanged
+// geometry frames before judging the page's width.
+async function ledgerLayoutSettled(page) {
+  await page.evaluate(() => Promise.race([
+    document.fonts.ready,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("ledger fonts did not become ready")), 5000)),
+  ]));
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    let previous = "", stable = 0, frame = 0, done = false;
+    const finish = (error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      cancelAnimationFrame(frame);
+      error ? reject(error) : resolve();
+    };
+    const timer = setTimeout(() => finish(new Error("ledger layout did not settle: " + previous)), 5000);
+    const read = () => {
+      try {
+        const view = document.querySelector("#view-usage");
+        const split = document.querySelector("#ledSplit");
+        const bar = split?.parentElement?.parentElement;
+        const nodes = [view, bar, split, ...split?.children || [], document.querySelector("#usageCost"), document.querySelector("#ledWrap")];
+        if (nodes.some((e) => !e)) throw new Error("ledger layout nodes are not ready");
+        const signature = JSON.stringify([
+          document.documentElement.clientWidth,
+          document.documentElement.scrollWidth,
+          ...nodes.map((e) => {
+            const r = e.getBoundingClientRect();
+            return [r.x, r.y, r.width, r.height, e.clientWidth, e.scrollWidth];
+          }),
+        ]);
+        stable = signature === previous ? stable + 1 : 0;
+        previous = signature;
+        if (stable >= 2) return finish();
+        frame = requestAnimationFrame(read);
+      } catch (error) { finish(error); }
+    };
+    frame = requestAnimationFrame(read);
+  }));
+}
+
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": the Usage page's Requests", async (t) => {
     assert(["chromium", "webkit"].includes(engine), "BROWSER must be chromium or webkit");
@@ -453,7 +496,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         if (shots) await page.screenshot({ path: path.join(shots, `${engine}-usage-ledger-${lang}-dark.png`) });
         // the window at its narrowest (MinWidth in app.go)
         await page.setViewportSize({ width: 560, height: 700 });
-        await page.waitForTimeout(200);
+        await ledgerLayoutSettled(page);
         // the table scrolls in its box, and its scrollbar in its own; the page never sideways
         const sideways = () => page.evaluate(() => {
           const v = document.querySelector("#view-usage"), w = document.querySelector("#ledWrap");

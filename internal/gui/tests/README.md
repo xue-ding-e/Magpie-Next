@@ -61,6 +61,12 @@ and keep the original selection, POST, no-scroll and layout assertions.
 state for each add/remove operation; a response with the right URL can still be
 an older market snapshot.
 
+`sessions-paging.test.cjs` lets the previous page's DOM reach its next frame
+before measuring the synchronous search handler, while keeping the 250ms budget.
+`update-wait.test.cjs` holds a polling response across the exact restart POST and
+releases it only after the page says Restarting, so an old refresh cannot redraw
+the row. Both preserve the original response/body and performance assertions.
+
 The Sessions paging performance check brackets the real input event's capture
 and bubble phases with the page's `performance.now()`. Its 250ms budget measures
 the synchronous filtering/rendering handler; Node/CDP transport and focus time

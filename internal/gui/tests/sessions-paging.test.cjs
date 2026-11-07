@@ -160,6 +160,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await rows.count(), 600, "the third page");
       assert.equal(await rows.first().getAttribute("data-key"), first, "the rows above stayed where they were");
       assert.match(await page.locator("#sessNote").innerText(), w.showing(600, N));
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
 
       // a keystroke in Search is a new list: it starts at the first page again
       // and, over 2600 sessions, does not take the time the whole list would.

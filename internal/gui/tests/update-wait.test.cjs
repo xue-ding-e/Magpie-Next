@@ -62,7 +62,24 @@ function server(lang, ctl) {
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: cur, fx: cur.fx });
     if (url.pathname === "/api/settings") return json(cur);
-    if (url.pathname === "/api/update") return json({ ...ctl.update });
+    if (url.pathname === "/api/update") {
+      if (ctl.restarted) return route.fulfill({ status: 204 });
+      const hold = ctl.updateHold;
+      if (hold) {
+        const read = Promise.withResolvers();
+        hold.reads.add(read);
+        hold.entered.resolve();
+        await read.promise;
+        try {
+          if (ctl.restarted || hold.released) return await route.fulfill({ status: 204 });
+          return await json({ ...ctl.update });
+        } finally {
+          hold.reads.delete(read);
+          if (hold.released && hold.reads.size === 0) hold.done.resolve();
+        }
+      }
+      return json({ ...ctl.update });
+    }
     if (url.pathname === "/api/update/install") {
       const body = req.postDataJSON() || {};
       ctl.installs.push(body);
@@ -94,6 +111,29 @@ const fresh = (over) => ({
 // the window asks first, showing what changed (#844)
 const confirmAsk = (page) => page.locator("#modal .update-ask button.primary").click();
 const scrolls = (page) => page.evaluate(() => [window.scrollY, document.scrollingElement.scrollTop, ...[...document.querySelectorAll(".view")].map((v) => v.scrollTop)].join(","));
+
+// The row polls while it waits. Hold the next poll so its old waiting reply
+// cannot redraw after the restart POST; cleanup releases and awaits it after
+// the exact restarting state has been checked.
+async function holdNextUpdate(page, ctl, t) {
+  const hold = { entered: Promise.withResolvers(), done: Promise.withResolvers(), reads: new Set(), released: false };
+  t.after(async () => {
+    hold.released = true;
+    if (ctl.updateHold === hold) ctl.updateHold = null;
+    for (const read of hold.reads) read.resolve();
+    if (hold.reads.size === 0) hold.done.resolve();
+    await hold.done.promise;
+  });
+  ctl.updateHold = hold;
+  await Promise.all([
+    page.waitForRequest((r) => {
+      const url = new URL(r.url());
+      return url.origin === "http://magpie.test" && url.pathname === "/api/update" && r.method() === "GET";
+    }),
+    hold.entered.promise,
+  ]);
+  return hold;
+}
 
 // A click can finish before its POST reaches the fixture. Follow that new
 // request, not an earlier install's late response; a wrong `when` still fails below.
@@ -133,7 +173,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
     for (const lang of ["en", "zh"]) {
       const w = words[lang];
-      await t.test(lang + ": Settings says what is in flight, waits, and can restart now or cancel", async () => {
+      await t.test(lang + ": Settings says what is in flight, waits, and can restart now or cancel", async (t) => {
         const ctl = fresh();
         const { page, errors } = await open(lang, ctl, "?view=settings&tab=about", 900);
         const row = page.locator("#about .row.pref", { has: page.locator(".name", { hasText: w.version }) }).first();
@@ -156,6 +196,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.waitForFunction((t) => document.querySelector("#about .row.pref .sub")?.textContent.trim() === t || [...document.querySelectorAll("#about .row.pref .sub")].some((s) => s.textContent.trim() === t), w.waitingLess);
         // no coloured stripe down its side
         for (const el of [row, sub]) assert.equal(await el.evaluate((e) => getComputedStyle(e).borderLeftStyle), "none");
+        await holdNextUpdate(page, ctl, t);
 
         await row.locator("button", { hasText: w.cancel }).click();
         await row.locator("button", { hasText: w.restart }).waitFor();
