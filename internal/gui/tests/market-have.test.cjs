@@ -130,8 +130,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // the library has none now: its empty state's button
         await view.getByRole("button", { name: words[lang].addServer, exact: true }).click();
         const ed = page.locator(".lib-editor");
-        await ed.locator('input[placeholder="e.g. github"], input[placeholder="例如 github"]').fill("fetch");
-        await ed.locator('input[placeholder="npx -y @modelcontextprotocol/server-github"]').fill("uvx mcp-server-fetch");
+        const name = ed.locator('input[placeholder="e.g. github"], input[placeholder="例如 github"]');
+        const command = ed.locator('input[placeholder="npx -y @modelcontextprotocol/server-github"]');
+        let stable = false;
+        for (let attempt = 0; attempt < 3 && !stable; attempt++) {
+          await name.fill("fetch");
+          await command.fill("uvx mcp-server-fetch");
+          stable = await name.inputValue() === "fetch" && await command.inputValue() === "uvx mcp-server-fetch";
+        }
+        assert.equal(await name.inputValue(), "fetch");
+        assert.equal(await command.inputValue(), "uvx mcp-server-fetch");
         const market = answered("servers", { fetch: "fetch" });
         await ed.getByRole("button", { name: words[lang].add, exact: true }).click();
         await market;
