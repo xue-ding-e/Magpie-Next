@@ -7,7 +7,11 @@ const playwright = require("playwright");
 const owned = new WeakSet();
 let installed = false;
 
-const setupMax = 1500;
+// A busy full shard can keep a visible, focused WebKit page from delivering
+// its first animation frame for longer than the ordinary local case. This
+// remains inside the click deadline; any time spent here is subtracted before
+// Playwright's original actionability check runs.
+const setupMax = 3000;
 const expired = () => new playwright.errors.TimeoutError("Owned WebKit foreground setup exceeded its bounded click budget");
 
 async function failureState(page) {
