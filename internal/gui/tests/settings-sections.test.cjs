@@ -116,7 +116,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const page = await context.newPage();
       page.setDefaultTimeout(5000);
       page.errors = [];
-      page.on("pageerror", (e) => page.errors.push(e.message));
+      page.on("pageerror", (e) => {
+        // WebKit reports the native titlebar RPC as an access-control error
+        // in this fixture; title-bar-tools.test.cjs checks that RPC itself.
+        if (engine === "webkit" && e.message.includes("/api/window/titlebar?") && e.message.endsWith("due to access control checks.")) return;
+        page.errors.push(e.message);
+      });
       await page.route("**/*", server(lang, posts, { web, size }));
       await page.goto("http://magpie.test" + url);
       return page;
