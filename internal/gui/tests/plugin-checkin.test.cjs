@@ -213,9 +213,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.mouse.wheel(0, 200);
         await page.waitForTimeout(100);
       }
-      const saved = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/settings/plugin-checkin");
-      await on.click();
-      await saved;
+      const saved = page.waitForResponse((r) =>
+        new URL(r.url()).pathname === "/api/settings/plugin-checkin" &&
+        r.request().method() === "POST" && r.status() === 200);
+      await Promise.all([saved, on.click()]);
       assert.deepEqual(asked, [["set", { provider: "fakeco", on: true }]]);
       assert.equal(await page.locator("select").count(), 0);
       assert.deepEqual(errors, []);
