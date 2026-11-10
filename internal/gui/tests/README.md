@@ -987,6 +987,17 @@ that version, through a reload, until a newer one is out; a right-click does
 the same. Settings → Update button says which version it is hidden for, with
 Show again, and turns it off for good; the version row still offers the
 restart. No click moves the page. Panel and window, English and Chinese.
+The forced narrow-header fixture waits for fonts, disconnects `topFit`, and
+cancels its already queued `topFitFrame` before setting `tight`. Disconnecting
+the observer alone does not cancel its animation-frame callback. A controlled
+pending frame reproduced the old visible-label failure; a real visible label
+and an overlapping hide button still fail the original layout assertions.
+
+`plugin-checkin.test.cjs` waits for the successful response of the exact new
+settings POST before inspecting the fixture's recorded payload. A request
+event alone precedes its asynchronous route handler. Delaying that handler
+reproduces the old empty-record failure; HTTP 500 and a wrong payload still
+fail. This response barrier proves fixture recording, not application redraw.
 
 `update-download-percent.test.cjs` checks the Update pill while a failed
 update downloads again (inaction on Discord): with the size known and

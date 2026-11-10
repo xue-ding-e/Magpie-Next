@@ -213,9 +213,19 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.mouse.wheel(0, 200);
         await page.waitForTimeout(100);
       }
-      const saved = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/settings/plugin-checkin");
-      await on.click();
-      await saved;
+      // A request event precedes the asynchronous fixture handler. Wait for
+      // this POST's response before inspecting what the handler recorded.
+      let request;
+      const [, response] = await Promise.all([
+        page.waitForRequest((r) => {
+          if (r.url() !== "http://magpie.test/api/settings/plugin-checkin" || r.method() !== "POST") return false;
+          request = r;
+          return true;
+        }),
+        page.waitForResponse((r) => r.request() === request),
+        on.click(),
+      ]);
+      assert.equal(response.status(), 200, "the settings request succeeded");
       assert.deepEqual(asked, [["set", { provider: "fakeco", on: true }]]);
       assert.equal(await page.locator("select").count(), 0);
       assert.deepEqual(errors, []);
