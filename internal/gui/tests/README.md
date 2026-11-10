@@ -2285,6 +2285,13 @@ remaining click timeout, options and actionability checks. Hidden, disabled and
 covered targets still fail normally. A failed setup or click records a bounded
 visibility/focus/paint probe and rethrows the primary error. The helper is a
 test-runner fixture, not an application behavior change.
+While that same click is pending, a missed animation frame reasserts native
+activity again, within the original deadline. The observer stops when the
+click settles, the page closes, or its budget expires. A controlled loss after
+foreground setup reproduces the old stability timeout; the new helper delivers
+one trusted click, with no retry of the action. A page kept inactive still times
+out without input. The remote failure's final probe showed a visible, focused
+page without a frame; the controlled inactive state is not its captured trace.
 In a controlled native-inactive page, the same element retained its geometry
 while visibility became hidden and animation frames stopped; the original
 click stalled at its 5s stability check, and `bringToFront()` alone did not

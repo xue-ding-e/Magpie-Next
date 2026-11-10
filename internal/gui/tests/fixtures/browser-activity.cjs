@@ -63,6 +63,39 @@ async function foreground(page, budget = setupMax) {
   } finally { cancelled = true; clearTimeout(timer); }
 }
 
+// A page can lose its frames after foreground() and before Playwright's
+// stability check finishes. Only watch a pending click, and reassert activity
+// when the real page misses a frame. The original click stays in flight: no
+// second click, forced input, or replacement of Playwright's stability check.
+function keepFramesDuringClick(page, deadline) {
+  let ended = false, sampling = false;
+  const active = () => !ended && owned.has(page) && !page.isClosed() && performance.now() < deadline;
+  const stop = () => { ended = true; clearInterval(timer); };
+  const timer = setInterval(async () => {
+    if (!active()) { stop(); return; }
+    if (sampling) return;
+    sampling = true;
+    try {
+      const painted = await page.evaluate(() => new Promise((resolve) => {
+        const frame = requestAnimationFrame(() => finish(true));
+        const timeout = setTimeout(() => finish(false), 125);
+        function finish(painted) {
+          cancelAnimationFrame(frame);
+          clearTimeout(timeout);
+          resolve(painted);
+        }
+      }));
+      if (!painted && active()) {
+        const native = playwright._connection.toImpl(page).delegate;
+        await native._pageProxySession.send("Emulation.setActiveAndFocused", { active: true });
+      }
+    } catch { /* A navigation or close can discard the sample; the real click owns its result. */ }
+    finally { sampling = false; }
+  }, 250);
+  timer.unref();
+  return stop;
+}
+
 function ownPage(page) {
   if (owned.has(page)) return;
   owned.add(page);
@@ -85,7 +118,9 @@ function ownPage(page) {
         }
         // Keep real actionability and all other options. Setup consumes the
         // existing click deadline, and a rejected setup never issues a click.
-        return await click.apply(this, args);
+        const stop = keepFramesDuringClick(page, timeout ? started + timeout : performance.now() + setupMax);
+        try { return await click.apply(this, args); }
+        finally { stop(); }
       } catch (error) {
         error.fixtureActivity = await failureState(page);
         console.error("OWNED_WEBKIT_ACTIVITY " + JSON.stringify(error.fixtureActivity));
