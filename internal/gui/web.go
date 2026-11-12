@@ -422,7 +422,7 @@ func webOwnPage(next http.Handler) http.Handler {
 	})
 }
 
-// webCompressed gzips what `magpie web` sends a browser that takes it: the
+// webCompressed compresses what `magpie web` sends a browser that takes it: the
 // page's scripts, styles and SVG icons, and the API's JSON. They went out
 // as they are, about 4 MB for a first load before any data, and the
 // routing trace's JSON grows with every account a request could go to; a
@@ -433,10 +433,11 @@ func webOwnPage(next http.Handler) http.Handler {
 // The app's own window gets the page from inside the process, with no
 // network between, so only `magpie web` compresses.
 //
-// A gzipped file's ETag says so ("…-gzip"), as a validator of other bytes;
-// asked for again with it, the file is still a 304. A few bytes of padding
-// keyed to the content keep a response's compressed size from telling
-// exactly what it holds (BREACH): the page carries keys.
+// A compressed file's ETag says which coding ("…-gzip" or "…-zstd"), as a
+// validator of other bytes; asked for again with it, the file is still a
+// 304. A few bytes of padding keyed to the content keep a response's
+// compressed size from telling exactly what it holds (BREACH): the page
+// carries keys.
 func webCompressed(next http.Handler) http.Handler {
 	wrap, err := gzhttp.NewWrapper(
 		gzhttp.ContentTypeFilter(compressible),
@@ -448,15 +449,132 @@ func webCompressed(next http.Handler) http.Handler {
 	}
 	gz := wrap(next)
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		if tag := r.Header.Get("If-None-Match"); strings.Contains(tag, gzipETag+`"`) {
-			r.Header.Set("If-None-Match", strings.ReplaceAll(tag, gzipETag+`"`, `"`))
+		tags := strings.Join(r.Header.Values("If-None-Match"), ",")
+		if tags == "" || r.Method != http.MethodGet && r.Method != http.MethodHead {
+			gz.ServeHTTP(rw, r)
+			return
 		}
-		gz.ServeHTTP(rw, r)
+		// gzhttp chooses the coding by quality, then the response's type,
+		// size and any existing coding decide whether it compresses at all.
+		// Compare the final ETag, not a stripped source tag which could
+		// validate bytes of another representation before that decision.
+		r = r.Clone(r.Context())
+		r.Header.Del("If-None-Match")
+		r.Header.Del("If-Modified-Since") // If-None-Match takes precedence
+		var validated = webCompressionValidator{ResponseWriter: rw, tags: tags}
+		var out http.ResponseWriter = &validated
+		if hijacker, ok := rw.(http.Hijacker); ok {
+			var hijacking = struct {
+				*webCompressionValidator
+				http.Hijacker
+			}{&validated, hijacker}
+			out = hijacking
+		}
+		gz.ServeHTTP(out, r)
+		if !validated.wroteHeader {
+			validated.WriteHeader(http.StatusOK)
+		}
 	})
 }
 
-// gzipETag ends the ETag of a gzipped response.
+// gzipETag ends a gzip response's ETag; gzhttp substitutes zstd for that coding.
 const gzipETag = "-gzip"
+
+// webCompressionValidator sees the headers after gzhttp has chosen the actual
+// representation. A match keeps that ETag and Vary, and discards its body.
+type webCompressionValidator struct {
+	http.ResponseWriter
+	tags        string
+	wroteHeader bool
+	notModified bool
+}
+
+func (w *webCompressionValidator) WriteHeader(code int) {
+	if code >= 100 && code < 200 {
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	if (code == http.StatusOK || code == http.StatusPartialContent) && webCompressionTagMatches(w.tags, w.Header().Get("ETag")) {
+		w.notModified = true
+		code = http.StatusNotModified
+		for _, name := range []string{"Content-Type", "Content-Length", "Content-Encoding", "Content-Range"} {
+			w.Header().Del(name)
+		}
+		if w.Header().Get("ETag") != "" {
+			w.Header().Del("Last-Modified")
+		}
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *webCompressionValidator) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.notModified {
+		return len(b), nil
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *webCompressionValidator) Flush() {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *webCompressionValidator) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *webCompressionValidator) CloseNotify() <-chan bool {
+	if notifier, ok := w.ResponseWriter.(http.CloseNotifier); ok {
+		return notifier.CloseNotify()
+	}
+	return nil
+}
+
+// webCompressionTagMatches uses If-None-Match's weak comparison. Commas inside
+// a quoted tag are opaque bytes, not separators, and no coding suffix is removed.
+func webCompressionTagMatches(tags, tag string) bool {
+	want := strings.TrimPrefix(tag, "W/")
+	for tags = strings.TrimSpace(tags); tags != ""; tags = strings.TrimSpace(tags) {
+		if tags[0] == ',' {
+			tags = tags[1:]
+			continue
+		}
+		if tags == "*" {
+			return true
+		}
+		tags = strings.TrimPrefix(tags, "W/")
+		if len(tags) < 2 || tags[0] != '"' {
+			return false
+		}
+		end := strings.IndexByte(tags[1:], '"')
+		if end < 0 {
+			return false
+		}
+		candidate := tags[:end+2]
+		for i := 1; i < len(candidate)-1; i++ {
+			if candidate[i] < 0x21 || candidate[i] == 0x7f {
+				return false
+			}
+		}
+		tags = strings.TrimSpace(tags[end+2:])
+		if tags != "" && tags[0] != ',' {
+			return false
+		}
+		if tag != "" && candidate == want {
+			return true
+		}
+	}
+	return false
+}
 
 // compressible: text, scripts, JSON and SVG; not PNG, WebP, ICO or JPEG,
 // and not an event stream, which gzip holds back until a block fills (a
