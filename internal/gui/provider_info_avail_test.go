@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -46,33 +45,24 @@ func TestProviderInfoReadsTheListOnce(t *testing.T) {
 	// as a request to the page reads it (held)
 	defer provider.Hold()()
 	defer filememo.Hold()()
+	// Count real list builds. On Windows a row's per-model environment
+	// and file lookups can cost more than several complete lists, and
+	// TotalAlloc also includes work done by unrelated goroutines.
+	list := providerInfoList
+	builds := 0
+	providerInfoList = func(p provider.Provider) provider.Listing {
+		builds++
+		return list(p)
+	}
+	t.Cleanup(func() { providerInfoList = list })
 	got := providerInfo(p, nil)
+	if builds != 1 {
+		t.Fatalf("a provider row built its model list %d times, want once", builds)
+	}
 	if !slices.Equal(got.Chosen, p.Picks()) {
 		t.Fatalf("chosen %v, picks %v", got.Chosen, p.Picks())
 	}
 	if got.Exposed != len(p.Exposed()) || got.Models[0].ID != "gone" {
 		t.Fatalf("exposed %d of %d, first %+v", got.Exposed, len(p.Exposed()), got.Models[0])
-	}
-
-	if raceOn {
-		t.Skip("-race: sync.Pool drops what it holds, so allocations are not what a build allocates")
-	}
-	bytesPer := func(f func()) uint64 {
-		f()
-		var a, b runtime.MemStats
-		runtime.ReadMemStats(&a)
-		for range 5 {
-			f()
-		}
-		runtime.ReadMemStats(&b)
-		return (b.TotalAlloc - a.TotalAlloc) / 5
-	}
-	list := bytesPer(func() { p.Available() })
-	row := bytesPer(func() { providerInfo(p, nil) })
-	t.Logf("a row %d bytes, the list %d", row, list)
-	// each model's own look-ups besides (its price, window, protocols)
-	// are about 2.5 lists here; reading it four times over made 6.8
-	if row > list*5 {
-		t.Fatalf("a row took %d bytes, the list %d: read more than once", row, list)
 	}
 }
