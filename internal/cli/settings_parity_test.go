@@ -364,8 +364,8 @@ var notYet = map[string]string{
 	"POST /api/importapps":                       P,  // importapps.go
 	"POST /api/import/icon":                      W,  // importlink.go
 	"POST /api/local-hosts":                      S2, // localhosts.go
-	"GET /api/local-dictionary":                  W,  // local_dictionary.go: local editor, outside settings and sync
-	"POST /api/local-dictionary":                 W,  // local_dictionary.go: local editor, outside settings and sync
+	"GET /api/settings/local-dictionary":         W,  // local_dictionary.go: local editor, outside settings and sync
+	"POST /api/settings/local-dictionary":        W,  // local_dictionary.go: local editor, outside settings and sync
 	"GET /api/masking/record":                    U,  // masking.go
 	"GET /api/masking/records":                   U,  // masking.go
 	"GET /api/masking/sent":                      U,  // masking.go
