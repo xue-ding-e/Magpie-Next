@@ -11,6 +11,10 @@ Shift uses larger steps, and Home restores it. The local dictionary uses the sam
 handle and the app's text, field and button styles.
 The handle has a 24px pointer target inset from the rounded clipping edge;
 the footer reserves room for it so it does not cover an account action.
+Dictionary input, saved entries and examples share the selected code font,
+weight, style and stretch. Desktop text uses the app's 12px code scale; at the
+app's mobile-browser breakpoint all three use 16px, retaining the mobile input
+size while keeping the readable and editable representations consistent.
 
 Settings → Privacy retains the original Masked words and Never mask settings.
 [`dictionary.js`](../../internal/gui/assets/dictionary.js) extends that renderer

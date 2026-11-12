@@ -128,6 +128,14 @@ for (const engine of (process.env.BROWSER?[process.env.BROWSER]:['chromium','web
   await open();await input.fill('synthetic,password\n保密词');await submit();await ready();assert.equal(writes,1);assert.deepEqual(words,['synthetic,password','保密词']);
   assert.equal(await preview.isVisible(),false);
   await d.getByRole('button',{name:labels.view,exact:true}).click();await preview.waitFor();assert.match(await preview.textContent(),/synthetic,password/);
+  const readCodeFonts=()=>d.evaluate(box=>{
+   const props=['fontFamily','fontSize','fontWeight','fontStyle','fontStretch','lineHeight'];
+   const take=e=>Object.fromEntries(props.map(key=>[key,getComputedStyle(e)[key]]));
+   return {input:take(box.querySelector('.dictionary-body > textarea')),preview:take(box.querySelector('.dictionary-preview')),example:take(box.querySelector('.dictionary-example pre'))};
+  });
+  const codeFonts=await readCodeFonts();
+  assert.deepEqual(codeFonts.preview,codeFonts.input,'saved entries use the same code font and traits as their editor');
+  assert.deepEqual(codeFonts.example,codeFonts.input,'examples use the same code font and traits as their editor');
   const beforeHide=reads;await d.getByRole('button',{name:labels.hide,exact:true}).click();assert.equal(await preview.isVisible(),false);assert.equal(await preview.textContent(),'');assert.equal(reads,beforeHide);
   await input.fill('do not overwrite');conflict=true;await submit();await d.getByRole('alert').filter({hasText:'dictionary changed'}).waitFor();assert.equal(await input.inputValue(),'do not overwrite');assert.deepEqual(words,['synthetic,password','保密词']);
   // Reload must ask before discarding a draft. Cancel keeps the draft, and
@@ -265,6 +273,10 @@ for (const engine of (process.env.BROWSER?[process.env.BROWSER]:['chromium','web
   assert(controls.radius>=5,'dialog actions must use the shared rounded controls');
   assert.equal(await d.locator(':scope > .surface-resize').isVisible(),true,'the whole dialog has its own resize control');
   await page.setViewportSize({width:1200,height:900});
+  const desktopCodeFonts=await readCodeFonts();
+  assert.deepEqual(desktopCodeFonts.preview,desktopCodeFonts.input,'desktop saved entries keep the chosen code font and traits');
+  assert.deepEqual(desktopCodeFonts.example,desktopCodeFonts.input,'desktop examples keep the chosen code font and traits');
+  assert.equal(desktopCodeFonts.input.fontSize,'12px','desktop code returns to the application scale after the mobile field size');
   const beforeResize=await d.boundingBox();assert(beforeResize);
   const resizeGrip=await d.locator(':scope > .surface-resize').boundingBox();assert(resizeGrip);
   await page.mouse.move(resizeGrip.x+resizeGrip.width-4,resizeGrip.y+resizeGrip.height-4);

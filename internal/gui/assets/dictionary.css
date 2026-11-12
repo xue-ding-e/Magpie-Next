@@ -1,4 +1,5 @@
 .local-dictionary {
+  --dictionary-code-size: 12px;
   position: fixed; inset: 0; margin: auto; box-sizing: border-box;
   width: min(760px, calc(100vw - 32px)); height: min(650px, calc(100vh - 48px));
   min-width: min(360px, calc(100vw - 32px)); min-height: min(360px, calc(100vh - 48px));
@@ -35,7 +36,9 @@
   margin: 0; padding: 10px 12px; resize: vertical; outline: none;
   border: 1px solid var(--line); border-radius: 7px;
   background: var(--card-2); color: var(--fg);
-  font: var(--code-style, normal) var(--code-weight, 400) 12px/1.55 var(--code-font, var(--code));
+}
+.local-dictionary textarea, .dictionary-preview, .dictionary-example pre {
+  font: var(--code-style, normal) var(--code-weight, 400) var(--dictionary-code-size)/1.55 var(--code-font, var(--code));
   font-stretch: var(--code-stretch, 100%);
 }
 .local-dictionary textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
@@ -49,7 +52,7 @@
 .dictionary-example { flex: none; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--card-2); }
 .dictionary-example summary { color: var(--ctl-fg); cursor: pointer; font-weight: 500; }
 .dictionary-example p { margin-top: 8px; color: var(--muted); font-size: 11.5px; }
-.dictionary-example pre { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--code-style, normal) var(--code-weight, 400) 12px/1.55 var(--code-font, var(--code)); }
+.dictionary-example pre { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dictionary-example > .text { margin-top: 8px; }
 .dictionary-saved { min-width: 0; flex: none; display: flex; flex-direction: column; gap: 10px; }
 .dictionary-saved[hidden], .dictionary-page-editor[hidden] { display: none; }
@@ -67,6 +70,10 @@
 .dictionary-page-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .dictionary-error { color: var(--red); overflow-wrap: anywhere; }
 .dictionary-error:empty { display: none; }
+/* Match the app's mobile field size, including the readable saved/example text. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1024px) {
+  body.web .local-dictionary { --dictionary-code-size: 16px; }
+}
 @media (max-width: 480px) {
   .dictionary-head { padding: 12px 14px; }
   .dictionary-body { padding: 12px 14px; }
