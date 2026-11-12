@@ -1,8 +1,12 @@
 package gui
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -96,6 +100,94 @@ func TestLocalDictionaryAPI(t *testing.T) {
 	}
 	if s, e := localdictionary.Read(0, 0, false); e != nil || s.Count != 1 {
 		t.Fatal(s, e)
+	}
+}
+
+func TestLocalDictionaryPageEditThroughAPI(t *testing.T) {
+	for _, transport := range []string{"web", "native"} {
+		t.Run(transport, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			var h http.Handler = dictionaryWeb()
+			if transport == "native" {
+				h = ownWindow(Handler(nil, nil))
+			}
+			call := func(method, path string, payload any) *httptest.ResponseRecorder {
+				t.Helper()
+				body := ""
+				if payload != nil {
+					raw, err := json.Marshal(payload)
+					if err != nil {
+						t.Fatal(err)
+					}
+					body = string(raw)
+				}
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, dictionaryRequest(method, path, body))
+				return w
+			}
+			decode := func(w *httptest.ResponseRecorder) localdictionary.State {
+				t.Helper()
+				var state localdictionary.State
+				if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "no-store" || json.Unmarshal(w.Body.Bytes(), &state) != nil {
+					t.Fatalf("dictionary response was not private JSON: HTTP %d", w.Code)
+				}
+				return state
+			}
+			var words []string
+			for i := range 205 {
+				words = append(words, fmt.Sprintf("synthetic-page-%03d", i))
+			}
+			state := decode(call("POST", "/api/settings/local-dictionary", map[string]any{
+				"revision": "new", "target": "mask", "mode": "replace", "format": "text", "content": strings.Join(words, "\n"),
+			}))
+			decode(call("POST", "/api/settings/local-dictionary", map[string]any{
+				"revision": state.Revision, "target": "allow", "mode": "replace", "format": "text", "content": "synthetic-public-exception",
+			}))
+			page := decode(call("GET", "/api/settings/local-dictionary?target=mask&offset=100&limit=100&reveal=1", nil))
+			if len(page.Words) != 100 || !slices.Equal(page.Words, words[100:200]) {
+				t.Fatal("explicit page read did not return the requested saved words")
+			}
+			edit := slices.Clone(page.Words)
+			edit[0], edit[1] = " exact,\n新词 ", ""
+			payload := map[string]any{"revision": page.Revision, "target": "mask", "mode": "edit", "format": "json", "content": "", "offset": 100, "count": 100, "words": edit}
+			state = decode(call("POST", "/api/settings/local-dictionary", payload))
+			if state.Count != 204 || len(state.Words) != 0 {
+				t.Fatal("page save returned the wrong count or exposed words in metadata")
+			}
+			first := decode(call("GET", "/api/settings/local-dictionary?target=mask&offset=0&limit=100&reveal=1", nil))
+			last := decode(call("GET", "/api/settings/local-dictionary?target=mask&offset=100&limit=100&reveal=1", nil))
+			want := append([]string{edit[0]}, words[102:201]...)
+			if !slices.Equal(first.Words, words[:100]) || !slices.Equal(last.Words, want) {
+				t.Fatal("page save lost exact literal bytes or replaced another page")
+			}
+			allowed := decode(call("GET", "/api/settings/local-dictionary?target=allow&limit=100&reveal=1", nil))
+			if !slices.Equal(allowed.Words, []string{"synthetic-public-exception"}) {
+				t.Fatal("editing a mask page changed the exception list")
+			}
+			before, err := os.ReadFile(localdictionary.Path())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w := call("POST", "/api/settings/local-dictionary", payload); w.Code != http.StatusConflict {
+				t.Fatalf("stale page was not refused: HTTP %d", w.Code)
+			}
+			payload["revision"] = state.Revision
+			for _, invalid := range []any{nil, []any{1}, make([]string, 101)} {
+				payload["words"] = invalid
+				if w := call("POST", "/api/settings/local-dictionary", payload); w.Code != http.StatusBadRequest {
+					t.Fatalf("invalid page entries were not refused: HTTP %d", w.Code)
+				}
+			}
+			after, err := os.ReadFile(localdictionary.Path())
+			if err != nil || string(before) != string(after) {
+				t.Fatal("a refused page request changed the saved dictionary")
+			}
+			payload["words"], payload["offset"], payload["count"] = []string{}, 200, 4
+			state = decode(call("POST", "/api/settings/local-dictionary", payload))
+			if state.Count != 200 {
+				t.Fatal("an explicitly emptied page cleared unrelated pages")
+			}
+		})
 	}
 }
 func TestLocalDictionaryAPIGuards(t *testing.T) {
