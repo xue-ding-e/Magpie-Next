@@ -26,6 +26,13 @@ preserved. The Codex compaction-replay conversion also decodes tool outputs with
 `UseNumber` so a rewritten summary does not round unrelated nested integers or
 reject large exponent forms.
 
+[`mtls.Store.ServerCert`](../../internal/mtls/mtls.go) encodes internationalized
+computer and DNS names as IDNA ASCII labels in the server certificate's DNS SANs,
+including wildcard suffixes. The display common name keeps the original text;
+ordinary ASCII DNS names and IP SANs retain their existing behavior. An invalid
+internationalized DNS name fails certificate creation. This lets HTTPS start on
+Windows machines whose computer name contains Chinese or other non-ASCII text.
+
 The gateway is magpie's local LLM endpoint (`127.0.0.1:3425` by default). It
 serves Chat Completions, Responses, Anthropic Messages and Gemini. It finds
 the provider, key or account and model for each request. When the upstream
