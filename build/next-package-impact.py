@@ -1,5 +1,5 @@
 """Reviewed GUI tests and documentation do not change package bytes.
-Go regression inputs require packaging, but do not authorize publication alone.
+Go regressions and reviewed plugin inputs require packaging, not publication.
 All unknown/invalid diff evidence fails the impact job, blocking packaging.
 Validation is a separate job and is never path-filtered by this script.
 """
@@ -8,6 +8,9 @@ SHA=re.compile(r'[0-9a-f]{40}\Z')
 TEST=re.compile(rb'internal/gui/tests/[A-Za-z0-9_-]+\.test\.cjs\Z')
 GO_TEST=re.compile(rb'internal/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_]+_test\.go\Z')
 DOC=re.compile(rb'docs/subsystems/[A-Za-z0-9_-]+\.md\Z')
+# Reviewed embedded host and its synthetic regression require a new package,
+# but do not extend automatic publication authorization.
+PLUGIN_INPUTS={b'internal/plugin/host.js',b'internal/plugin/testdata/oauth_callback.cjs'}
 DOCS={b'README.md',b'README.zh-CN.md',b'internal/gui/tests/README.md'}
 CI={b'.github/workflows/next-windows-package.yml',b'build/next-package-impact.py',b'build/next-package-impact_test.py',
     b'.github/workflows/test-ui.yml',b'build/ui-test-shard.mjs',b'build/ui-test-shard.test.mjs',
@@ -40,12 +43,12 @@ def classify(raw):
   # inputs must win over the test-only classification.
   elif product_path(path):
    product_changed=True
-  elif GO_TEST.fullmatch(path):
+  elif GO_TEST.fullmatch(path) or path in PLUGIN_INPUTS:
    go_tests_changed=True
   else:raise AssertionError('Unclassified changed path; no package/publication decision')
  if product_changed:return True,True,'identified-product-input'
  if ci_changed:return True,False,'reviewed-ci-controls-only'
- if go_tests_changed:return True,False,'go-regression-inputs-only'
+ if go_tests_changed:return True,False,'reviewed-nonpublishing-inputs-only'
  return False,False,'tests-or-documentation-only'
 def git(*args):return subprocess.check_output(['git',*args],stderr=subprocess.PIPE)
 def main():

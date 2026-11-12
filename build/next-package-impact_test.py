@@ -47,6 +47,16 @@ for p in [b'internal/gui/tests/codex-auth-export.test.cjs',b'docs/subsystems/pro
  reject(raw(p,after=b'100755'))
 for p in [b'docs/subsystems/a.md/evil',b'docs/unknown.md',b'internal/gui/tests/unknown.md']:
  reject(raw(p))
+# The plugin host is embedded; its source-driven callback fixture is a test
+# input. Both need validation/packaging, neither grants publication permission.
+for p in [b'internal/plugin/host.js',b'internal/plugin/testdata/oauth_callback.cjs']:
+ for status,before,after in [(b'M',b'100644',b'100644'),(b'A',b'000000',b'100644'),(b'D',b'100644',b'000000')]:
+  expect(raw(p,status,before,after),(True,False))
+ reject(raw(p,after=b'100755'))
+ reject(raw(p,b'T',after=b'120000'))
+for p in [b'internal/plugin/host.js.extra',b'internal/plugin/testdata/unknown.cjs',b'internal/plugin/testdata/oauth_callback.cjs/evil']:
+ reject(raw(p))
+expect(raw(b'internal/plugin/host.js')+raw(b'internal/plugin/testdata/oauth_callback.cjs',b'A',b'000000')+raw(b'internal/plugin/oauth_callback_test.go',b'A',b'000000')+raw(b'docs/subsystems/provider-plugins.md'),(True,False))
 with tempfile.TemporaryDirectory(prefix='impact-git.') as d:
  def git(*args):return subprocess.check_output(['git',*args],cwd=d,stderr=subprocess.PIPE)
  git('init','-q');p=Path(d)/'internal/gui/tests/a.test.cjs';p.parent.mkdir(parents=True);p.write_text('old\n');git('add','.');before=git('write-tree').decode().strip();p.write_text('new\n');git('add','.');after=git('write-tree').decode().strip();expect(git('diff','--raw','--no-abbrev','-z','--no-renames',before,after,'--'),(False,False))
