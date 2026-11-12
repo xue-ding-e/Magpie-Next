@@ -36,6 +36,16 @@ renew the same OAuth session concurrently; separate sign-ins are needed for
 continued independent use. The [GUI](gui-shell.md#next-additions-over-the-upstream-shell)
 and `accounts export` expose the same saved snapshot behavior.
 
+## Next automatic proxy bypasses
+
+[`netproxy.For`](../../internal/netproxy/netproxy.go) leaves an automatic request
+direct when its host matches `NO_PROXY`, including when the system also names a
+proxy. Bypassing an environment proxy does not fall through to the system proxy.
+An explicit proxy chosen in Settings, or for that provider/account/request,
+retains its existing priority over the ambient bypass list. Other hosts continue
+to use the selected environment or system proxy; the operating system's proxy
+settings are never changed by this choice.
+
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |
