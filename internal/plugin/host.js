@@ -2080,7 +2080,18 @@ async function callback({ session, code }) {
   sessions.delete(session)
   const r = await via.run(s.proxy, () => inScope(s.provider, s.key, () => (s.a.method === "code" ? s.a.callback(code ?? "") : s.a.callback())))
   if (!r || r.type !== "success") return failed(r)
-  return { ok: true, ...save(s.provider, s.key, r, undefined) }
+  const kept = keptAs(r)
+  if (!kept) return { ok: false, error: `${s.provider}'s sign-in gave nothing to keep` }
+  return { ok: true, ...save(s.provider, s.key, kept, undefined) }
+}
+
+// Adapted from yetone/magpie 47b51c8225a66e753dd249cb782472b0dcbee6c4.
+// save identifies OAuth results by the refresh field. Access-only callbacks
+// need an empty refresh; an empty success must not pretend an account was saved.
+function keptAs(r) {
+  if ("refresh" in r || "key" in r) return r
+  if (typeof r.access === "string" && r.access) return { ...r, refresh: "" }
+  return null
 }
 
 async function apiKey({ provider, method, inputs, key, account, proxy }) {
