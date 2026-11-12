@@ -9,6 +9,8 @@ The provider's roomy layout still controls wrapping; the handle changes the oute
 dialog's available size, not the account actions. Arrow keys adjust the size,
 Shift uses larger steps, and Home restores it. The local dictionary uses the same
 handle and the app's text, field and button styles.
+The handle has a 24px pointer target inset from the rounded clipping edge;
+the footer reserves room for it so it does not cover an account action.
 
 Settings → Privacy retains the original Masked words and Never mask settings.
 [`dictionary.js`](../../internal/gui/assets/dictionary.js) extends that renderer

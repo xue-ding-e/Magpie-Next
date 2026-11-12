@@ -5285,14 +5285,21 @@ body .row.agent .ag-prefs .row.pref .who { display: block; }
 
 /* Next's shared pointer and keyboard resize handle. */
 .surface-resize {
-  position: absolute; z-index: 2; right: 0; bottom: 0; width: 20px; height: 20px;
-  padding: 0; border: 0; border-radius: 0 0 12px 0; color: var(--muted);
+  position: absolute; z-index: 2; right: 6px; bottom: 6px; width: 24px; height: 24px;
+  padding: 0; border: 0; border-radius: 6px; color: var(--muted); background: transparent;
   cursor: nwse-resize; touch-action: none; user-select: none;
-  background: repeating-linear-gradient(135deg, transparent 0 3px, currentColor 3px 4px, transparent 4px 6px);
-  clip-path: polygon(100% 20%, 100% 100%, 20% 100%); opacity: .7;
+  opacity: .7;
 }
-.surface-resize:hover, .surface-resize:focus-visible { opacity: 1; color: var(--accent); }
-.surface-resize:focus-visible { clip-path: none; outline-offset: -3px; background: var(--accent-soft); }
+/* Keep the full control reachable inside the dialog's rounded clipping edge;
+   the painted triangle alone does not define its pointer target. */
+.surface-resize::after {
+  content: ""; position: absolute; right: 1px; bottom: 1px; width: 18px; height: 18px;
+  background: repeating-linear-gradient(135deg, transparent 0 3px, currentColor 3px 4px, transparent 4px 6px);
+  clip-path: polygon(100% 20%, 100% 100%, 20% 100%); pointer-events: none;
+}
+.surface-resize:hover, .surface-resize:focus-visible { opacity: 1; color: var(--accent); background: var(--accent-soft); }
+.surface-resize:focus-visible { outline-offset: -3px; }
 .surface-sizing { user-select: none; }
 .modal .dialog.next-resizable { min-width: min(360px, 100%); min-height: min(300px, 100%); max-width: 100%; overflow: hidden; resize: none; }
 .modal .dialog.next-resizable > .editor { flex: 1 1 auto; }
+.modal .dialog.next-resizable > .editor > .bar { padding-right: 38px; }
