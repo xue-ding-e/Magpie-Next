@@ -421,7 +421,9 @@ func namedSecret(key, s string) bool {
 // wrote of its own that looks like an email or a phone number went as a
 // placeholder: either way the text no longer matched its signature, and
 // Anthropic answers 400 "Invalid `signature` in `thinking` block".
-func MaskJSON(body []byte, o Options) ([]byte, int) {
+func MaskJSON(body []byte, o Options) (maskedBody []byte, count int) {
+	o = dictionaryOptions(o, 0)
+	defer func() { o.checkDictionaryOutput(len(maskedBody) - len(body)) }()
 	o.sent = true
 	signed, args, defs := scan(body)
 	masked := func(path, key, s string) bool {
@@ -463,6 +465,12 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 			return s
 		}
 		if o.Secrets && under(path, args) && namedSecret(key, s) {
+			o.reserveDictionaryInput(len(s))
+			if o.AllowDictionary != nil && len(o.AllowDictionary.nodes) > 1 {
+				t, n := apply(s, []span{{start: 0, end: len(s), kind: "SECRET", by: ByRule}}, put, o)
+				total += n
+				return t
+			}
 			p := put("SECRET", s)
 			total++
 			return p
@@ -516,6 +524,10 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 		ko := Options{Secrets: o.Secrets, Route: o.Route}
 		t, n := apply(t, sentSpans(sentKnown, t, ko, func() []span { return knownSpans(t, ko) }), o.put(), o)
 		total += n
+		if o.Dictionary != nil {
+			t, n = maskSignedDictionary(t, o)
+			total += n
+		}
 		return t
 	})
 	return out, total

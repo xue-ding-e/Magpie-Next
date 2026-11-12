@@ -1122,6 +1122,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		webPage.Store(true)
 	}
 	mux := http.NewServeMux()
+	codexAuthRoutes(mux, w)
+	localDictionaryRoutes(mux)
 	mux.Handle("/", devPage(revalidated(http.FileServer(http.FS(staticFS())))))
 	devRoutes(mux)
 	pluginPageRoutes(mux, isWeb(w))

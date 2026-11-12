@@ -1,5 +1,50 @@
 # GUI app shell
 
+## Next additions over the upstream shell
+
+The provider editor keeps upstream's account rows, quota refresh, `⋯` tools,
+model choices, limits and saved-proxy controls. Next adds a pointer and keyboard
+resize handle through [`resizeSurface`](../../internal/gui/assets/surface-resize.js).
+The provider's roomy layout still controls wrapping; the handle changes the outer
+dialog's available size, not the account actions. Arrow keys adjust the size,
+Shift uses larger steps, and Home restores it. The local dictionary uses the same
+handle and the app's text, field and button styles.
+
+Settings → Privacy retains the original Masked words and Never mask settings.
+[`dictionary.js`](../../internal/gui/assets/dictionary.js) extends that renderer
+with Manage local dictionary, loading
+[`dictionary-editor.js`](../../internal/gui/assets/dictionary-editor.js) on demand.
+Its two lists, Mask these literals and Never mask, are separate from those original
+settings. Metadata is shown first. View saved entries reveals at most 100 entries
+from the selected list; Edit this page allows changing or removing them, and Save
+changes replaces only that page. Empty entries disappear and duplicates are kept
+once. Changing lists or pages, hiding entries, reloading or closing asks before
+discarding an edited draft. The import editor still offers append and full-list
+replacement. Its example and placeholder follow the selected list, import mode
+and text/JSON format; Use example fills synthetic data without saving it.
+
+[`localDictionaryRoutes`](../../internal/gui/local_dictionary.go) uses the existing
+authenticated API. GET reveals a page only with `reveal=1`. POST accepts the
+ordinary append/replace import or `mode=edit`, a page's `offset` and original
+`count`, and a JSON `words` array of at most 100 entries. Page writes use that
+page's revision; browsing never silently rebases an import draft. A conflicting
+writer returns 409 and keeps the draft. A page edit preserves the other list and
+all other pages, apart from dictionary-wide deduplication. Responses are no-store,
+and the dialog clears sensitive DOM content and cancels outstanding requests when
+closed. See [local masking](gateway-middleware.md#next-local-literal-lists) for
+matching and [backup exclusions](sync-backup.md#what-stays-on-each-computer).
+
+Built-in Codex accounts add auth.json inside the original account tools.
+[`codex-auth.js`](../../internal/gui/assets/codex-auth.js) lazily loads the saved
+snapshot editor. Preview is masked; reveal, copy and export require the preview's
+revision. Hide, modal replacement, close and window hiding clear displayed
+credentials and invalidate late responses. The native app exports a private file;
+web mode requests a download on the browser's computer. The API accepts only the
+native window transport or a request that `webGuard` authenticated through the run
+key or configured box sign-in, and checks origin and frame restrictions. Static
+files and unauthenticated development listeners do not receive that authentication
+marker. See [saved Codex snapshots](providers-accounts.md#next-saved-codex-snapshots).
+
 The desktop app has a tray (menu bar) icon whose click drops a compact
 panel, and a regular window. Both show one small web UI served from
 embedded assets. The page talks to Go over a JSON API on the same handler,

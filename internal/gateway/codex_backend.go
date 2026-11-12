@@ -992,10 +992,27 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	}
 	start := time.Now()
 	usage.Saw(agentOf(r))
+	inference := r.Method == http.MethodPost && (strings.HasPrefix(rest, "/responses") || modelOf(body) != "")
+	if inference {
+		if err := provider.RequireAllowedModel(modelOf(body)); err != nil {
+			writeError(w, provider.Responses, http.StatusForbidden, err.Error())
+			return
+		}
+	}
+	if r.Method == http.MethodPost && rest == "/responses" {
+		// A gateway pick reaches a thread already running with an older
+		// config. Ultra stays the pick; the native API receives its max.
+		if effort := provider.AgentEffort("codex"); effort != "" {
+			if effort == "ultra" {
+				effort = "max"
+			}
+			body = withFixedEffort(provider.Responses, body, effort)
+		}
+	}
 	// Codex's own turns come here from the mux, not through serve: the
 	// row written below sums this call's tries in its own context (#4456)
 	r = r.WithContext(s.countBytes(r.Context()))
-	w0, body0 := w, body // as they came, for the fallbacks (codexFallBack)
+	w0, body0 := w, body // before masking, for the fallbacks (codexFallBack)
 	// Claude's blocks magpie gave Codex (claudeseal) are Claude's alone:
 	// to OpenAI each item is its summary, as before magpie carried them
 	body = withoutClaudeSeals(body)
@@ -1087,7 +1104,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	kind := requestCallKind(r.Header, metadata)
 	var titleReply capturedBody // bounded; ordinary streams incur no copy
 	captureTitle := false
-	effort := "" // the reasoning Codex asked for, which goes on as it is
+	effort := "" // the reasoning sent, including an explicit gateway pick
 	end := func(status int, msg string, tokens, out int) {}
 	var tools *toolScan // whether the reply calls a tool, for a turn's end
 	var live *liveRow   // the reply counted as it reaches Codex (live.go)
@@ -1293,6 +1310,13 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 				req.Header.Del("Accept")
 				for _, v := range accept {
 					req.Header.Add("Accept", v)
+				}
+			}
+			if inference {
+				if err := provider.RequireAllowedModel(modelOf(body)); err != nil {
+					failWith(http.StatusForbidden, err.Error())
+					end(http.StatusForbidden, err.Error(), 0, 0)
+					return
 				}
 			}
 			// left to the transport, the reply comes back plain for the usage in it
@@ -2375,6 +2399,10 @@ func (s *Server) askCodexList(rctx context.Context, h http.Header, query string,
 // magpie's models after it. Should the backend not answer, or not in
 // time, Codex's last list of its own stands in.
 func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
+	if _, err := settings.LoadChecked(); err != nil {
+		writeError(w, provider.Responses, http.StatusServiceUnavailable, "the outbound model policy could not be read")
+		return
+	}
 	var own []any
 	body, etag, deny, denyBody := s.codexBackendList(r)
 	// A sign-in the backend calls revoked (401 token_revoked, "Encountered
@@ -2560,6 +2588,23 @@ func codexMerged(own []any, cached bool) []any {
 			mine[m.ID] = true
 		}
 	}
+	// The exact outbound policy includes hidden jobs such as auto-review,
+	// and the native models listed under a pool account's qualified id.
+	own = slices.DeleteFunc(own, func(m any) bool {
+		o, _ := m.(map[string]any)
+		slug, _ := o["slug"].(string)
+		return provider.RequireAllowedModel(slug) != nil
+	})
+	ms = slices.DeleteFunc(ms, func(m catalog.Model) bool {
+		pid, model, qualified := strings.Cut(m.ID, "/")
+		if qualified && pid == "group" {
+			return false // its concrete candidates are checked at dispatch
+		}
+		if !qualified {
+			model = m.ID
+		}
+		return provider.RequireAllowedModel(model) != nil
+	})
 	all := append(own, codexcat.Entries(ms, len(own)+100)...)
 	if at, ok := provider.CodexOrder(); ok {
 		codexcat.Order(all, at)
@@ -2631,7 +2676,9 @@ func codexInputAs(body []byte, magpieModel, native bool) (_ []byte, compact bool
 		return body, false
 	}
 	var items []map[string]any
-	if json.Unmarshal(q["input"], &items) != nil {
+	dec := json.NewDecoder(bytes.NewReader(q["input"]))
+	dec.UseNumber() // tool output keeps exact integers and exponent forms during replay
+	if dec.Decode(&items) != nil {
 		return body, false
 	}
 	changed := false

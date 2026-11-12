@@ -123,17 +123,19 @@ type CodexPort struct {
 // ctx ends. The first pass reads every rollout written since magpie began
 // to compact; later ones only what changed since.
 func PortCodexRollouts(ctx context.Context, home string) (CodexPort, error) {
-	return portCodexRollouts(ctx, home, false)
+	return portCodexRollouts(ctx, home, false, filepath.WalkDir)
 }
 
 // PortCodexRolloutsLeft is PortCodexRollouts for a Codex that no longer
 // goes through magpie: magpie's reasoning items are written as
 // magpie_reasoning too, as OpenAI can't take them as a base.
 func PortCodexRolloutsLeft(ctx context.Context, home string) (CodexPort, error) {
-	return portCodexRollouts(ctx, home, true)
+	return portCodexRollouts(ctx, home, true, filepath.WalkDir)
 }
 
-func portCodexRollouts(ctx context.Context, home string, left bool) (CodexPort, error) {
+// The walker also lets synthetic tests model an incomplete scan without
+// changing filesystem permissions or sharing a mutable hook.
+func portCodexRollouts(ctx context.Context, home string, left bool, walkDir func(string, fs.WalkDirFunc) error) (CodexPort, error) {
 	var res CodexPort
 	locks := filepath.Join(home, "thread-writer-locks")
 	if fi, err := os.Stat(locks); err != nil || !fi.IsDir() {
@@ -176,22 +178,16 @@ func portCodexRollouts(ctx context.Context, home string, left bool) (CodexPort, 
 	}
 	for _, p := range was.Pending {
 		for _, q := range []string{p, rolloutTwin(p)} { // Codex may have compressed it since
-			if fi, err := os.Stat(q); err == nil && fi.Mode().IsRegular() {
+			if fi, err := os.Stat(q); err == nil && fi.Mode().IsRegular() || err != nil && !errors.Is(err, fs.ErrNotExist) {
 				add(q)
 			}
 		}
 	}
-	for _, folder := range []string{"sessions", "archived_sessions"} {
-		filepath.WalkDir(filepath.Join(home, folder), func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || codexThreadOf(d.Name()) == "" {
-				return nil
-			}
-			if fi, err := d.Info(); err == nil && fi.Mode().IsRegular() && !fi.ModTime().Before(since) {
-				add(p)
-			}
-			return nil
-		})
-	}
+	scanComplete := walkCodexRollouts(ctx, home, walkDir, func(p string, fi fs.FileInfo) {
+		if !fi.ModTime().Before(since) {
+			add(p)
+		}
+	})
 	res.Done = true
 	var pending []string
 	for i, p := range due {
@@ -202,15 +198,15 @@ func portCodexRollouts(ctx context.Context, home string, left bool) (CodexPort, 
 		}
 		changed, err := portRollout(ctx, home, p, left)
 		switch {
+		case err != nil && ctx.Err() != nil:
+			res.Done = false
+			pending = append(pending, due[i:]...)
 		case errors.Is(err, errRolloutHeld):
 			res.Held = append(res.Held, p)
 			pending = append(pending, p)
 		case err != nil:
-			if ctx.Err() != nil {
-				res.Done = false
-				pending = append(pending, due[i:]...)
-				break
-			}
+			// Keep old files eligible even after the scan watermark advances.
+			pending = append(pending, p)
 			log.Printf("codex rollout %s: %v", p, err)
 		case changed:
 			res.Rewritten = append(res.Rewritten, p)
@@ -219,11 +215,15 @@ func portCodexRollouts(ctx context.Context, home string, left bool) (CodexPort, 
 			break
 		}
 	}
+	res.Done = res.Done && scanComplete && ctx.Err() == nil
 	now := codexPortHome{Since: was.Since, Pending: pending, Lineage: was.Lineage}
 	if res.Done && !was.Lineage {
-		fixed, whole := repairLineages(ctx, home)
+		fixed, whole := repairLineages(ctx, home, walkDir)
 		res.Repaired = fixed
 		now.Lineage = whole
+	}
+	if ctx.Err() != nil {
+		res.Done = false
 	}
 	if res.Done {
 		now.Since = start
@@ -237,6 +237,52 @@ func portCodexRollouts(ctx context.Context, home string, left bool) (CodexPort, 
 		return res, err
 	}
 	return res, steady.WriteFile(codexPortPath(), b, 0o600)
+}
+
+// walkCodexRollouts reports whether both roots were fully inspected. A home
+// may not have either root yet; an unreadable subtree or file's metadata is
+// unknown, not an empty scan. Both the watermark and lineage repair use this
+// reader so neither can record an incomplete traversal as complete.
+func walkCodexRollouts(ctx context.Context, home string, walkDir func(string, fs.WalkDirFunc) error, visit func(string, fs.FileInfo)) bool {
+	complete := true
+	for _, folder := range []string{"sessions", "archived_sessions"} {
+		if ctx.Err() != nil {
+			return false
+		}
+		root := filepath.Join(home, folder)
+		err := walkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if err != nil {
+				if p != root || !errors.Is(err, fs.ErrNotExist) {
+					complete = false
+					log.Printf("codex rollout scan %s: %v", p, err)
+				}
+				return nil
+			}
+			if d.IsDir() || codexThreadOf(d.Name()) == "" {
+				return nil
+			}
+			fi, err := d.Info()
+			if err != nil {
+				complete = false
+				log.Printf("codex rollout scan %s: %v", p, err)
+				return nil
+			}
+			if fi.Mode().IsRegular() {
+				visit(p, fi)
+			}
+			return nil
+		})
+		if err != nil {
+			complete = false
+			if ctx.Err() == nil {
+				log.Printf("codex rollout scan %s: %v", root, err)
+			}
+		}
+	}
+	return complete && ctx.Err() == nil
 }
 
 func uniq(list []string) []string {
@@ -383,11 +429,17 @@ func editRollout(ctx context.Context, home, path string, edits func() func(line 
 	// coordination lock every Codex writer takes before its thread's
 	// lock, with that lock free (or never made)
 	locks := filepath.Join(home, "thread-writer-locks")
-	unlock, held := filelock.Lock(filepath.Join(locks, ".coordination.lock"), filelock.Wait)
+	unlock, held := filelock.LockContext(ctx, filepath.Join(locks, ".coordination.lock"), filelock.Wait)
 	if !held {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
 		return false, errRolloutHeld
 	}
 	defer unlock()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	if lf, err := os.OpenFile(filepath.Join(locks, thread+".lock"), os.O_RDWR, 0); err == nil {
 		got, err := filelock.TryLock(lf)
 		if err != nil || !got {
@@ -398,9 +450,15 @@ func editRollout(ctx context.Context, home, path string, edits func() func(line 
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return false, errRolloutHeld
 	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	// written to since it was read: a Codex had it after all
 	if now, err := os.Stat(path); err != nil || now.Size() != fi.Size() || !now.ModTime().Equal(fi.ModTime()) {
 		return false, errRolloutHeld
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
 	}
 	if err := steady.Rename(tmp.Name(), path); err != nil {
 		return false, err
@@ -518,48 +576,85 @@ func fitLine(line, out []byte, paged bool) ([]byte, bool) {
 // end_ordinal_exclusive ends now, in the fork's session_meta, which keeps
 // its own length (fitLine). It says which forks it wrote, and whether it
 // looked at every one (none held by a Codex, ctx not done).
-func repairLineages(ctx context.Context, home string) (fixed []string, whole bool) {
+func repairLineages(ctx context.Context, home string, walkDir func(string, fs.WalkDirFunc) error) (fixed []string, whole bool) {
 	rollouts := map[string]string{} // rollout id → its file
 	var all []string
-	for _, folder := range []string{"sessions", "archived_sessions"} {
-		filepath.WalkDir(filepath.Join(home, folder), func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !d.Type().IsRegular() {
-				return nil
-			}
-			if id := codexRolloutID(d.Name()); id != "" {
-				rollouts[id] = p
-				all = append(all, p)
-			}
-			return nil
-		})
+	if !walkCodexRollouts(ctx, home, walkDir, func(p string, _ fs.FileInfo) {
+		id := codexRolloutID(filepath.Base(p))
+		if _, exists := rollouts[id]; exists {
+			// A plain/packed twin or another copy is an ambiguous repair
+			// source. Do not pick one by directory traversal order.
+			rollouts[id] = ""
+		} else {
+			rollouts[id] = p
+		}
+		all = append(all, p)
+	}) {
+		return nil, false
 	}
 	whole = true
-	known := map[string]map[int64]int64{} // a parent's ordinalEnds
+	known := map[string]map[uint64]int64{} // a parent's ordinalEnds
 	for _, p := range all {
 		if ctx.Err() != nil {
 			return fixed, false
 		}
-		meta := firstLine(p)
+		meta, err := readFirstLine(p)
+		if err != nil && !(errors.Is(err, io.EOF) && len(meta) > 0) || !gjson.ValidBytes(meta) || !isMetaLine(meta) {
+			whole = false
+			continue
+		}
 		base := gjson.GetBytes(meta, "payload.history_base")
-		if !isMetaLine(meta) || !paginated(meta) || !base.IsObject() {
+		if !paginated(meta) {
+			continue
+		}
+		if !base.IsObject() {
+			if base.Exists() && base.Type != gjson.Null {
+				whole = false
+			}
 			continue
 		}
 		parent, ok := rollouts[strings.ToLower(base.Get("thread_id").String())]
-		n := base.Get("end_ordinal_exclusive").Int()
-		if !ok || n <= 0 {
+		n, err := strconv.ParseUint(base.Get("end_ordinal_exclusive").Raw, 10, 64)
+		if !ok || parent == "" || err != nil || n == 0 {
+			whole = false
 			continue
 		}
 		ends, seen := known[parent]
 		if !seen {
-			ends = ordinalEnds(parent)
+			ends, err = ordinalEnds(ctx, parent)
 			known[parent] = ends
+			if err != nil {
+				whole = false
+				continue
+			}
 		}
 		at, ok := ends[n-1]
-		if !ok || at == base.Get("end_byte_offset").Int() {
+		if !ok {
+			whole = false
+			continue
+		}
+		old, err := strconv.ParseUint(base.Get("end_byte_offset").Raw, 10, 64)
+		if err != nil {
+			whole = false
+			continue
+		}
+		if uint64(at) == old {
 			continue
 		}
 		changed, err := editRollout(ctx, home, p, func() func(line []byte, paged bool) ([]byte, bool) {
+			first := true
 			return func(line []byte, paged bool) ([]byte, bool) {
+				if !first {
+					return line, false
+				}
+				first = false
+				// Repair only the header whose parent and cutoff were read.
+				// A changed header needs a fresh plan, and copied metadata
+				// later in a rollout is not this child's lineage reference.
+				if !bytes.Equal(line, meta) {
+					whole = false
+					return line, false
+				}
 				r := gjson.GetBytes(line, "payload.history_base.end_byte_offset")
 				if !isMetaLine(line) || r.Index <= 0 || r.Type != gjson.Number {
 					return line, false
@@ -567,7 +662,11 @@ func repairLineages(ctx context.Context, home string) (fixed []string, whole boo
 				out := append([]byte{}, line[:r.Index]...)
 				out = strconv.AppendInt(out, at, 10)
 				out = append(out, line[r.Index+len(r.Raw):]...)
-				return fitLine(line, out, true)
+				fitted, fits := fitLine(line, out, true)
+				if !fits {
+					whole = false // Retry a repair that cannot keep its byte places.
+				}
+				return fitted, fits
 			}
 		})
 		switch {
@@ -598,40 +697,62 @@ func codexRolloutID(name string) string {
 
 // firstLine is a rollout's first line, "" when it can't be read.
 func firstLine(path string) []byte {
+	line, _ := readFirstLine(path)
+	return line
+}
+
+// readFirstLine preserves errors for callers deciding whether a repair pass
+// is complete. The metadata-only display reader above keeps its old contract.
+func readFirstLine(path string) ([]byte, error) {
 	r, err := openLines(path)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer r.Close()
-	line, _ := bufio.NewReaderSize(r, 64<<10).ReadBytes('\n')
-	return line
+	return bufio.NewReaderSize(r, 64<<10).ReadBytes('\n')
 }
 
 // ordinalEnds is where, in a rollout's lines, each line Codex numbered
 // ends, its newline included, up to the first line without an ordinal
-// (after which there is no telling).
-func ordinalEnds(path string) map[int64]int64 {
-	ends := map[int64]int64{}
+// (after which there is no telling). Read or parse failures invalidate the
+// map. Exact u64 ordinals may skip ranges; the contiguous-sequence rule of
+// the separate migration planner does not apply to this repair reader.
+func ordinalEnds(ctx context.Context, path string) (map[uint64]int64, error) {
+	ends := map[uint64]int64{}
 	r, err := openLines(path)
 	if err != nil {
-		return ends
+		return nil, err
 	}
 	defer r.Close()
 	br := bufio.NewReaderSize(r, 64<<10)
 	var at int64
-	for {
+	for n := 0; ; n++ {
+		if n%4096 == 0 && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		line, err := br.ReadBytes('\n')
-		if len(line) == 0 || line[len(line)-1] != '\n' {
-			return ends
+		if err != nil && err != io.EOF {
+			return nil, err
 		}
-		at += int64(len(line))
-		o := gjson.GetBytes(line, "ordinal")
-		if o.Type != gjson.Number {
-			return ends
+		if len(line) > 0 {
+			if line[len(line)-1] != '\n' {
+				return nil, io.ErrUnexpectedEOF
+			}
+			at += int64(len(line))
+			if !gjson.GetBytes(line, "ordinal").Exists() {
+				return ends, nil
+			}
+			o, ordinalErr := rolloutLineOrdinal(line)
+			if ordinalErr != nil {
+				return nil, ordinalErr
+			}
+			if _, duplicate := ends[o]; duplicate {
+				return nil, errors.New("duplicate rollout ordinal")
+			}
+			ends[o] = at
 		}
-		ends[o.Int()] = at
-		if err != nil {
-			return ends
+		if err == io.EOF {
+			return ends, nil
 		}
 	}
 }

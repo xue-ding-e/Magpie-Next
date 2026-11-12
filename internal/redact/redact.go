@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -50,7 +51,11 @@ type Options struct {
 	// of 91234567, 0.123456 or 123456.78 (wholeWord). Off, a word is found
 	// anywhere, inside a longer one too.
 	WordsWhole bool
-	Rules      []Rule // the user's own rules, masked with the secrets
+	// Next's large local lists are independent of the synchronized settings.
+	Dictionary       *Dictionary
+	AllowDictionary  *Dictionary
+	dictionaryBudget *dictionaryBudget
+	Rules            []Rule // the user's own rules, masked with the secrets
 	// Kinds turns each of the Categories of personal data on or off by its
 	// id, where the user chose; one not in it is as its Category.On says.
 	// None of them is masked while Personal is off.
@@ -916,6 +921,9 @@ func Value(p string) (string, bool) {
 // character (the first few of a key's, which name its kind: sk-, ghp_)
 // and how many characters it has.
 func Hint(kind, v string) (head string, n int) {
+	if kind == "LOCAL_TERM" {
+		return "", utf8.RuneCountInString(v)
+	}
 	n = utf8.RuneCountInString(v)
 	if n < 2 {
 		return "", n
@@ -1001,7 +1009,9 @@ func wholeWord(s string, a, b int) bool {
 }
 
 // Mask swaps what o covers in s for placeholders, and says how many.
-func Mask(s string, o Options) (string, int) {
+func Mask(s string, o Options) (out string, count int) {
+	o = dictionaryOptions(o, 0)
+	defer func() { o.checkDictionaryOutput(len(out) - len(s)) }()
 	o.sent = true
 	return mask(s, withModel(o, []string{s}), o.put(), false)
 }
@@ -1052,7 +1062,9 @@ func Preview(s string, o Options) string {
 // longer, and Ollama Cloud turned away every turn that replayed the call
 // with 400 "invalid tool call arguments" (#3022).
 func mask(raw string, o Options, put func(kind, v string) string, escaped bool) (string, int) {
-	if len(raw) < 3 {
+	o = dictionaryOptions(o, 0)
+	o.reserveDictionaryInput(len(raw))
+	if len(raw) < 3 && o.Dictionary == nil {
 		return raw, 0
 	}
 	s := raw // what the finders read: as long as raw, a place in one is the same in the other
@@ -1061,6 +1073,16 @@ func mask(raw string, o Options, put func(kind, v string) string, escaped bool) 
 		put = unescapedPut(put)
 	}
 	var found []span
+	if o.Dictionary != nil {
+		matches := o.Dictionary.Spans(s)
+		o.reserveDictionary(len(matches))
+		for _, match := range matches {
+			found = append(found, span{start: match[0], end: match[1], kind: "LOCAL_TERM", by: ByWord})
+		}
+	}
+	if len(raw) < 3 {
+		return apply(raw, found, put, o)
+	}
 	for _, w := range o.Words {
 		if w = strings.TrimSpace(w); len(w) < 2 {
 			continue
@@ -1603,11 +1625,18 @@ func apply(s string, found []span, put func(kind, v string) string, o Options) (
 	if len(found) == 0 {
 		return s, 0
 	}
+	found = dictionaryExceptions(s, found, o)
+	if len(found) == 0 {
+		return s, 0
+	}
 	// nothing inside a placeholder already there, or a made-up key
 	found = outsideShapes(s, found)
 	if strings.Contains(s, "{{") {
 		for _, p := range placeholderRe.FindAllStringIndex(s, -1) {
-			found = slices.DeleteFunc(found, func(f span) bool { return f.start < p[1] && f.end > p[0] })
+			_, known := Value(s[p[0]:p[1]])
+			found = slices.DeleteFunc(found, func(f span) bool {
+				return (f.kind != "LOCAL_TERM" || known) && f.start < p[1] && f.end > p[0]
+			})
 		}
 		if len(found) == 0 {
 			return s, 0
@@ -1643,6 +1672,20 @@ func apply(s string, found []span, put func(kind, v string) string, o Options) (
 		if f.by != ByWord && o.allows(v) && (!remember || !maskedBefore(textOf(), v)) {
 			kept = max(kept, f.end)
 			continue
+		}
+		if f.bare && o.AllowDictionary != nil {
+			part := f
+			part.start, part.end, part.bare = 0, len(v), false
+			pieces := dictionaryExceptions(v, []span{part}, o)
+			if len(pieces) != 1 || pieces[0].start != 0 || pieces[0].end != len(v) {
+				sub := o
+				sub.AllowDictionary = nil
+				replacement, masked := apply(v, pieces, put, sub)
+				b.WriteString(s[last:f.start])
+				b.WriteString(strconv.Quote(replacement))
+				last, next, n = f.end, f.end, n+masked
+				continue
+			}
 		}
 		next = f.end
 		act := o.Actions[f.kind]

@@ -761,6 +761,10 @@ func buildCodexListTag(kind string) string {
 	for _, pat := range DisabledModels() {
 		ms = append(ms, catalog.Model{ID: "!" + pat})
 	}
+	// The exact outbound policy narrows native and hidden choices too.
+	for _, model := range slices.Sorted(slices.Values(settings.Load().AllowedModels)) {
+		ms = append(ms, catalog.Model{ID: "~allowed:" + model})
+	}
 	// and the order the user put them in, the account's own among them
 	for _, id := range ModelOrder("codex") {
 		ms = append(ms, catalog.Model{ID: "^" + id})

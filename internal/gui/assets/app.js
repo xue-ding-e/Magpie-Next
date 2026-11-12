@@ -8937,6 +8937,7 @@ function modalClimb(body) {
   body.scrollTop -= by;
 }
 function openModal(content, quiet) {
+  closeCodexAuth?.();
   const m = $("#modal"), d = m.firstElementChild;
   const fresh = m.hidden || m.classList.contains("out");
   const top = m.hidden ? 0 : d.querySelector(".ebody")?.scrollTop || 0;
@@ -8949,6 +8950,12 @@ function openModal(content, quiet) {
   frame(content);
   // a prompt's editor is wider, a provider's grows with the window
   for (const c of ["wide", "roomy"]) d.classList.toggle(c, content.classList.contains(c));
+  const resizable = content.classList.contains("provider-editor");
+  if (resizable !== d.classList.contains("next-resizable")) {
+    d.style.removeProperty("width");
+    d.style.removeProperty("height");
+  }
+  d.classList.toggle("next-resizable", resizable);
   // Keep focus through a redraw of an open editor.
   const active = d.contains(document.activeElement) ? document.activeElement : null;
   const focusID = active?.id;
@@ -8960,6 +8967,7 @@ function openModal(content, quiet) {
   const held = !fresh && d.contains(modalHold.at) ? modalHold.at : null;
   if (fresh) modalReturnFocus = document.activeElement;
   d.replaceChildren(content);
+  resizeSurface(d, resizable);
   d.setAttribute("role", "dialog");
   d.setAttribute("aria-modal", "true");
   d.tabIndex = -1;
@@ -8976,7 +8984,7 @@ function openModal(content, quiet) {
   // the element a redraw put back or by the focused copy of it
   const copy = held && (content.contains(held) ? held : held === active && focus) || null;
   modalRefocus = !!copy;
-  try { (focus || content.querySelector("input:not([disabled]), textarea, select, button:not([disabled])") || d).focus(NO_SCROLL); }
+  try { (focus || (active?.classList.contains("surface-resize") && d.querySelector(":scope > .surface-resize")) || content.querySelector("input:not([disabled]), textarea, select, button:not([disabled])") || d).focus(NO_SCROLL); }
   finally { modalRefocus = false; }
   modalHold.copy = copy;
   const body = content.querySelector(":scope > .ebody");
@@ -9044,6 +9052,7 @@ function frame(ed) {
   ed.classList.add("framed");
 }
 function closeModal() {
+  closeCodexAuth?.();
   const m = $("#modal"), d = m.firstElementChild;
   if (m.hidden) return Promise.resolve();
   if (m.classList.contains("out")) return modalDone || Promise.resolve();
@@ -9296,7 +9305,7 @@ function drawEditor(p, presetID) {
     : pr
       ? { id: pr.id, name: pr.name, preset: pr.id, key: "", chosen: [], extra: [], headers: [] }
       : { id: "", name: "", preset: "", chat: "", responses: "", anthropic: "", decide: "", catalog: "", key: "", api: "openai", chosen: [], extra: [], headers: [], icon: "" });
-  const ed = el("div", "editor roomy" + (isNew ? " new" : ""));
+  const ed = el("div", "editor roomy provider-editor" + (isNew ? " new" : ""));
   ed.onclick = (e) => e.stopPropagation();
 
   {
@@ -12483,11 +12492,11 @@ function importSay(agent) {
   if (agent === "codex") {
     return {
       from: t("Bring in accounts from Codex's auth.json, codexbar's config.json, or exports from Cockpit Tools, CLIProxyAPI or Sub2API"),
-      intro: t("Choose or paste one or more files: Codex's auth.json, codexbar's config.json (in ~/.codexbar), or an export from Cockpit Tools, CLIProxyAPI or Sub2API. Each account's sign-in is refreshed with ChatGPT before it is added."),
-      spent: t("This takes the sign-in over: the tool the file came from (Codex on another computer, codexbar, Cockpit Tools, CLIProxyAPI) is signed out of that account and has to sign in again. The file itself is only read."),
+      intro: t("Choose or paste one or more files: Codex's auth.json (including AI Toolbox exports), codexbar's config.json (in ~/.codexbar), or an export from Cockpit Tools, CLIProxyAPI or Sub2API. A usable access token is checked without refreshing the sign-in."),
+      spent: t("Refreshing a sign-in can invalidate the source tool's copy. Two tools must not refresh the same session independently; sign in separately for continued use in both. The file itself is only read."),
       kept: t("Each account is kept with the file's access token and never renewed, so the tool it came from stays signed in. Once that token expires, import it again."),
       checking: t("Checking the accounts with {vendor}…", { vendor: "ChatGPT" }),
-      checks: t("Each account's sign-in is refreshed and its account looked up, as signing in does."),
+      checks: t("Usable access tokens are checked first; a missing or refused access token may need refreshing."),
     };
   }
   if (agent === "claude") {
@@ -13440,6 +13449,7 @@ function renderAccounts(a, p) {
     const [amPill, amBox] = ls.length > 1 || accountModelsOf(p, l.user).length ? accountModels(p, l.user, false, l.user) : [];
     // what is set shows on it; the rest waits under ⋯ on a line below
     const tools = el("div", "acc-tools");
+    if (a.agent === "codex" && !sub?.plugin) tools.append(codexAuthButton(l.user));
     const pill = (x) => (x.classList.contains("set") ? line : tools).append(x);
     if (amPill) pill(amPill);
     // its usage cap: the share of each window it is used to at most

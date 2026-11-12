@@ -499,6 +499,8 @@ type Call struct {
 	// when it was on (archive.go); wire what it keeps besides
 	Archive string `json:"archive,omitempty"`
 	wire    *wire
+	// A local refusal never puts an otherwise healthy account to rest.
+	policyDenied bool
 	// headers: its headers both ways, as they went (wire_headers.go),
 	// read masked by Headers
 	headers *headerLog
@@ -4453,6 +4455,21 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			i--
 			continue
 		}
+		if call.policyDenied {
+			call.To, call.Status = "", http.StatusForbidden
+			try.Status, try.Fail = call.Status, failOther
+			watched.attempt(call, try, c.p.ID, sent, hw, capture)
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			if !last {
+				if other == nil {
+					other = &Try{Status: call.Status, Error: call.Error}
+				}
+				skipped = append(skipped, c.label()+": "+call.Error)
+				continue
+			}
+			failTo(w, kept, from, call.Status, call.Error)
+			break
+		}
 		watched.attempt(call, try, c.p.ID, sent, hw, capture)
 		if autoPicks(c) && repicked < 2 && !hw.passing && hw.code() == http.StatusBadRequest &&
 			(provider.CopilotRefusal(hw.errBody()) || wrongEndpoint(hw.code(), hw.errBody())) {
@@ -5584,6 +5601,18 @@ func sinceStart(before, d time.Duration) int64 {
 // attempt sends a request to one provider. call.To stays empty when the
 // provider has no endpoint to send it to.
 func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, call *Call) (int, string) {
+	var denied atomic.Bool
+	r = r.WithContext(context.WithValue(r.Context(), modelPolicyKey{}, &denied))
+	defer func() { call.policyDenied = denied.Load() }()
+	// Every candidate, including one added during fallback, is checked
+	// before its plugin, subscription or vendor is asked.
+	policy := checkModelPolicy
+	if p.Account != nil && p.Account.Agent == "claude" {
+		policy = checkClaudeModelPolicy
+	}
+	if err := policy(r.Context(), model); err != nil {
+		return writeError(w, from, http.StatusForbidden, err.Error()), err.Error()
+	}
 	// the try that answers is the one whose rate estimates the reply's
 	// tokens (live.go), after a fallback another than the first
 	liveOfInflight(inflightOf(r.Context())).routed(p.ID, unprefixed(model))
@@ -5634,6 +5663,9 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	} else if m != model {
 		r, model = r.WithContext(ctx), m
 		noteMember(w, r, p, model)
+	}
+	if err := checkModelPolicy(r.Context(), model); err != nil {
+		return writeError(w, from, http.StatusForbidden, err.Error()), err.Error()
 	}
 	// a backend that only streams gets a non-streaming request translated
 	// (the provider is always streamed on that path) rather than relayed,
@@ -6069,6 +6101,15 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		}
 		body = extra
 	}
+	// Keep OpenCode's current client shape; only this model's missing
+	// Chat defaults come from its earlier native request profile.
+	body = p.OpenCodeDeepSeekBody(to, body)
+	if to == provider.Chat && p.OpenCodeDeepSeek(modelOf(body)) {
+		// Extra fields and profile defaults can change the actual effort
+		// after translation. The try and usage name what goes on the wire.
+		var sent = Request{Effort: bodyEffort(to, body)}
+		noteWireEffort(ctx, to, &sent)
+	}
 	if !countsTokens(path) {
 		// the tier it goes at, the user's own fields in it (#1784)
 		noteWireTier(ctx, to, body)
@@ -6098,6 +6139,11 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, nil)
 	if err != nil {
+		return nil, err
+	}
+	// The wire name may differ from the selected catalog id. Gemini and
+	// Vertex name it in the URL, with no model left in the outgoing body.
+	if err := checkModelPolicy(ctx, provider.OutboundModel(to, req.URL, body)); err != nil {
 		return nil, err
 	}
 	// the body goes once it is answered, not when a stream ends (#3383)
@@ -6253,6 +6299,10 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		markSearching(ctx, req)
 	}
 	if err := p.Sign(ctx, req, to, body); err != nil {
+		return nil, err
+	}
+	// A sign-in can wait while the policy changes, or rewrite the URL.
+	if err := checkModelPolicy(ctx, provider.OutboundModel(to, req.URL, body)); err != nil {
 		return nil, err
 	}
 	// a sign-in its vendor revoked isn't sent again: the next member is
@@ -9054,6 +9104,11 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	var zen *zenReply
 	if p.OpenCodeFree(model) {
 		zen = &zenReply{z: zenFreeTools(request)}
+		if p.OpenCodeDeepSeek(model) && request.MaxTokens <= 0 {
+			// Set the profile's budget before fitting the context. The
+			// caller's explicit budget keeps its existing meaning.
+			request.MaxTokens = 32000
+		}
 	}
 	if request.WebSearch {
 		if !searching(r.Context()) && canSearchFor(p) && (!searchesFor(p, to, model, request) || magpieSearches(r.Context(), p)) {

@@ -1,0 +1,157 @@
+name: UI fixtures
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-fixtures-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    name: Pin the desktop comparison baseline
+    runs-on: windows-latest
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.select.outputs.sha }}
+      main_sha: ${{ steps.select.outputs.main_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - name: Fetch main once and select an independent baseline
+        id: select
+        shell: pwsh
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c credential.helper= fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $mainSHA = git rev-parse --verify 'refs/remotes/origin/main^{commit}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # A main release/push must compare against its first parent, not itself.
+          # Other candidates compare against this one fetched main snapshot.
+          node build/ui-test-shard.mjs --source-sha $env:GITHUB_SHA --resolve-baseline-main $mainSHA --output (Join-Path $env:RUNNER_TEMP 'ui-baseline')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $selection = Get-Content (Join-Path $env:RUNNER_TEMP 'ui-baseline/baseline-selection.json') -Raw | ConvertFrom-Json
+          "sha=$($selection.baselineSHA)" >> $env:GITHUB_OUTPUT
+          "main_sha=$($selection.mainSHA)" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-baseline-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-baseline/
+          if-no-files-found: error
+          retention-days: 14
+
+  shards:
+    name: Windows UI shard ${{ matrix.shard }} of 4
+    needs: baseline
+    runs-on: windows-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - name: Fetch the exact baseline without changing the source checkout
+        timeout-minutes: 2
+        shell: pwsh
+        env:
+          UI_BASELINE_SHA: ${{ needs.baseline.outputs.sha }}
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:UI_BASELINE_SHA -cnotmatch '^[a-f0-9]{40}$') { throw 'Invalid baseline SHA' }
+          git -c credential.helper= fetch --no-tags --depth=1 origin $env:UI_BASELINE_SHA
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $actual = git rev-parse --verify "$($env:UI_BASELINE_SHA)^{commit}"
+          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:UI_BASELINE_SHA) { throw 'Baseline fetch mismatch' }
+          if ((git rev-parse HEAD) -cne $env:GITHUB_SHA) { throw 'Source SHA changed' }
+      - name: Check runner contracts without browsers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((node --version) -cne 'v26.13.0') { throw 'Unexpected Node version' }
+          if ((git rev-parse HEAD) -cne $env:GITHUB_SHA) { throw 'Source SHA mismatch' }
+          node --test --test-concurrency=1 build/ui-test-shard.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install only the existing fixed Playwright dependency
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Get-Content .github/ui-preview/package.json -Raw | ConvertFrom-Json
+          if ($package.dependencies.playwright -cne '1.61.1') { throw 'Unexpected Playwright version' }
+          npm install --prefix .github/ui-preview --ignore-scripts --no-audit --no-fund --package-lock=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node -e "if(require('./.github/ui-preview/node_modules/playwright/package.json').version!=='1.61.1')process.exit(1)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "PLAYWRIGHT_BROWSERS_PATH=$(Join-Path $env:RUNNER_TEMP 'magpie-ui-browsers')" >> $env:GITHUB_ENV
+      - name: Install both fixture engines
+        shell: pwsh
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE '.github/ui-preview/node_modules/.bin/playwright.cmd') install chromium webkit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run the complete modulo shard, concurrency 2
+        shell: pwsh
+        run: |
+          node build/ui-test-shard.mjs --source-sha $env:GITHUB_SHA --baseline-sha '${{ needs.baseline.outputs.sha }}' --baseline-main-sha '${{ needs.baseline.outputs.main_sha }}' --shard-index ${{ matrix.shard }} --shard-count 4 --expected-files 1446 --output (Join-Path $env:RUNNER_TEMP 'ui-shard-${{ matrix.shard }}')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-tests-${{ github.sha }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/ui-shard-${{ matrix.shard }}/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+
+  coverage:
+    name: All four UI shards and all 1446 files
+    if: always()
+    needs: [baseline, shards]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ui-tests-${{ github.sha }}-shard-*
+          path: ${{ runner.temp }}/ui-shards
+      - name: Require success and verify disjoint complete coverage
+        env:
+          SHARDS_RESULT: ${{ needs.shards.result }}
+        run: |
+          test "$SHARDS_RESULT" = success
+          node build/ui-test-shard.mjs --source-sha "$GITHUB_SHA" --baseline-sha '${{ needs.baseline.outputs.sha }}' --shard-count 4 --expected-files 1446 --verify-artifacts "$RUNNER_TEMP/ui-shards" --output "$RUNNER_TEMP/ui-coverage"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-coverage-${{ github.sha }}
+          path: ${{ runner.temp }}/ui-coverage/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14

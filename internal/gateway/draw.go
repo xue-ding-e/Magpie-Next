@@ -755,14 +755,19 @@ func (s *Server) images(edit bool) http.HandlerFunc {
 		// user set to go unmasked (unmaskedMembers), as a chat's is
 		var hits maskHits
 		if !unmaskedMembers(tries) {
+			ctx, _, scopeErr := maskingFor(r.Context())
+			if scopeErr != nil {
+				fail(maskStatus(scopeErr), scopeErr.Error())
+				return
+			}
 			var unmask func()
-			w, d.Prompt, unmask, hits, err = redactedPromptHits(r.Context(), w, d.Prompt)
+			w, d.Prompt, unmask, hits, err = redactedPromptHits(ctx, w, d.Prompt)
 			defer unmask()
 			// the fields passed on as they came are masked as the prompt is,
 			// as a video's are
 			if err == nil {
 				var extra maskHits
-				err = maskStrings(r.Context(), d.Extra, &extra)
+				err = maskStrings(ctx, d.Extra, &extra)
 				hits.add(extra)
 			}
 			if err != nil {
@@ -1470,6 +1475,11 @@ func (s *Server) sendWith(ctx context.Context, p provider.Provider, method, url,
 	}
 	for k, v := range extra {
 		req.Header[k] = v
+	}
+	if method == http.MethodPost {
+		if err := requireAllowedMediaRequest(req.URL.String(), req.Header.Get("Content-Type"), body); err != nil {
+			return nil, http.StatusForbidden, err
+		}
 	}
 	asked := time.Now()
 	res, err := p.Do(s.client, req) // a plugin's through the plugin

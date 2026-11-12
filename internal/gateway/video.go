@@ -1130,13 +1130,18 @@ func (s *Server) videosCreate(w http.ResponseWriter, r *http.Request) {
 	// masked unless every model it may start on is a provider the user
 	// set to go unmasked (unmaskedMembers), as a chat's is
 	if !unmaskedMembers(tries) {
+		ctx, _, scopeErr := maskingFor(r.Context())
+		if scopeErr != nil {
+			fail(maskStatus(scopeErr), scopeErr.Error())
+			return
+		}
 		var unmask func()
-		w, f.Prompt, unmask, hits, err = redactedPromptHits(r.Context(), w, f.Prompt)
+		w, f.Prompt, unmask, hits, err = redactedPromptHits(ctx, w, f.Prompt)
 		defer unmask()
 		// the fields passed on as they came are masked as the prompt is: a
 		// negative_prompt is the user's text all the same
 		if err == nil {
-			err = maskStrings(r.Context(), f.Extra, &extra)
+			err = maskStrings(ctx, f.Extra, &extra)
 		}
 		if err != nil { // fails closed
 			fail(maskStatus(err), err.Error())
@@ -1617,6 +1622,10 @@ func (s *Server) remoteVideoContent(ctx context.Context, w http.ResponseWriter, 
 // prompt is masked, adding what it swapped to h; an error when it can't
 // (fail closed).
 func maskStrings(ctx context.Context, v any, h *maskHits) error {
+	ctx, _, scopeErr := maskingFor(ctx)
+	if scopeErr != nil {
+		return scopeErr
+	}
 	one := func(str string) (string, error) {
 		_, m, got, err := maskTextHits(ctx, str)
 		h.add(got)

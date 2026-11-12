@@ -268,7 +268,7 @@ func webGuard(cookie, key string, keep time.Duration, box boxSignIn, next http.H
 		sent := r.CookiesNamed(cookie)
 		for _, c := range sent {
 			if same(c.Value) {
-				next.ServeHTTP(rw, r)
+				next.ServeHTTP(rw, authenticatedWebRequest(r))
 				return
 			}
 		}
@@ -281,7 +281,7 @@ func webGuard(cookie, key string, keep time.Duration, box boxSignIn, next http.H
 		// cookie of the page's own: it alone says why not
 		if box != nil {
 			if why, short = box(r); why == "" {
-				next.ServeHTTP(rw, r)
+				next.ServeHTTP(rw, authenticatedWebRequest(r))
 				return
 			}
 			lead = ""

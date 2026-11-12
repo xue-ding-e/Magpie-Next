@@ -13,6 +13,29 @@ Plugin ownership of the deprecated built-in subscriptions is in
 [Provider and plugin ownership](provider-plugins.md). How the gateway orders
 keys and accounts per request is in [Gateway routing and fallback](gateway-routing.md).
 
+## Next saved Codex snapshots
+
+[`CodexAuthJSON`](../../internal/provider/codex_auth_export.go) reads an already
+remembered Codex subscription account from magpie's saved logins. It does not
+discover credentials, refresh tokens or switch the active account. Preview masks
+values and unknown field names. Reveal and export require a revision derived from
+the complete saved snapshot; replacing or refreshing that account requires a new
+preview. Failed reads and ambiguous accounts fail without using a stale cached
+copy. Unknown JSON fields, the explicit workspace, exact numeric values and the
+stored refresh timestamp remain part of the snapshot. A snapshot may already be
+expired, and cannot revive a refresh token that another app consumed.
+
+[`ImportLogins`](../../internal/provider/login_import.go) retains upstream's Codex,
+codexbar, Claude-swap, Cockpit Tools, CLIProxyAPI and Sub2API formats and its name
+handling. Next first verifies a Codex snapshot's existing access token against the
+account usage endpoint, without consuming its refresh token. A missing access
+token or an explicit 401 permits renewal; 403, 429, 5xx, invalid responses,
+cancellation and local identity errors do not. Access-only import never renews.
+Claude's newer-kept-login protection is unchanged. Independent tools must not
+renew the same OAuth session concurrently; separate sign-ins are needed for
+continued independent use. The [GUI](gui-shell.md#next-additions-over-the-upstream-shell)
+and `accounts export` expose the same saved snapshot behavior.
+
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |

@@ -17,17 +17,32 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/gwmw"
+	"github.com/yetone/magpie/internal/localdictionary"
 	"github.com/yetone/magpie/internal/pii"
 	"github.com/yetone/magpie/internal/redact"
 	"github.com/yetone/magpie/internal/settings"
 )
 
 // Masker masks as the settings say, read on each call.
-type Masker struct{}
+type Masker struct{ scoped *redact.Options }
+
+// NewRequest fixes one local dictionary generation and its resource budget for
+// every field of an outbound request, retaining the upstream route and actions.
+func (Masker) NewRequest(ctx context.Context) gwmw.Masker {
+	o := redact.DictionaryRequest(optionsCtx(ctx))
+	return Masker{scoped: &o}
+}
+
+func (m Masker) optionsCtx(ctx context.Context) redact.Options {
+	if m.scoped != nil {
+		return *m.scoped
+	}
+	return optionsCtx(ctx)
+}
 
 // Wanted says settings st ask for anything to be masked.
 func Wanted(st settings.Settings) bool {
-	return st.Redact || st.RedactPersonal || len(st.RedactWords) > 0
+	return st.Redact || st.RedactPersonal || len(st.RedactWords) > 0 || localdictionary.Wanted()
 }
 
 func options() redact.Options { return optionsCtx(context.Background()) }
@@ -58,6 +73,11 @@ func optionsCtx(ctx context.Context) redact.Options {
 	st := settings.Shared()
 	o := redact.Options{Secrets: st.Redact, Personal: st.RedactPersonal, Kinds: st.RedactKinds, Words: st.RedactWords, WordsAnyCase: st.RedactWordsAnyCase, WordsWhole: st.RedactWordsWhole, Rules: st.RedactRules,
 		Actions: st.RedactActions, Allow: st.RedactAllow, Shape: st.RedactShape}
+	dictionary, allowed, err := localdictionary.Matchers()
+	if err != nil {
+		panic(err)
+	} // gwmw.Safely blocks the send instead of skipping an unreadable local list.
+	o.Dictionary, o.AllowDictionary = dictionary, allowed
 	o.Route, _ = ctx.Value(routeKey{}).(string)
 	if forced, _ := ctx.Value(forcedKey{}).(bool); forced && !Wanted(st) {
 		o.Secrets, o.Personal = true, true
@@ -328,15 +348,17 @@ func busy(st pii.Status) string {
 	return what
 }
 
-func (Masker) JSON(body []byte) ([]byte, int) {
-	o := options()
-	if !o.Secrets && !o.Personal && len(o.Words) == 0 {
+func (m Masker) JSON(body []byte) ([]byte, int) {
+	o := m.optionsCtx(context.Background())
+	if !o.Secrets && !o.Personal && len(o.Words) == 0 && o.Dictionary == nil {
 		return body, 0
 	}
 	return redact.MaskJSON(body, o)
 }
 
-func (Masker) Text(s string) (string, int) { return redact.Mask(s, options()) }
+func (m Masker) Text(s string) (string, int) {
+	return redact.Mask(s, m.optionsCtx(context.Background()))
+}
 
 // JSONHits is JSON, with what it masked (gwmw.Teller).
 func (m Masker) JSONHits(body []byte) ([]byte, []gwmw.Hit) {
@@ -345,9 +367,9 @@ func (m Masker) JSONHits(body []byte) ([]byte, []gwmw.Hit) {
 
 // JSONHitsContext is JSONHits, its wait for the model ending with ctx
 // (gwmw.ContextTeller).
-func (Masker) JSONHitsContext(ctx context.Context, body []byte) ([]byte, []gwmw.Hit) {
-	o := optionsCtx(ctx)
-	if !o.Secrets && !o.Personal && len(o.Words) == 0 {
+func (m Masker) JSONHitsContext(ctx context.Context, body []byte) ([]byte, []gwmw.Hit) {
+	o := m.optionsCtx(ctx)
+	if !o.Secrets && !o.Personal && len(o.Words) == 0 && o.Dictionary == nil {
 		return body, nil
 	}
 	var hits []gwmw.Hit
@@ -362,8 +384,8 @@ func (m Masker) TextHits(s string) (string, []gwmw.Hit) {
 }
 
 // TextHitsContext is TextHits, its wait for the model ending with ctx.
-func (Masker) TextHitsContext(ctx context.Context, s string) (string, []gwmw.Hit) {
-	o := optionsCtx(ctx)
+func (m Masker) TextHitsContext(ctx context.Context, s string) (string, []gwmw.Hit) {
+	o := m.optionsCtx(ctx)
 	var hits []gwmw.Hit
 	o.Seen = told(&hits)
 	out, _ := redact.Mask(s, o)
@@ -387,7 +409,7 @@ func told(hits *[]gwmw.Hit) func(redact.Hit) {
 // user can try it first.
 func Preview(s string) (out string, hits []gwmw.Hit, off bool) {
 	o := options()
-	if !o.Secrets && !o.Personal && len(o.Words) == 0 {
+	if !o.Secrets && !o.Personal && len(o.Words) == 0 && o.Dictionary == nil {
 		o.Secrets, o.Personal, off = true, true, true
 	}
 	o.Seen = told(&hits)

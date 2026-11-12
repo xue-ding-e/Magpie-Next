@@ -2,11 +2,13 @@
 // ChatGPT accounts come in from CLIProxyAPI's auth files or Codex's own
 // auth.json (Mrhe525 on #124: 要是能把那什么cpa的json文件可以导入直接使用就无敌了):
 // the accounts list and the wait on a browser sign-in both offer it, the box
-// says the file's sign-in is spent by the refresh, what is pasted is posted
-// as it is, and each account's outcome is listed; in English and Chinese.
+// warns that refreshing a shared sign-in can invalidate the source copy.
+// What is pasted is posted as it is, and each account's outcome is listed;
+// in English and Chinese.
 // #1453 (wlj521: Cockpit Tools' exports): the box names Cockpit Tools and
-// Sub2API, says the source tool is signed out, and a pasted text that held
-// no account is listed by name rather than passed over; at 380px too.
+// Sub2API, says to sign in separately for continued use in both, and a
+// pasted text that held no account is listed by name rather than passed
+// over; at 380px too.
 // #2131: after the results, Import more… opens the next batch.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -56,8 +58,8 @@ function serve(lang, posted) {
 }
 
 const want = {
-  en: { imp: "Import accounts from a file…", instead: "Import from a file instead…", title: "Import ChatGPT accounts", intro: /Codex's auth\.json, codexbar's config\.json \(in ~\/\.codexbar\), or an export from Cockpit Tools, CLIProxyAPI or Sub2API/, spent: /signed out of that account.*only read/, checking: "Checking the accounts with ChatGPT…", done: ["Added", "Already in magpie", "Not added", "Not added"], pasted: "The pasted text" },
-  zh: { imp: null, instead: null, title: null, intro: /codexbar 的 config\.json.*Cockpit Tools.*Sub2API/, spent: /退出该账号/, checking: null, done: null, pasted: "粘贴的内容" },
+  en: { imp: "Import accounts from a file…", instead: "Import from a file instead…", title: "Import ChatGPT accounts", intro: /Codex's auth\.json \(including AI Toolbox exports\), codexbar's config\.json \(in ~\/\.codexbar\), or an export from Cockpit Tools, CLIProxyAPI or Sub2API.*without refreshing the sign-in/, spent: /invalidate the source tool's copy.*sign in separately.*only read/, checking: "Checking the accounts with ChatGPT…", done: ["Added", "Already in magpie", "Not added", "Not added"], pasted: "The pasted text" },
+  zh: { imp: null, instead: null, title: null, intro: /codexbar 的 config\.json.*Cockpit Tools.*Sub2API/, spent: /凭据副本失效.*分别登录.*只读/, checking: null, done: null, pasted: "粘贴的内容" },
 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -92,10 +94,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // every new string has its Chinese
         for (const s of ["Import from a file instead…", "Checking the accounts with {vendor}…",
           "Bring in accounts from Codex's auth.json, codexbar's config.json, or exports from Cockpit Tools, CLIProxyAPI or Sub2API",
-          "Choose or paste one or more files: Codex's auth.json, codexbar's config.json (in ~/.codexbar), or an export from Cockpit Tools, CLIProxyAPI or Sub2API. Each account's sign-in is refreshed with ChatGPT before it is added.",
-          "This takes the sign-in over: the tool the file came from (Codex on another computer, codexbar, Cockpit Tools, CLIProxyAPI) is signed out of that account and has to sign in again. The file itself is only read.",
+          "Choose or paste one or more files: Codex's auth.json (including AI Toolbox exports), codexbar's config.json (in ~/.codexbar), or an export from Cockpit Tools, CLIProxyAPI or Sub2API. A usable access token is checked without refreshing the sign-in.",
+          "Refreshing a sign-in can invalidate the source tool's copy. Two tools must not refresh the same session independently; sign in separately for continued use in both. The file itself is only read.",
           "The pasted text",
-          "Each account's sign-in is refreshed and its account looked up, as signing in does."]) {
+          "Usable access tokens are checked first; a missing or refused access token may need refreshing."]) {
           assert.notEqual(await T(s), s, "no Chinese for: " + s);
         }
       }
