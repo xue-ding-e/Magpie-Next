@@ -4,13 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"github.com/yetone/magpie/internal/agent"
+	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/sessions"
+	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/usage"
 )
 
@@ -21,6 +26,43 @@ import (
 // is every one, was counted in the totals and never listed.
 func TestGatewayModeStatsNameTheGatewaySessions(t *testing.T) {
 	sandboxHome(t)
+	// These files are absent on a new install. On Windows, steady.Stat
+	// waits out a possible rename of a missing file whose folder exists.
+	// Give this stats test settled inputs so its clock measures the query,
+	// rather than those deliberate filesystem retries.
+	if err := os.MkdirAll(filepath.Dir(settings.Path()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		"settings.json":         `{}`,
+		"providers.json":        `[]`,
+		"logins.json":           `[]`,
+		"plugin-providers.json": `[]`,
+		"plugin-searches.json":  `{}`,
+		"stash.json":            `{}`,
+		"library.json":          `{}`,
+	} {
+		if err := os.WriteFile(filepath.Join(filepath.Dir(settings.Path()), name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Process discovery keeps directory-probe channels, and reading a
+	// ledger chunk arms a scratch timer. Initialize them outside the
+	// bubble: neither may leave a bubble-owned primitive for the next
+	// test. The worker finishes before the first stats query, and is
+	// joined even if the bubble fails before handing it the fixture.
+	fixture := make(chan usage.Record)
+	ready := make(chan struct{})
+	go func() {
+		defer close(ready)
+		if r, ok := <-fixture; ok {
+			usage.Append(r)
+			provider.All()
+			agent.Looks()
+			usage.GatewaySessions(time.Time{}, nil)
+		}
+	}()
+	defer func() { close(fixture); <-ready }()
 	synctest.Test(t, func(t *testing.T) {
 		now := time.Now().In(time.Local)
 		midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
@@ -31,6 +73,7 @@ func TestGatewayModeStatsNameTheGatewaySessions(t *testing.T) {
 		sessions.Reset()
 		forgetStats()
 		t.Cleanup(func() {
+			synctest.Wait()
 			webPage.Store(false)
 			ownWas.Store(0)
 			sessions.Reset()
@@ -38,7 +81,8 @@ func TestGatewayModeStatsNameTheGatewaySessions(t *testing.T) {
 		})
 		const remote = "8c1f0e7a-1111-4222-8333-444455556666"
 		at := time.Now()
-		usage.Append(usage.Record{Time: at, Agent: "claude", Session: remote, Provider: "fake", Model: "m", Input: 50, Output: 5, Status: 200})
+		fixture <- usage.Record{Time: at, Agent: "claude", Session: remote, Provider: "fake", Model: "m", Input: 50, Output: 5, Status: 200}
+		<-ready
 
 		mux := http.NewServeMux()
 		sessionRoutes(mux, folderOnly{})
