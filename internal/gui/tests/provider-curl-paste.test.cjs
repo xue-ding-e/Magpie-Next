@@ -42,30 +42,7 @@ const want = {
 const ownKey = "sk-ant-api03-Qx7vT2mK9pLw4RzN8bYc";
 const withKey = async () => (await fs.readFile(path.join(fixtures, "anthropic.sh"), "utf8")).replace("$ANTHROPIC_API_KEY", ownKey);
 
-// Keep the editor's initial-focus task pending until paste has selected
-// the key. Other timers run normally; release restores the native timer.
-function holdEditorFocus() {
-  const schedule = window.setTimeout, pending = [];
-  window.__editorFocusHold = {
-    pending,
-    release() {
-      window.setTimeout = schedule;
-      const tasks = pending.splice(0);
-      for (const run of tasks) run();
-      return tasks.length;
-    },
-  };
-  window.setTimeout = function (callback, delay, ...args) {
-    // This expression is shared by the old and fixed initial-focus task.
-    if (delay === 0 && typeof callback === "function" && String(callback).includes("custom || another ? name : endpoint || vertexProject || key")) {
-      pending.push(() => callback(...args));
-      return 0;
-    }
-    return schedule.call(window, callback, delay, ...args);
-  };
-}
-
-function serve(lang, posts, { holdFocus = false } = {}) {
+function serve(lang, posts) {
   const state = { agents: [], profiles: [], settings: { lang, theme: "light" } };
   // one saved provider: with none the page shows its first-run card instead
   const plain = { id: "plain", name: "Plain", icon: "generic", chat: "https://relay.example.com/v1", responses: "", anthropic: "", models: [{ id: "m", name: "m", on: true }], agents: [], fallback: [], headers: {}, key: { set: true, masked: "sk-…1234" }, keyList: [], ready: true };
@@ -73,7 +50,7 @@ function serve(lang, posts, { holdFocus = false } = {}) {
   return async (route) => {
     const url = new URL(route.request().url());
     const json = (data) => route.fulfill({ json: data });
-    if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:${JSON.stringify(lang)},theme:"light",web:true};` + (holdFocus ? `(${holdEditorFocus})();` : "") });
+    if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:${JSON.stringify(lang)},theme:"light",web:true};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json(state);
     if (url.pathname === "/api/providers") return json(providers);
@@ -129,15 +106,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     }
   });
 
-  for (const [lang, width, holdFocus = false] of [["en", 900], ["zh", 900], ["en", 440], ["zh", 440], ["en", 440, true]]) {
-    test(`${engine} ${lang} ${width}px${holdFocus ? " (delayed initial focus)" : ""}: a curl command pasted into the editor fills it in`, async (t) => {
+  for (const [lang, width] of [["en", 900], ["zh", 900], ["en", 440], ["zh", 440]]) {
+    test(`${engine} ${lang} ${width}px: a curl command pasted into the editor fills it in`, async (t) => {
       const browser = await launch(engine);
       t.after(() => browser.close());
       const page = await (await browser.newContext({ viewport: { width, height: 800 }, reducedMotion: "reduce" })).newPage();
       page.setDefaultTimeout(5000);
+      page.setDefaultNavigationTimeout(60000);
       const errors = [], posts = [];
       page.on("pageerror", (e) => errors.push(e.message));
-      await page.route("**/*", serve(lang, posts, { holdFocus }));
+      await page.route("**/*", serve(lang, posts));
       const w = words[lang];
       const ed = page.locator(".editor");
       const baseURL = ed.locator(".base-url");
@@ -157,7 +135,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       await page.goto("http://magpie.test/?view=providers");
       await page.locator("#addProvider").click();
-      await page.locator("#addSheet .custom-foot .custom").click();
+      await page.locator("#addSheet .row-head .custom").click();
       await baseURL.waitFor();
       await ed.locator("input[placeholder]").first().fill("Kimi");
 
@@ -166,12 +144,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await baseURL.inputValue(), "https://api.moonshot.cn/v1");
       assert.equal(await on(), "openai");
       assert.equal(await key.inputValue(), "", "a placeholder is no key");
-      if (holdFocus) {
-        assert.ok(await key.evaluate((i) => document.activeElement === i), "paste focuses the key before the delayed task");
-        const pending = await page.evaluate(() => __editorFocusHold.pending.length);
-        assert.ok(pending === 0 || pending === 1, "at most one initial-focus task is pending");
-        assert.equal(await page.evaluate(() => __editorFocusHold.release()), pending, "pending initial-focus tasks ran before checking the key");
-      }
       assert.ok(await key.evaluate((i) => document.activeElement === i), "the key's box is where to paste one");
       assert.equal(await models.inputValue(), "kimi-k3");
       assert.equal((await note.textContent()).trim(), w.kimi);

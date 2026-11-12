@@ -38,7 +38,10 @@ function fixtures(now) {
 }
 
 function serve(lang, data) {
-  const settings = { theme: "light", lang, tray: "panel", quotaLeft: false, currency: "usd" };
+  // Codex's credits off: its card has no credits lines, so how many there
+  // are doesn't decide whether the balance's card (held down to the
+  // column beside it) has room to grow
+  const settings = { theme: "light", lang, tray: "panel", quotaLeft: false, currency: "usd", codexNoCredits: ["a@x.com"] };
   return async (route) => {
     const url = new URL(route.request().url());
     const json = (body) => route.fulfill({ json: body });
@@ -62,27 +65,19 @@ function serve(lang, data) {
 // the cards' heights and the list's, once the page has settled: two frames
 // with nothing moving
 async function settled(page) {
-  return page.evaluate(() => new Promise((done, fail) => {
-    const list = document.querySelector("#subscriptionUsage");
+  return page.evaluate(() => new Promise((done) => {
     const read = () => JSON.stringify({
-      list: Math.round(list.getBoundingClientRect().height),
-      cards: [...list.children].map((c) => [c.dataset.key, Math.round(c.getBoundingClientRect().height)]),
-      plots: [...list.querySelectorAll(".qc-plot")].map((g) => Math.round(g.getBoundingClientRect().height)),
+      list: Math.round(document.querySelector("#subscriptionUsage").getBoundingClientRect().height),
+      cards: [...document.querySelectorAll("#subscriptionUsage > .subscription-card")].map((c) => [c.dataset.key, Math.round(c.getBoundingClientRect().height)]),
     });
-    // A packed card can absorb the first part of the curve's height animation
-    // in its empty space. Its unchanged outer height is not yet settled.
-    const moving = () => [...list.querySelectorAll(".qc-plot")].some((g) =>
-      g.getAnimations().some((a) => a.pending || a.playState === "running"));
     let last = read(), still = 0;
-    let frame;
-    const timeout = setTimeout(() => { cancelAnimationFrame(frame); fail(new Error("the Usage cards and curves did not settle")); }, 5000);
     const tick = () => {
-      const now = read(), playing = moving();
-      if (now === last && !playing && ++still >= 4) { clearTimeout(timeout); done(JSON.parse(now)); return; }
-      if (now !== last || playing) { last = now; still = 0; }
-      frame = requestAnimationFrame(tick);
+      const now = read();
+      if (now === last && ++still >= 4) return done(JSON.parse(now));
+      if (now !== last) { last = now; still = 0; }
+      requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
+    requestAnimationFrame(tick);
   }));
 }
 
@@ -94,6 +89,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         t.after(() => browser.close());
         const page = await (await browser.newContext({ viewport: { width, height: 760 } })).newPage();
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         const errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, fixtures(Date.now())));

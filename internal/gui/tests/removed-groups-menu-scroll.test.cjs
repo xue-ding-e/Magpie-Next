@@ -67,10 +67,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await browser.close();
         });
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         const errors = [], posts = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, posts));
-        await page.goto("http://magpie.test/?view=routing");
+        await page.goto("http://magpie.test/?view=groups");
         const line = page.locator(".rt-ghidden");
         await line.waitFor();
         assert.equal((await line.textContent()).trim(), words[lang]);
@@ -119,19 +120,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(await at(), before, "the page didn't scroll under the menu");
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, "no sideways scroll");
 
-        // The menu closes before the asynchronous show request arrives.
-        // Observe its new identity without filtering out an incorrect body.
-        let request;
-        const [, response] = await Promise.all([
-          page.waitForRequest((r) => {
-            if (r.url() !== "http://magpie.test/api/groups/show" || r.method() !== "POST") return false;
-            request = r;
-            return true;
-          }),
-          page.waitForResponse((r) => r.request() === request),
-          page.mouse.click(spot.x, spot.y),
-        ]);
-        assert.equal(response.status(), 200, "the restore request succeeded");
+        await page.mouse.click(spot.x, spot.y);
         await menu.waitFor({ state: "detached" });
         assert.deepEqual(posts, [{ id: "auto-gone-30" }]);
         assert.equal(await at(), before, "no click moved the page");

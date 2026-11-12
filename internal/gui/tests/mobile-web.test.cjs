@@ -1,7 +1,7 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
 // Phone navigation and content stay usable in both languages (#391). The
 // desktop screenshots match BASE_REF within a small rendering tolerance
-// (origin/main by default; CI supplies a sealed commit SHA), but for the Agents page while BASE_REF hasn't its
+// (origin/main by default), but for the Agents page while BASE_REF hasn't its
 // 「接入」 rows yet. Until BASE_REF has the visibility manager, its new footer
 // alone is excluded; agent-bulk-visibility and agent-grip cover that footer's
 // layout and controls. Its height is rounded only for the pixel comparison,
@@ -12,19 +12,12 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { test } = require("node:test");
+const { chromium, webkit } = require("playwright");
+const { reach, openPage } = require("./reader.cjs");
+const { PNG } = require("playwright-core/lib/utilsBundle");
 
 const assets = path.resolve(__dirname, "../assets");
-const baseRef = process.env.BASE_REF || "origin/main";
-// Resolve before launching either engine. Missing Git objects are a fixture
-// setup error, not an asset 404 followed by a navigation-button timeout.
-const base = execFileSync("git", ["rev-parse", "--verify", `${baseRef}^{commit}`], {
-  cwd: path.resolve(assets, "../../.."), windowsHide: true, encoding: "utf8",
-}).trim();
-const playwright = require("playwright");
-const { chromium, webkit } = playwright;
-const { foreground: ownedForeground } = require("./fixtures/browser-activity.cjs");
-const { reach } = require("./reader.cjs");
-const { PNG } = require("playwright-core/lib/utilsBundle");
+const base = process.env.BASE_REF || "origin/main";
 const baseline = new Map();
 const at = "2026-09-30T12:00:00.000Z";
 const groups = [{ name: "Claude Code", icon: "claudecode-color", calls: 123, errors: 2,
@@ -125,6 +118,7 @@ function server(lang, original = false, opened = []) {
 async function open(browser, lang, width, { original = false, touch = true, opened = [] } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: touch, reducedMotion: "reduce", colorScheme: "light" });
   page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(60000);
   await page.addInitScript(at => {
     const RealDate = Date;
     window.Date = class extends RealDate {
@@ -134,46 +128,15 @@ async function open(browser, lang, width, { original = false, touch = true, open
   }, at);
   await page.route("http://magpie.test/**", server(lang, original, opened));
   await page.goto("http://magpie.test/");
-  await foreground(page);
   await page.locator("#nav button").first().waitFor();
   return page;
 }
 
-// A phone being used is visible and active. Windows WebKit can retain its
-// native inactive override while bringToFront succeeds; no animation frames
-// then arrive for Playwright's ordinary actionability check. Reassert the
-// exact native command used by this pinned SDK's page initialization. This
-// only configures our isolated headless page; clicks and their checks stay real.
-async function foreground(page) {
-  if (process.platform === "win32" && page.context().browser().browserType().name() === "webkit") {
-    await ownedForeground(page);
-  } else await page.bringToFront();
-  await page.waitForFunction(() => document.visibilityState === "visible" && document.hasFocus(), null, { polling: 50 });
-}
-
-async function failureState(page) {
-  let timer;
-  try {
-    return await Promise.race([
-      page.evaluate(() => new Promise(resolve => {
-        let painted = false;
-        requestAnimationFrame(() => { painted = true; });
-        setTimeout(() => resolve({ visibility: document.visibilityState, focus: document.hasFocus(),
-          painted, animations: document.getAnimations().length, viewTransition: !!document.activeViewTransition,
-          view: document.querySelector('.view:not([hidden])')?.id, popHidden: document.querySelector('#pop')?.hidden }), 100);
-      })),
-      new Promise(resolve => { timer = setTimeout(() => resolve({ captureTimedOut: true }), 500); }),
-    ]);
-  } catch (error) { return { captureError: error.message.split("\n")[0] }; }
-  finally { clearTimeout(timer); }
-}
-
 async function go(page, view) {
-  // Playwright scrolls each real navigation button into sight before clicking;
-  // this exercises the phone's horizontal navigation strip too.
-  await foreground(page);
-  await page.locator(view === "settings" ? "#prefs" : `#nav [data-view="${view}"]`).click();
-  await page.locator(`#view-${view}`).waitFor();
+  // the page's tab, or on a phone's tab bar More and its row for a page
+  // past the fifth (phonetabs.js)
+  if (view === "settings") await page.locator("#prefs").click();
+  await (view === "settings" ? page.locator(`#view-${view}`).waitFor() : openPage(page, view));
   if (view === "library") await page.locator("#view-library .lib-more:not(:disabled)").waitFor();
   if (view === "plugins") await page.locator("#view-plugins .pm-find").waitFor();
   if (view === "usage") {
@@ -224,10 +187,8 @@ async function agentsFit(page) {
     await row.waitFor();
     // opened, its pickers in the row; the last row opened can push this one
     // out of sight, so it is wheeled to once that one has slid open
-    await foreground(page);
     await page.waitForFunction(() => !document.getAnimations().length);
     await reach(page, row.locator(".ag-link"));
-    await foreground(page);
     await row.locator(".ag-link").click();
     await row.locator(".ag-exp").waitFor();
     const bad = await row.evaluate(row => {
@@ -247,10 +208,8 @@ async function agentsFit(page) {
     for (const key of keys) {
       try {
         const field = row.locator(`.field[data-key="${key}"]`);
-        await foreground(page);
         await page.waitForFunction(() => !document.getAnimations().length);
         await reach(page, field);
-        await foreground(page);
         await field.click();
         await page.locator("#pop").waitFor();
       } catch (e) { throw new Error(`${agent.id} ${key} open: ${e.message.split("\n")[0]}`); }
@@ -322,7 +281,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
                 ]);
                 assert.deepEqual(opened, [{ path: "/test/library" }], "Library folder must be reachable");
               }
-              } catch (e) { failures.push(view + ": " + e.message + "\npage state: " + JSON.stringify(await failureState(page))); }
+              } catch (e) { failures.push(view + ": " + e.message); }
             }
             assert.deepEqual(errors, []);
             assert.deepEqual(failures, []);
@@ -405,28 +364,47 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
                 });
                 await current.waitForTimeout(350);
               }
-              if (view === "usage") {
-                const font = await current.locator(".usage-cost b").evaluate((b) => {
-                  const sample = document.createElement("span"); sample.style.fontFamily = "var(--code)";
-                  b.append(sample);
-                  const expected = getComputedStyle(sample).fontFamily;
-                  sample.remove();
-                  return { actual: getComputedStyle(b).fontFamily, expected };
-                });
-                assert.equal(font.actual, font.expected, "current Usage total must retain the code font that stabilizes money width");
-                // The money-width fix intentionally changes this one old-main
-                // font. Match it on the baseline only; retain every pixel and
-                // the same tolerance for the rest of the desktop comparison.
-                const oldRule = baselineFile("app.css").toString().match(/\.usage-cost b\s*\{([^}]*)\}/)?.[1] || "";
-                if (!/font-family\s*:\s*var\(--code\)/.test(oldRule)) {
-                  await original.locator(".usage-cost b").evaluate((b) => { b.style.fontFamily = "var(--code)"; });
-                }
-              }
               // Replies' Short Claude system prompt row is new: until BASE_REF
               // has it, the page is compared with the row taken out;
               // claude-lean-prompt-setting.test.cjs covers the row.
               if (view === "settings" && !baselineFile("app.js").includes("claudeLeanRow")) {
                 await current.locator("#claudeLeanRow").evaluate((r) => r.remove());
+                await current.waitForTimeout(350);
+              }
+              // Replies' Claude Code's interactive mode row is new: until
+              // BASE_REF has it, the page is compared with the row taken
+              // out; claude-tui-setting.test.cjs covers the row.
+              if (view === "settings" && !baselineFile("app.js").includes("claudeTuiRow")) {
+                await current.locator("#claudeTuiRow").evaluate((r) => r.remove());
+                await current.waitForTimeout(350);
+              }
+              // The Routing page's Settings › button is new: until BASE_REF
+              // has it, the page is compared with the button taken out;
+              // settings-places.test.cjs covers it.
+              if (view === "routing" && !baselineFile("plugins/routing/client.js").toString().includes("rtToSet")) {
+                await current.locator("#rtToSet").evaluate((b) => b.remove());
+                await current.waitForTimeout(350);
+              }
+              // So is the Usage page's, in the allowances' head.
+              if (view === "usage" && !baselineFile("plugins/usage/client.js").toString().includes("usageToSet")) {
+                await current.locator("#usageToSet").evaluateAll((bs) => bs.forEach((b) => b.remove()));
+                await current.waitForTimeout(350);
+              }
+              // A setting row's line wraps whole (arculongus on Discord):
+              // until BASE_REF has that, the page is compared with the lines
+              // held to one line as they were; settings-lines-wrap.test.cjs
+              // covers the wrapping.
+              if (view === "settings" && !baselineFile("app.css").includes("arculongus")) {
+                await current.addStyleTag({ content: ".row.pref .sub { white-space: nowrap; overflow-wrap: normal; }" });
+                await current.waitForTimeout(350);
+              }
+              // The sidebar's button sits ahead of the magpie in both layouts
+              // (ztf4080 on X), so the header beside the sidebar no longer
+              // starts with it: until BASE_REF has it, the button, the magpie
+              // and the header beside the sidebar are left out of both pictures and the rest
+              // compared as ever; side-toggle.test.cjs covers where they are.
+              if (!baselineFile("app.js").includes("append(btn, brand)")) {
+                for (const p of [current, original]) await p.addStyleTag({ content: "#sideToggle, .brand, body.side-nav .top { visibility: hidden !important; }" });
                 await current.waitForTimeout(350);
               }
               const before = PNG.sync.read(await still(original));

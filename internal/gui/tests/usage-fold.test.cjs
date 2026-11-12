@@ -14,7 +14,6 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const ago = (m) => new Date(Date.now() - m * 60e3).toISOString();
@@ -80,6 +79,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const open = async (url) => {
         const page = await context.newPage();
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, url.includes("mode=panel")));
         await page.goto(url);
@@ -127,9 +127,13 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // scroll): packed into columns (#860), Codex's card is under ZCode's,
       // past this short window's foot
       const wheelTo = async (l) => {
-        // Reach the view's actual edge, above its footer. Window coordinates
-        // alone left the button 4px below the view before Playwright's press.
-        await reach(page, l);
+        for (let i = 0; i < 20; i++) {
+          const y = (await l.boundingBox()).y;
+          if (y > 60 && y + 40 < 300) break;
+          await page.mouse.wheel(0, y > 60 ? 60 : -60);
+          await page.waitForTimeout(150);
+        }
+        await page.waitForTimeout(300);
       };
       await wheelTo(two.locator(".quota-acct-fold"));
       const twoAt = await two.evaluate((e) => e.getBoundingClientRect().top);
@@ -185,6 +189,80 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     });
   }
 
+  // WuSix on Discord (#help): three accounts, one deleted, and the two
+  // left were both in brief. The button said 展开其余 2 个账号 though no
+  // account was in full, opened both, and then 收起其余账号 folded only the
+  // second, leaving 展开其余 1 个账号. The count names the accounts the
+  // button opens, its fold puts back in brief the ones it opened, and an
+  // account's own fold still works on its own. At a narrow width.
+  for (const lang of ["en", "zh"]) {
+    const w = {
+      en: { all2: "Show all 2 accounts in full", more2: "Show 2 more accounts in full", more1: "Show 1 more account in full", every: "Show every account in brief", other: "Show the other accounts in brief" },
+      zh: { all2: "展开全部 2 个账号", more2: "展开其余 2 个账号", more1: "展开其余 1 个账号", every: "收起全部账号", other: "收起其余账号" },
+    }[lang];
+    test(`${engine} ${lang}: an account deleted, the button opens and folds the ones it names`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+      t.after(() => browser.close());
+      const page = await (await browser.newContext({ viewport: { width: 420, height: 800 }, reducedMotion: "reduce" })).newPage();
+      page.setDefaultTimeout(5000);
+      page.setDefaultNavigationTimeout(60000);
+      const errors = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      let list = [wb("alpha@example.com", 10), wb("bravo@example.com", 20, ago(30)), wb("charlie@example.com", 30, ago(2))];
+      await page.route("**/*", serve(lang, false, () => list));
+      const card = async () => (await cards(page)).find((c) => c.name === "WorkBuddy");
+      const more = page.locator("#subscriptionUsage > [data-key=workbuddy] .quota-more");
+      const settle = (text) => page.waitForFunction((text) => document.querySelector("#subscriptionUsage > [data-key=workbuddy] .quota-more")?.textContent === text, text);
+      await page.goto("http://magpie.test/?view=usage");
+      await page.waitForSelector(".subscription-account .user", { state: "attached" });
+
+      // three accounts: the one that answered last in full; opened and
+      // folded again, the card is as it was
+      assert.deepEqual([(await card()).full, (await card()).more], [["charlie@example.com"], w.more2]);
+      await more.click();
+      await settle(w.other);
+      assert.equal((await card()).full.length, 3);
+      await more.click();
+      await settle(w.more2);
+      assert.deepEqual([(await card()).full, (await card()).brief], [["charlie@example.com"], ["alpha@example.com", "bravo@example.com"]]);
+
+      // charlie deleted: the two left both in brief, and the button says so
+      list = list.filter((q) => q.user !== "charlie@example.com");
+      await page.reload();
+      await page.waitForSelector(".subscription-account .user", { state: "attached" });
+      let c = await card();
+      assert.deepEqual([c.full, c.brief, c.more], [[], ["alpha@example.com", "bravo@example.com"], w.all2]);
+      // it opens both
+      await more.click();
+      await settle(w.every);
+      c = await card();
+      assert.deepEqual([c.full, c.brief], [["alpha@example.com", "bravo@example.com"], []]);
+      assert.equal(await more.getAttribute("aria-expanded"), "true");
+      // and folds both
+      await more.click();
+      await settle(w.all2);
+      c = await card();
+      assert.deepEqual([c.full, c.brief], [[], ["alpha@example.com", "bravo@example.com"]]);
+      assert.equal(await more.getAttribute("aria-expanded"), "false");
+
+      // an account's own fold still works on its own
+      const fold = (user) => page.locator("#subscriptionUsage > [data-key=workbuddy] .subscription-account", { hasText: user }).locator(".quota-acct-fold");
+      await fold("alpha@example.com").click();
+      await settle(w.more1);
+      assert.deepEqual((await card()).full, ["alpha@example.com"]);
+      // the button opens bravo, and folds bravo alone
+      await more.click();
+      await settle(w.other);
+      await more.click();
+      await settle(w.more1);
+      assert.deepEqual([(await card()).full, (await card()).brief], [["alpha@example.com"], ["bravo@example.com"]]);
+      await fold("alpha@example.com").click();
+      await settle(w.all2);
+      assert.deepEqual((await card()).full, []);
+      assert.deepEqual(errors, []);
+    });
+  }
+
   // ARNO's Usage page: 17 subscriptions, 29 accounts. With Trends off, at
   // 1280×800, every account is on the page and most of their bars are on
   // the first screen without opening anything, as many as before the curves.
@@ -214,6 +292,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     t.after(() => browser.close());
     const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" })).newPage();
     page.setDefaultTimeout(5000);
+    page.setDefaultNavigationTimeout(60000);
     await page.route("**/*", serve("zh", false, many));
     await page.addInitScript(() => { try { if (!sessionStorage.getItem("set")) { localStorage.clear(); localStorage.setItem("magpie.quotaRange", "off"); sessionStorage.setItem("set", "1"); } } catch {} });
     await page.goto("http://magpie.test/?view=usage");

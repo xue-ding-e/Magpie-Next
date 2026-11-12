@@ -11,7 +11,6 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 
@@ -67,14 +66,6 @@ const decideField = (ed) => ed.locator("input.decide-url").evaluate((input) => {
   return { label: wrap.previousElementSibling?.textContent || "", hint: wrap.querySelector(".hint")?.textContent || "" };
 });
 
-async function openProviders(page) {
-  await page.goto("http://magpie.test/?view=providers");
-  // The HTML already contains Add provider while startup draws skeletons.
-  // Wait for the fresh list, including a kept-list replacement, before its
-  // moving/hidden add button or saved rows are used for endpoint assertions.
-  await page.waitForFunction(() => load.done && providers && !providers.last && !loadProviders.first);
-}
-
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": only Jev's presets call the decision address Jev's endpoint", async (t) => {
     assert(["chromium", "webkit"].includes(engine), "BROWSER must be chromium or webkit");
@@ -85,6 +76,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const w = L[lang];
         const page = await (await browser.newContext({ viewport: { width: 900, height: 760 } })).newPage();
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         const errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", server(lang));
@@ -92,11 +84,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const ed = page.locator(".editor.new");
 
         for (const { name } of presets) {
-          await openProviders(page);
+          await page.goto("http://magpie.test/?view=providers");
           await page.locator("#addProvider").click();
-          const tile = sheet.locator(".tile .n", { hasText: new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$") });
-          await reach(page, tile);
-          await tile.click();
+          await sheet.locator(".tile .n", { hasText: new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$") }).click();
           await ed.locator(".ehead b", { hasText: name }).waitFor();
           const got = await decideField(ed);
           if (jevs.includes(name)) {
@@ -111,7 +101,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
         // editing a saved OpenRouter shows the same
         const saved = page.locator(".editor");
-        await openProviders(page);
+        await page.goto("http://magpie.test/?view=providers");
         await page.locator('#providers .row[data-id="openrouter"]').click();
         await saved.locator(".ehead b", { hasText: "OpenRouter" }).waitFor();
         const got = await decideField(saved);

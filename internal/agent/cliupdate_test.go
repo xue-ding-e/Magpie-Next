@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/testenv"
 )
 
@@ -57,8 +56,6 @@ func TestInstalledVersion(t *testing.T) {
 	p := filepath.Join(bin, "pi")
 	for _, c := range []struct{ out, want string }{{"0.98.2", "0.98.2"}, {"pi 0.99.0\n", "0.99.0"}} {
 		testenv.Program(t, p, "#!/bin/sh\necho '"+c.out+"'\n")
-		// The fake install can share the empty folder's timestamp.
-		proc.Forget()
 		if v := a.InstalledVersion(); v != c.want {
 			t.Errorf("%q: %q", c.out, v)
 		}
@@ -191,7 +188,7 @@ func TestHowInstalled(t *testing.T) {
 		t.Errorf("pnpm without pnpm: %+v", u)
 	}
 	pnpm := file(t, filepath.Join(fake, "pnpm"), "#!/bin/sh\n")
-	if u := howInstalled(cliSpecs["claude"], shim); u == nil || !reflect.DeepEqual(u.cmd, []string{pnpm, "add", "-g", "@anthropic-ai/claude-code@latest"}) {
+	if u := howInstalled(cliSpecs["claude"], shim); u == nil || !reflect.DeepEqual(u.cmd, []string{pnpm, "add", "-g", "--allow-build=@anthropic-ai/claude-code", "@anthropic-ai/claude-code@latest"}) {
 		t.Errorf("pnpm: %+v", u)
 	}
 
@@ -457,7 +454,7 @@ func TestUpdateCLIOpenCodeByNpmTakesNoVersion(t *testing.T) {
 	if _, err := a.UpdateCLI(); err != nil {
 		t.Fatal(err)
 	}
-	if len(ran) != 1 || !strings.HasSuffix(strings.Join(ran[0], " "), "install -g --prefix "+prefix+" opencode-ai@latest") {
+	if len(ran) != 1 || !strings.HasSuffix(strings.Join(ran[0], " "), "install -g --prefix "+prefix+" --allow-scripts=opencode-ai opencode-ai@latest") {
 		t.Errorf("ran %q", ran)
 	}
 }
@@ -541,7 +538,7 @@ func TestGrokInstalled(t *testing.T) {
 		if version != "" {
 			name = "grok-" + version + "-" + platform
 		}
-		os.Chtimes(file(t, filepath.Join(home, ".grok/downloads", name), "MZ"), when, when)
+		os.Chtimes(file(t, filepath.Join(home, ".grok/downloads", name), "not a program"), when, when)
 		bin = filepath.Join(home, ".grok/bin/grok")
 		os.Remove(bin)
 		link(t, "../downloads/"+name, bin)
@@ -559,12 +556,9 @@ func TestGrokInstalled(t *testing.T) {
 	}))
 	defer rel.Close()
 	says := "grok 1.0.46 (2765805b9442)"
-	oldRel, oldVer, oldRun, oldCheck := grokReleases, runVersion, runUpdate, runCheck
+	oldRel, oldVer, oldRun := grokReleases, runVersion, runUpdate
 	grokReleases = []string{rel.URL + "/"}
 	runVersion = func(string) string { return says }
-	// The fixture's MZ bytes only stand for an install path. On WSL they
-	// start the Windows interpreter, which exits 1 on that incomplete file.
-	runCheck = func(context.Context, string, []string) (string, int, error) { return says, 0, nil }
 	versions, latests = memo{}, memo{}
 	var ran [][]string
 	runUpdate = func(_ context.Context, u *updater) ([]byte, error) {
@@ -574,7 +568,7 @@ func TestGrokInstalled(t *testing.T) {
 		return []byte("✓ grok v1.0.50 installed successfully!"), nil
 	}
 	t.Cleanup(func() {
-		grokReleases, runVersion, runUpdate, runCheck = oldRel, oldVer, oldRun, oldCheck
+		grokReleases, runVersion, runUpdate = oldRel, oldVer, oldRun
 		versions, latests = memo{}, memo{}
 	})
 
@@ -698,7 +692,7 @@ func TestHowInstalledBunWindowsShim(t *testing.T) {
 	omp := file(t, filepath.Join(bunDir, "bin/omp.exe"), "MZ\x90\x00 node_modules")
 	file(t, filepath.Join(bunDir, "bin/omp.bunx"), bunxOf(t, `install\global\node_modules\@oh-my-pi\pi-coding-agent\dist\cli.js`,
 		[]byte{'b', 0, 'u', 0, 'n', 0, ' ', 0, 0x82, 0, 0, 0, 8, 0, 0, 0, 0x35, 0xab}))
-	if u := howInstalled(cliSpecs["opencode"], opencode); u == nil || u.via != "bun" || !reflect.DeepEqual(u.cmd, []string{bun, "add", "-g", "opencode-ai@latest"}) {
+	if u := howInstalled(cliSpecs["opencode"], opencode); u == nil || u.via != "bun" || !reflect.DeepEqual(u.cmd, []string{bun, "add", "-g", "--trust", "opencode-ai@latest"}) {
 		t.Errorf("opencode's bun shim: %+v", u)
 	}
 	if u := howInstalled(cliSpecs["omp"], omp); u == nil || u.via != "bun" || !reflect.DeepEqual(u.cmd, []string{bun, "add", "-g", "@oh-my-pi/pi-coding-agent@latest"}) {

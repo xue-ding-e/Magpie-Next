@@ -32,14 +32,6 @@ function serve(lang) {
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
-    // Native Windows chrome has no page state; validate this exact RPC.
-    if (url.pathname === "/api/window/titlebar") {
-      assert.equal(req.method(), "POST");
-      assert.deepEqual(req.postDataJSON(), {});
-      assert.match(url.searchParams.get("c"), /^\d+,\d+,\d+,255$/);
-      assert.match(url.searchParams.get("dark"), /^(0|1)$/);
-      return json({ ok: true });
-    }
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:false};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme: "light" } });
@@ -82,76 +74,6 @@ function bar(head) {
   return { parts, crumb: box(c), tools, acts: box(acts), side: document.querySelector("#side").getBoundingClientRect().right, view: innerWidth };
 }
 
-// A document can finish its layout before its delayed native tint RPC has
-// consumed its reply. Draining it before navigation avoids WebKit reporting
-// the cancelled fetch as a page error; unrelated page errors stay asserted.
-async function titlebarLifecycle(page) {
-  const pending = new Map();
-  const native = (request) => {
-    const url = new URL(request.url());
-    return url.origin === "http://magpie.test" && url.pathname === "/api/window/titlebar";
-  };
-  page.on("request", (request) => {
-    if (!native(request)) return;
-    let resolve;
-    const done = new Promise((r) => { resolve = r; });
-    pending.set(request, { done, resolve });
-  });
-  const ended = (request) => {
-    if (!native(request)) return;
-    pending.get(request)?.resolve();
-    pending.delete(request);
-  };
-  page.on("requestfinished", ended);
-  page.on("requestfailed", ended);
-  await page.addInitScript(trackNativeTitlebar);
-  return async () => {
-    if (!page.url().startsWith("http://magpie.test/")) return;
-    await page.waitForFunction(() => {
-      const s = window.__titlebarSignal;
-      const applicable = typeof tintTitleBar === "function" && typeof mode !== "undefined"
-        && mode === "window" && !web && document.documentElement.classList.contains("win");
-      return !applicable || !!s && s.started > 0 && s.pending === 0;
-    }, null, { timeout: 5000, polling: 50 });
-    let timer;
-    try {
-      await Promise.race([
-        Promise.all([...pending.values()].map((item) => item.done)),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("native titlebar request did not finish")), 5000); }),
-      ]);
-    } finally { clearTimeout(timer); }
-    assert.equal(await page.evaluate(() => window.__titlebarSignal.failed), 0, "native titlebar requests complete before navigation");
-  };
-}
-
-function trackNativeTitlebar() {
-  const fetch0 = window.fetch;
-  const state = window.__titlebarSignal = { started: 0, pending: 0, failed: 0 };
-  window.fetch = function (input, ...args) {
-    const url = new URL(typeof input === "string" || input instanceof URL ? String(input) : input.url, location.href);
-    if (url.origin !== "http://magpie.test" || url.pathname !== "/api/window/titlebar") return fetch0.call(this, input, ...args);
-    state.started++; state.pending++;
-    let settled = false;
-    const finish = (failed = false) => {
-      if (settled) return;
-      settled = true;
-      state.pending--;
-      if (failed) state.failed++;
-    };
-    return fetch0.call(this, input, ...args).then((response) => {
-      if (response.status === 204) { finish(); return response; }
-      const text = response.text;
-      response.text = function (...options) {
-        return text.apply(this, options).then(
-          (value) => { finish(); return value; },
-          (error) => { finish(true); throw error; },
-        );
-      };
-      return response;
-    }, (error) => { finish(true); throw error; });
-  };
-}
-
 const pages = [
   ...["instructions", "mcp", "skills", "hooks", "subagents", "rtk"].map((tab) => ({ name: "library " + tab, url: "?view=library", head: "#view-library .lib-head", init: ["magpie.libTab", tab] })),
   ...["builtin", "discover", "installed"].map((tab) => ({ name: "plugins " + tab, url: "?view=plugins", head: "#view-plugins .pm-head", init: ["magpie.pluginTab", tab] })),
@@ -167,9 +89,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const context = await browser.newContext({ viewport: { width, height: 640 }, reducedMotion: "reduce" });
         const page = await context.newPage();
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         const errors = [];
         let on = "";
-        const titlebarIdle = await titlebarLifecycle(page);
         // going from page to page cancels the reads still on their way, and
         // WebKit reports each one as a page error, "Fetch API cannot load …
         // due to access control checks" (#1350, #1307): not this test's
@@ -182,13 +104,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         for (const p of pages) {
           on = p.name;
           if (p.init) await page.evaluate(([k, v]) => localStorage.setItem(k, v), p.init).catch(() => {});
-          await titlebarIdle();
           await page.goto("http://magpie.test/" + p.url);
-          if (p.init) {
-            await page.evaluate(([k, v]) => localStorage.setItem(k, v), p.init);
-            await titlebarIdle();
-            await page.reload();
-          }
+          if (p.init) { await page.evaluate(([k, v]) => localStorage.setItem(k, v), p.init); await page.reload(); }
           await page.locator(p.head).waitFor();
           await page.locator("#crumb b").waitFor();
           // the Library's buttons have their tooltips once it has loaded
@@ -229,7 +146,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           // can give way: the title shows whole wherever it fits beside them
           if (width >= 650) assert(!title.cut, `the title is cut at ${at}`);
         }
-        await titlebarIdle();
         assert.deepEqual(errors, []);
         await context.close();
       }

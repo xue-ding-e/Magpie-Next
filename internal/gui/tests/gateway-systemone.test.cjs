@@ -61,7 +61,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
         const context = await browser.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce", colorScheme: theme });
         const page = await context.newPage();
+        await page.addInitScript(() => { try { localStorage.setItem("magpie.gwConnectFolded", "0"); } catch {} }); // Connect opened, as a user who reads it
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         const errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, theme));
@@ -91,7 +93,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const langs = await connect.locator(".segs").nth(1).locator(".opt").allTextContents();
         assert.deepEqual(langs, ["curl", "Python", "Node"], "no shell variables");
         let s = await snippet();
-        assert.match(s, /curl(?:\.exe)? http:\/\/127\.0\.0\.1:3999\/v1\/systemone/);
+        assert.match(s, /curl http:\/\/127\.0\.0\.1:3999\/v1\/systemone/);
         assert.match(s, /"model": "cf\/@cf\/typesafe\/jev"/);
         assert.match(s, /"questions"/);
         assert.match(s, /Authorization: Bearer magpie/);

@@ -10,7 +10,6 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const ZCODE = "ZCode reads its providers at start-up — restart ZCode to see magpie's models in its picker.";
@@ -59,6 +58,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await t.test(`${lang} at ${width}px`, async () => {
           const page = await (await browser.newContext({ viewport: { width, height: 900 } })).newPage();
           page.setDefaultTimeout(5000);
+          page.setDefaultNavigationTimeout(60000);
           page.on("pageerror", (e) => errors.push(e.message));
           await page.route("**/*", server(lang));
           await page.goto("http://magpie.test/");
@@ -96,23 +96,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.locator(".agent-more").click();
           const sw = page.locator(`.row.agent[data-id="zcode"] .ag-conn`);
           await sw.waitFor({ state: "visible" });
-          // The fold and row must finish moving before this notice fixture
-          // points at the switch; a visible switch can still move on the press.
-          await page.waitForFunction(() => {
-            const row = document.querySelector('.row.agent[data-id="zcode"]');
-            if (!row) return false;
-            const nodes = [row.closest(".agent-fold"), row].filter(Boolean);
-            return nodes.flatMap(n => n.getAnimations()).every(a => ["idle", "finished"].includes(a.playState));
-          }, null, { timeout: 5000, polling: 100 }).catch(cause => { throw new Error(`ZCode unfold-animation wait failed (${engine} ${lang} ${width}px)`, { cause }); });
-          await reach(page, sw);
           await sw.click();
           // connected: the row is drawn anew, and may sit elsewhere in the
           // list by then, so the switch's state is read, not its visibility
           // a connect writes ZCode's files through the server: at a load of
           // 60-100 that took past the 5s default, so it gets the room a
           // server round trip needs
-          await page.waitForFunction(() => document.querySelector('.row.agent[data-id="zcode"] .ag-conn')?.getAttribute("aria-checked") === "true", null, { timeout: 30000 }).catch(cause => { throw new Error(`ZCode connected-state wait failed (${engine} ${lang} ${width}px)`, { cause }); });
-          await page.waitForFunction(() => document.querySelector("#status")?.textContent.trim(), null, { timeout: 30000 }).catch(cause => { throw new Error(`ZCode notice-text wait failed (${engine} ${lang} ${width}px)`, { cause }); });
+          await page.waitForFunction(() => document.querySelector('.row.agent[data-id="zcode"] .ag-conn')?.getAttribute("aria-checked") === "true", null, { timeout: 30000 });
+          await page.waitForFunction(() => document.querySelector("#status")?.textContent.trim(), null, { timeout: 30000 });
           const said = (await page.locator("#status").textContent()).trim();
           const want = await page.evaluate((z) => t(z), ZCODE);
           assert.ok(said.endsWith(want), said);

@@ -21,8 +21,8 @@ func importJWT(claims map[string]any) string {
 }
 
 // magpie accounts import (#1453, wlj521: several auth.json files, the way
-// Cockpit Tools takes them): it explains that refreshing a shared session
-// can invalidate the source's copy, imports nothing until agreed to, takes several
+// Cockpit Tools takes them): it says first that the tool a file came from
+// is signed out, imports nothing until that is agreed to, takes several
 // files at once, names a file that held no account, and only reads them.
 func TestAccountsImport(t *testing.T) {
 	home := t.TempDir()
@@ -70,9 +70,8 @@ func TestAccountsImport(t *testing.T) {
 		}
 		return p
 	}
-	// Missing access tokens exercise renewal after explicit confirmation.
-	a := write("a.json", `{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"","refresh_token":"r-a","account_id":"acct-a"}}`)
-	b := write("b.json", `{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"","refresh_token":"r-b","account_id":"acct-b"}}`)
+	a := write("a.json", `{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"y","refresh_token":"r-a","account_id":"acct-a"}}`)
+	b := write("b.json", `{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"y","refresh_token":"r-b","account_id":"acct-b"}}`)
 	bad := write("notes.txt", "{not json")
 	before := map[string]string{}
 	for _, p := range []string{a, b, bad} {
@@ -84,13 +83,13 @@ func TestAccountsImport(t *testing.T) {
 		return said(t, func() error { return accountsCmd(append([]string{"accounts", "import"}, args...)) })
 	}
 
-	// Not agreed to: the shared-session warning is shown, nothing asked of ChatGPT.
+	// not agreed to: the takeover said, nothing asked of ChatGPT
 	out, err := run("codex", a, b)
 	if err == nil || !strings.Contains(err.Error(), "canceled") || asked != 0 || len(provider.Logins("codex")) != 0 {
 		t.Fatalf("imported without --yes: %v %d\n%s", err, asked, out)
 	}
-	if !strings.Contains(out, "invalidate the source tool's copy") || !strings.Contains(out, "sign in separately") || !strings.Contains(out, "only read") {
-		t.Fatalf("the shared-session warning wasn't said:\n%s", out)
+	if !strings.Contains(out, "signed out of that account") || !strings.Contains(out, "only read") {
+		t.Fatalf("the takeover wasn't said:\n%s", out)
 	}
 
 	out, err = run("codex", a, b, bad, "--yes")

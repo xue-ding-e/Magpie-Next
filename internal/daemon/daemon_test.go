@@ -539,3 +539,42 @@ func TestInstallCarriesTLS(t *testing.T) {
 		})
 	}
 }
+
+// A service the user removed is recorded, so the terminal's hand-over of
+// the gateway (tui.keepGateway) never installs it again by itself; an
+// install by the user clears that.
+func TestUninstallRecordsTheUsersNo(t *testing.T) {
+	fakes(t, "linux")
+	if Removed() {
+		t.Fatal("removed before anything")
+	}
+	if err := Install(Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Uninstall(); err != nil {
+		t.Fatal(err)
+	}
+	if !Removed() {
+		t.Fatal("the user's uninstall not recorded")
+	}
+	if err := Install(Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if Removed() {
+		t.Fatal("still recorded after the user installed it")
+	}
+}
+
+// Program is what the installed service runs, read from its own file.
+func TestProgramOf(t *testing.T) {
+	exe := `/Users/a b/.local/bin/magpie`
+	if got := programOf(plist(exe, []string{"serve"}, nil)); got != exe {
+		t.Errorf("plist: %q", got)
+	}
+	if got := programOf(unitText(exe, []string{"serve"}, nil)); got != exe {
+		t.Errorf("unit: %q", got)
+	}
+	if got := programOf("nothing"); got != "" {
+		t.Errorf("none: %q", got)
+	}
+}

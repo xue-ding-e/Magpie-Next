@@ -13,6 +13,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       t.after(() => browser.close());
       const page = await (await browser.newContext({ viewport: { width: 1000, height: 600 }, reducedMotion: "reduce" })).newPage();
       page.setDefaultTimeout(6000);
+      page.setDefaultNavigationTimeout(60000);
       const events = [], errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.route("**/*", fixture(lang, "light", events, { lan: true, groups: true, limits: { server: { models: ["group/fast"] } } }));
@@ -62,10 +63,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // or the element isn't one these rules know. The message says which:
       // each element's tag, class, place and style, and each stylesheet with
       // how many rules it holds.
-      const lefts = await page.evaluate(() => {
-        const els = [...document.querySelectorAll("#gatewayKeys .key-models, .proto-menu .pm-item")].filter((e) => e.isConnected);
+      const lefts = await page.locator("#gatewayKeys .key-models, .proto-menu .pm-item").evaluateAll((els) => {
         const sheets = [...document.styleSheets].map((s) => { try { return (s.href || "<style>").replace(location.origin, "") + ":" + s.cssRules.length; } catch (e) { return s.href + ":" + e.name; } });
-        const bad = els.filter((e) => e.isConnected && document.documentElement.contains(e)).map((e) => ({ e, s: getComputedStyle(e) })).filter(({ s }) => s.borderLeftStyle !== "none")
+        const bad = els.map((e) => ({ e, s: getComputedStyle(e) })).filter(({ s }) => s.borderLeftStyle !== "none")
           .map(({ e, s }) => ({ tag: e.tagName, cls: e.className, in: e.parentElement?.className, connected: e.isConnected, style: s.borderLeftStyle, width: s.borderLeftWidth, color: s.borderLeftColor }));
         return { n: els.length, bad, sheets };
       });

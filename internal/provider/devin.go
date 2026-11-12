@@ -15,12 +15,13 @@ package provider
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/lazyre"
 	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/settings"
 )
@@ -64,7 +66,21 @@ func DevinCredentialsPath() string {
 	return filepath.Join(base, "devin", "credentials.toml")
 }
 
-var devinStatus = &cliIdentity{name: "devin", exe: func() string { return DevinExecutable() }, ask: askDevinStatus}
+var devinStatus = &cliIdentity{name: "devin", exe: func() string { return DevinExecutable() }, ask: askDevinStatus, mark: devinSignInMark}
+
+// devinSignInMark is the key credentials.toml keeps, hashed, as the mark
+// cliIdentity asks again on a change of; "" when it can't be read.
+func devinSignInMark() string {
+	b, err := readAccountFile(DevinCredentialsPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return "none"
+	}
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
+}
 
 // devinIdentity is who Devin's CLI says is signed in; see cliIdentity.
 func devinIdentity() (user, plan string, ok bool) {
@@ -308,7 +324,7 @@ func devinDeclaredImages() map[string]*bool {
 	return out
 }
 
-var devinEffort = regexp.MustCompile(`-(none|min|minimal|low|medium|high|xhigh|max|fast|priority)$`)
+var devinEffort = lazyre.New(`-(none|min|minimal|low|medium|high|xhigh|max|fast|priority)$`)
 
 // devinKnown is models.dev's window and reply cap for a model id, with the
 // effort suffix taken off: claude-opus-5-5-high-fast has claude-opus-5-5's.

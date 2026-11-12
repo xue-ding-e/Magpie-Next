@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/yetone/magpie/internal/proc"
 )
 
 // The Cursor editor makes ~/.cursor (argv.json, extensions/, mcp.json,
@@ -31,14 +29,11 @@ func TestCursorFolderFromTheEditorIsNotTheCLI(t *testing.T) {
 		writeAt(t, filepath.Join(bin, name), "#!/bin/sh\n")
 		os.Chmod(filepath.Join(bin, name), 0o755)
 	}
-	// A fake install or removal can keep the folder's timestamp unchanged.
-	proc.Forget()
 	if !cursor(home).Detected() {
 		t.Error("the cursor-agent command on PATH no longer finds Cursor CLI")
 	}
 	os.Remove(filepath.Join(bin, "cursor-agent"))
 	os.Remove(filepath.Join(bin, "cursor-agent.exe"))
-	proc.Forget()
 	writeAt(t, a.Path, `{"version":1}`)
 	if !cursor(home).Detected() {
 		t.Error("~/.cursor/cli-config.json no longer finds Cursor CLI")

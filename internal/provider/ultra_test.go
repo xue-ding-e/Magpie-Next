@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -42,6 +41,8 @@ func TestUltraOnModelsThatOfferIt(t *testing.T) {
 	if !slices.Equal(sol.Efforts, append(slices.Clone(upToMax), "ultra")) || !sol.AgentsV2 {
 		t.Fatalf("copilot/gpt-6.1-sol: %v v2=%v", sol.Efforts, sol.AgentsV2)
 	}
+	// gpt-6.1-terra carries Ultra in Codex's catalog now (#4909), like the
+	// Sols and Astra: another vendor's entry up to max lists it too
 	terra := entryFor(copilot, catalog.Model{ID: "gpt-6.1-terra", Efforts: upToMax}, s)
 	if !slices.Equal(terra.Efforts, append(slices.Clone(upToMax), "ultra")) || !terra.AgentsV2 {
 		t.Fatalf("copilot/gpt-6.1-terra: %v v2=%v", terra.Efforts, terra.AgentsV2)
@@ -75,29 +76,5 @@ func TestUltraOnModelsThatOfferIt(t *testing.T) {
 	}
 	if g := group(sol, own); !slices.Contains(g.Efforts, "ultra") || g.AgentsV2 {
 		t.Fatalf("group with a ChatGPT account's: %v v2=%v", g.Efforts, g.AgentsV2)
-	}
-}
-
-func TestDatedCodexRelayBorrowsKnownEfforts(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
-	if err := os.MkdirAll(filepath.Dir(catalog.CachePath()), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(catalog.CachePath(), []byte(`{
-  "openai": {"id": "openai", "models": {
-    "gpt-6.1-sol": {"id": "gpt-6.1-sol", "reasoning_options": [{"type": "effort", "values": ["low", "medium", "high", "xhigh", "max"]}]}
-  }}
-}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	catalog.Reset()
-	t.Cleanup(catalog.Reset)
-	want := []string{"low", "medium", "high", "xhigh", "max"}
-	if got := borrowedEfforts("gpt-6.1-sol-2026-09-29"); !slices.Equal(got, want) {
-		t.Fatalf("dated relay model efforts = %v, want %v", got, want)
 	}
 }

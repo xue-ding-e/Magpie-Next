@@ -54,9 +54,7 @@ const shown = (page, at) => page.evaluate((at) => {
   for (const a of [...d.parentElement.getAnimations(), ...d.getAnimations()]) { a.pause(); a.currentTime = at * a.effect.getTiming().duration; }
   const box = d.getBoundingClientRect(), s = box.width / d.offsetWidth;
   const clip = getComputedStyle(d).clipPath;
-  // Computed CSS may serialize a near-zero inset as 2.84217e-14px.
-  const number = String.raw`[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?`;
-  const m = clip.match(new RegExp(String.raw`^inset\((${number})px(?: (${number})px)?(?: (${number})px)?(?: (${number})px)?(?= round |\))`));
+  const m = clip.match(/^inset\(([-\d.]+)px(?: ([-\d.]+)px)?(?: ([-\d.]+)px)?(?: ([-\d.]+)px)?/);
   if (!m) return { clip, top: box.top, bottom: box.bottom, left: box.left, right: box.right };
   const [t, r = t, b = t, l = r] = m.slice(1).map((v) => v === undefined ? undefined : +v);
   return { clip, top: box.top + Math.max(0, t) * s, bottom: box.bottom - Math.max(0, b) * s, left: box.left + Math.max(0, l) * s, right: box.right - Math.max(0, r) * s };
@@ -69,6 +67,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height: 760 }, reducedMotion: "no-preference" });
       page.setDefaultTimeout(5000);
+      page.setDefaultNavigationTimeout(60000);
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.route("**/*", serve());
@@ -85,15 +84,21 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.goto("http://magpie.test/?view=providers");
       const row = page.locator('.row.provider[data-id="delta"]');
       await row.waitFor();
-      // Sample a settled source row, not the page's translateY entrance.
-      // Cancellation is idle/absent; a paused animation times out instead of hanging.
-      await page.waitForFunction(() => document.querySelector("#view-providers").getAnimations()
-        .every((a) => a.playState === "finished" || a.playState === "idle"), null, { timeout: 5000 });
+      // the list still: at 420px its rows come in, a pixel or more each
+      // frame, and a row measured on the way read 1 to 5px off where the
+      // dialog then grew from (10-23)
+      await page.waitForFunction(() => {
+        const y = document.querySelector('.row.provider[data-id="delta"]').getBoundingClientRect().y;
+        const was = window.__rowY;
+        window.__rowY = y;
+        return was === y;
+      }, null, { polling: 100 });
       await page.evaluate(() => { window.__hold = true; });
       const r = await row.boundingBox();
 
-      // held at the start: a strip of the dialog over the row
-      await row.locator(".name, .who").first().click();
+      // held at the start: a strip of the dialog over the row, pressed on
+      // its logo, the row's handle (it rose from below, 10-24)
+      await row.locator(".pv-handle").click();
       await page.locator("#modal:not([hidden]) > .dialog").waitFor();
       const start = await shown(page, 0);
       assert.match(start.clip, /^inset\(/, `${engine} ${width}: the opening clips the dialog: ${start.clip}`);
@@ -148,12 +153,23 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator("#modal").waitFor({ state: "hidden" });
       assert.equal(await page.locator("#modal > .dialog").evaluate((d) => d.style.clipPath), "", "no clip left behind");
 
-      // opened again: it grows from the row again
+      // opened again from past its name: it grows from where it was
+      // pressed (the owner, 10-24: 应该从点击处放大), and folds back there
       await page.evaluate(() => { window.__hold = true; });
-      await row.locator(".name, .who").first().click();
+      const px = r.width * .62;
+      await row.click({ position: { x: px, y: r.height / 2 } });
       await page.locator("#modal:not([hidden]) > .dialog").waitFor();
       const again = await shown(page, 0);
       near(again.top, r.y, "again: the strip's top on the row's");
+      near(again.bottom, r.y + r.height, "again: the strip's bottom on the row's");
+      near((again.left + again.right) / 2, r.x + px, "again: the strip centred on the press");
+      near(again.right - again.left, start.right - start.left, "again: as wide as the icon and name were");
+      assert(again.left >= r.x - 1 && again.right <= r.x + r.width + 1, `${engine} ${width}: again inside the row: ${JSON.stringify(again)}`);
+      await page.evaluate(() => { for (const a of document.querySelector("#modal").getAnimations({ subtree: true })) a.finish(); });
+      await page.keyboard.press("Escape");
+      await page.locator("#modal.out").waitFor({ state: "attached" });
+      const back = await shown(page, 1);
+      near((back.left + back.right) / 2, r.x + px, "closed again: back where it was pressed");
       assert.deepEqual(errors, []);
     });
   }
@@ -163,6 +179,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 1240, height: 760 }, reducedMotion: "reduce" });
     page.setDefaultTimeout(5000);
+    page.setDefaultNavigationTimeout(60000);
     await page.route("**/*", serve());
     await page.goto("http://magpie.test/?view=providers");
     const row = page.locator('.row.provider[data-id="delta"]');

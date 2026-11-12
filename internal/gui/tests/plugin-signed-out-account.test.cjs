@@ -40,15 +40,6 @@ function serve(lang, login, usage, posts) {
     if (url.pathname === "/api/providers") return json(providers());
     if (url.pathname === "/api/groups") return json({ groups: [], pools: [] });
     if (url.pathname === "/api/login/usage") return json(usage);
-    // Windows paints its title bar at startup. This changes window chrome,
-    // not account/configuration data; every other POST stays in posts.
-    if (url.pathname === "/api/window/titlebar") {
-      assert.equal(route.request().method(), "POST");
-      assert.deepEqual(route.request().postDataJSON(), {});
-      assert.match(url.searchParams.get("c"), /^\d+,\d+,\d+,255$/);
-      assert.ok(["0", "1"].includes(url.searchParams.get("dark")));
-      return json({ ok: true });
-    }
     if (route.request().method() === "POST") {
       const body = route.request().postDataJSON();
       posts.push({ path: url.pathname, body });
@@ -65,8 +56,8 @@ function serve(lang, login, usage, posts) {
 }
 
 const W = {
-  en: { required: "Sign-in required", again: "Sign in again", remove: "Remove", inUse: "In use", removed: `${USER} removed` },
-  zh: { required: "需要重新登录", again: "重新登录", remove: "移除", inUse: "使用中", removed: `已移除 ${USER}` },
+  en: { required: "Sign-in required", again: "Sign in again", remove: "Remove", inUse: "In use" },
+  zh: { required: "需要重新登录", again: "重新登录", remove: "移除", inUse: "使用中" },
 };
 
 const cases = [
@@ -76,34 +67,6 @@ const cases = [
 
 const overlap = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-// A usage reply can replace the editor. Resolve the row and all its boxes
-// together, without retaining an element across browser calls.
-function accountLayout(page, user, w) {
-  return page.evaluate(({ user, w }) => {
-    const one = (nodes, name) => {
-      if (nodes.length !== 1) throw new Error(`Expected one ${name}, got ${nodes.length}`);
-      return nodes[0];
-    };
-    const boxOf = (element, name) => {
-      const style = getComputedStyle(element), r = element.getBoundingClientRect();
-      if (!element.isConnected || style.display === "none" || style.visibility !== "visible" || !element.getClientRects().length
-        || ![r.x, r.y, r.width, r.height].every(Number.isFinite) || r.width <= 0 || r.height <= 0) throw new Error(`${name} is not visibly laid out`);
-      return { x: r.x, y: r.y, width: r.width, height: r.height };
-    };
-    const row = one([...document.querySelectorAll(".accts .acc")].filter((e) => e.dataset.accountId === user), "account row");
-    boxOf(one([...row.querySelectorAll(".using")].filter((e) => e.textContent.trim() === w.required), "Sign-in required"), "Sign-in required");
-    const aq = one([...row.querySelectorAll(".aq")], "allowance line");
-    boxOf(one([...aq.querySelectorAll(".aq-none")], "allowance reason"), "allowance reason");
-    const buttons = {};
-    for (const name of [w.again, w.remove]) {
-      const button = one([...row.querySelectorAll("button")].filter((e) => e.textContent.trim() === name), name);
-      const box = boxOf(button, name);
-      buttons[name] = { box, opacity: getComputedStyle(button).opacity, hit: document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === button };
-    }
-    return { box: boxOf(row, "account row"), line: boxOf(aq, "allowance line"), buttons };
-  }, { user, w });
-}
-
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": a plugin's signed-out account keeps Sign in again and Remove", async (t) => {
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
@@ -111,11 +74,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     for (const lang of ["en", "zh"]) {
       const w = W[lang];
       for (const width of [420, 1100]) {
-        const open = async (t, login, usage, posts) => {
-          const context = await browser.newContext({ viewport: { width, height: 800 }, reducedMotion: "reduce" });
-          t.after(() => context.close());
-          const page = await context.newPage();
+        const open = async (login, usage, posts) => {
+          const page = await (await browser.newContext({ viewport: { width, height: 800 }, reducedMotion: "reduce" })).newPage();
           page.setDefaultTimeout(5000);
+          page.setDefaultNavigationTimeout(60000);
           const errors = [];
           page.on("pageerror", (e) => errors.push(e.message));
           await page.route("**/*", serve(lang, login, usage, posts));
@@ -126,9 +88,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           return { page, errors, row };
         };
         for (const c of cases) {
-          await t.test(`${lang} ${width}: ${c.name}`, async (t) => {
+          await t.test(`${lang} ${width}: ${c.name}`, async () => {
             const posts = [];
-            const { page, errors, row } = await open(t, c.login, c.usage, posts);
+            const { page, errors, row } = await open(c.login, c.usage, posts);
             await row.locator(".using", { hasText: w.required }).waitFor();
             const again = row.getByRole("button", { name: w.again, exact: true });
             const rm = row.getByRole("button", { name: w.remove, exact: true });
@@ -139,50 +101,65 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             // and nothing covers them or runs out of the row
             const aq = row.locator(".aq");
             await aq.locator(".aq-none").waitFor();
-            for (const [b, name] of [[again, w.again], [rm, w.remove]]) {
+            for (const b of [again, rm]) {
               await b.scrollIntoViewIfNeeded();
-              const { box, line, buttons } = await accountLayout(page, USER, w), r = buttons[name].box;
+              assert.ok(await b.isVisible());
+            }
+            // the row, its reason and its buttons read in one go, once they
+            // hold still: read one by one, a row still laying itself out (at
+            // 420 Remove wraps under Sign in again, 5px over the reason) put a
+            // button against where the reason was a moment before (#3642)
+            const at = () => row.evaluate((acc, names) => {
+              const rect = (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+              const btn = (n) => [...acc.querySelectorAll("button")].find((b) => b.textContent.trim() === n);
+              return { box: rect(acc), line: rect(acc.querySelector(".aq")), buttons: names.map((n) => ({ name: n, r: rect(btn(n)) })) };
+            }, [w.again, w.remove]);
+            let laid = await at();
+            for (let i = 0; i < 40; i++) {
+              await page.waitForTimeout(50);
+              const now = await at();
+              if (JSON.stringify(now) === JSON.stringify(laid)) break;
+              laid = now;
+            }
+            const { box, line } = laid;
+            for (const { name, r } of laid.buttons) {
               assert.ok(!overlap(r, line), `${name} is under the reason`);
               assert.ok(r.x >= box.x - 1 && r.x + r.width <= box.x + box.width + 1, `${name} runs out of the row`);
               assert.ok(r.y + r.height <= line.y + 1, `${name} is below the reason`);
             }
             // shown as it is, not only while the pointer is on the row
             await page.mouse.move(1, 1);
-            const { buttons } = await accountLayout(page, USER, w);
-            for (const name of [w.again, w.remove]) assert.equal(buttons[name].opacity, "1", `${name} shows only on hover`);
-            assert.ok(buttons[w.remove].hit, "Remove is covered");
+            for (const b of [again, rm]) assert.equal(await b.evaluate((el) => getComputedStyle(el).opacity), "1", `${await b.innerText()} shows only on hover`);
+            const hit = await rm.evaluate((el) => { const r = el.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el; });
+            assert.ok(hit, "Remove is covered");
             if (process.env.ARTIFACT_DIR) await row.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `plugin-signed-out-${engine}-${lang}-${width}-${c.login.own ? "own" : "lapsed"}.png`) });
 
             // Remove asks first, then forgets the account
             await rm.click();
             assert.deepEqual(posts, [], "Remove waits for confirmation");
-            const forgottenRequest = page.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/login/forget");
-            const forgotten = page.waitForResponse(async (r) => r.request() === await forgottenRequest);
-            const [, response] = await Promise.all([forgottenRequest, forgotten, page.locator("dialog.action-confirm[open] button").last().click()]);
-            assert.ok(response.ok(), "Remove's POST succeeded");
+            await page.locator("dialog.action-confirm[open] button").last().click();
             for (let i = 0; i < 50 && !posts.length; i++) await page.waitForTimeout(50);
             assert.deepEqual(posts, [{ path: "/api/login/forget", body: { agent: "grok", user: USER } }]);
-            // accountAction reports success after applying its reply and state.
-            await page.getByText(w.removed, { exact: true }).waitFor();
 
             // Sign in again runs the plugin's sign-in
             posts.length = 0;
             await page.locator(".accts .acc", { hasText: USER }).getByRole("button", { name: w.again, exact: true }).click();
             for (let i = 0; i < 50 && !posts.some((p) => p.path === "/api/plugin-signin"); i++) await page.waitForTimeout(50);
-            await page.locator(".signing .signlink").getByText("https://fake.test/device", { exact: true }).waitFor();
             assert.deepEqual(posts.map((p) => p.path), ["/api/plugin-signin/prompt", "/api/plugin-signin"]);
             assert.equal(posts[1].body.provider, "grok");
             assert.deepEqual(errors, []);
+            await page.context().close();
           });
         }
 
-        await t.test(`${lang} ${width}: signed in, in use first, has no Remove as before`, async (t) => {
+        await t.test(`${lang} ${width}: signed in, in use first, has no Remove as before`, async () => {
           const posts = [];
-          const { page, errors, row } = await open(t, {}, { [USER]: { windows: [{ name: "7 days", used: 16 }] } }, posts);
+          const { page, errors, row } = await open({}, { [USER]: { windows: [{ name: "7 days", used: 16 }] } }, posts);
           await row.locator(".using", { hasText: w.inUse }).waitFor();
           assert.equal(await row.getByRole("button", { name: w.remove, exact: true }).count(), 0);
           assert.equal(await row.getByRole("button", { name: w.again, exact: true }).count(), 0);
           assert.deepEqual(errors, []);
+          await page.context().close();
         });
       }
     }

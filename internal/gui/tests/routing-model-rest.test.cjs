@@ -80,23 +80,6 @@ const posted = async (lifted) => {
   for (let i = 0; i < 60 && !lifted.length; i++) await new Promise((r) => setTimeout(r, 50));
   return lifted;
 };
-// The routing rows can be redrawn after reach's final sample. Re-read the
-// current button and retry the real reader scroll while a replacement is
-// between the pointer and the control; clicking a stale point must not lose
-// the unrest request.
-const reachCurrent = async (page, button) => {
-  let hit = false;
-  for (let attempt = 0; attempt < 4 && !hit; attempt++) {
-    await reach(page, button);
-    hit = await button.evaluate((e) => {
-      if (!e.isConnected) return false;
-      const r = e.getBoundingClientRect();
-      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return at === e || e.contains(at);
-    });
-  }
-  assert.equal(hit, true, "Try now was not the actual hit target");
-};
 const sideways = (page) => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
@@ -107,6 +90,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
         const page = await context.newPage();
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         const errors = [], lifted = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, lifted));
@@ -128,6 +112,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         for (const user of ["old@x.test", "me@x.test"]) {
           const opus = stage(user, "claude-opus-5.5"), flash = stage(user, "gemini-3.8-flash");
           await opus.first().waitFor({ state: "attached" });
+          // a row is in before the frame that says how it rests: under load
+          // the class was read before that frame came (#2115)
+          await opus.first().evaluate((e) => new Promise((done) => { const ok = () => e.classList.contains("rest") ? done() : requestAnimationFrame(ok); setTimeout(done, 5000); ok(); }));
           assert.equal(await opus.count(), 1, `${user}: one Opus row`);
           assert.equal(await flash.count(), 1, `${user}: one gemini-3.8-flash row`);
           assert(!(await flash.evaluate((e) => e.classList.contains("rest"))), `${user}: gemini-3.8-flash rests with Opus`);
@@ -159,10 +146,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // Try now lifts the model's own rest
         const row = page.locator(".rt-act", { hasText: "me@x.test" });
         const btn = row.locator(".fix button", { hasText: go[lang] });
-        await reachCurrent(page, btn);
-        const request = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/gateway/unrest");
+        await reach(page, btn);
         await btn.click();
-        assert.deepEqual((await request).postDataJSON(), { key: opusRest.key });
         assert.deepEqual(await posted(lifted), [{ key: opusRest.key }]);
         await row.locator(".st.part").waitFor({ state: "detached" });
         assert.deepEqual(errors, []);

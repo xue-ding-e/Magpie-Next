@@ -59,9 +59,7 @@ func TestSavedButSignedOut(t *testing.T) {
 	}
 	defer func(k keychain, here bool) { codexKeychain, codexKeychainHere = k, here }(codexKeychain, codexKeychainHere)
 	for _, store := range []string{"keyring", "auto"} {
-		// Exercise ordinary keyring independently of the platform default;
-		// Windows enables encrypted secret_auth_storage unless set off.
-		config := "model = \"gpt-5.6\"\ncli_auth_credentials_store = \"" + store + "\"\n\n[features]\nsecret_auth_storage = false\n\n[profiles.x]\nmodel = \"o3\"\n"
+		config := "model = \"gpt-5.6\"\ncli_auth_credentials_store = \"" + store + "\"\n\n[profiles.x]\nmodel = \"o3\"\n"
 		os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte(config), 0o600)
 
 		codexKeychain, codexKeychainHere = &fakeKeychain{}, true
@@ -86,7 +84,7 @@ func TestSavedButSignedOut(t *testing.T) {
 			t.Fatalf("%s, keychain not read here: %+v", store, codex)
 		}
 		codexKeychainHere = true
-		os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte(strings.Replace(config, "secret_auth_storage = false", "secret_auth_storage = true", 1)), 0o600)
+		os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte(config+"\n[features]\nsecret_auth_storage = true\n"), 0o600)
 		if codex = excluded(); codex == nil || !strings.Contains(codex.Why, "encrypted auth storage") || strings.Contains(codex.Why, "isn't signed in here") {
 			t.Fatalf("%s, encrypted storage: %+v", store, codex)
 		}

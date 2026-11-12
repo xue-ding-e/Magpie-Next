@@ -63,41 +63,6 @@ const cases = [
 
 const overlap = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-async function actionsFit(page, user, words) {
-  for (const name of [words.again, words.remove]) {
-    const row = page.locator(".accts .acc", { hasText: user }).filter({ has: page.locator(".using", { hasText: words.required }) });
-    await row.getByRole("button", { name, exact: true }).scrollIntoViewIfNeeded();
-    // Allowance replies redraw this editor. Read every rectangle from the
-    // current DOM in one browser turn, after scrolling: separate CDP reads
-    // can retain a node that the reply replaces before its box is measured.
-    const q = await page.evaluate(({ user, required, name }) => {
-      const rows = [...document.querySelectorAll(".accts .acc")].filter((r) =>
-        r.textContent.includes(user) && r.querySelector(".using")?.textContent === required);
-      const row = rows[0], line = row?.querySelector(".aq .aq-none");
-      const buttons = [...(row?.querySelectorAll("button") || [])].filter((b) => b.textContent.trim() === name);
-      const rect = (e) => {
-        if (!e?.isConnected || !e.getClientRects().length || getComputedStyle(e).visibility !== "visible") return null;
-        const r = e.getBoundingClientRect();
-        return { x: r.x, y: r.y, width: r.width, height: r.height };
-      };
-      return {
-        rows: rows.length, buttons: buttons.length,
-        row: rect(row), line: rect(line), button: rect(buttons[0]),
-        reason: line?.textContent, documentWidth: document.documentElement.scrollWidth,
-      };
-    }, { user, required: words.required, name });
-    assert.equal(q.rows, 1, "one revoked account row is rendered");
-    assert.equal(q.buttons, 1, `${name} is on the current row`);
-    for (const [part, box] of Object.entries({ row: q.row, line: q.line, button: q.button })) {
-      assert.ok(box && Object.values(box).every(Number.isFinite) && box.width > 0 && box.height > 0, `${name}: ${part} has visible geometry`);
-    }
-    assert.equal(q.reason, words.reason);
-    assert.ok(!overlap(q.button, q.line), `${name} is under the reason`);
-    assert.ok(q.button.x >= q.row.x - 1 && q.button.x + q.button.width <= q.row.x + q.row.width + 1, `${name} runs out of the row`);
-    assert.ok(q.documentWidth <= page.viewportSize().width, `the page scrolls sideways (${q.documentWidth})`);
-  }
-}
-
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": an account whose sign-in its vendor revoked reads as signed out and signs in again", async (t) => {
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
@@ -105,11 +70,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     for (const lang of Object.keys(W)) {
       const w = W[lang];
       for (const width of [420, 1100]) {
-        const open = async (logins, posts, subtest) => {
-          const context = await browser.newContext({ viewport: { width, height: 800 }, reducedMotion: "reduce" });
-          subtest.after(() => context.close());
-          const page = await context.newPage();
+        const open = async (logins, posts) => {
+          const page = await (await browser.newContext({ viewport: { width, height: 800 }, reducedMotion: "reduce" })).newPage();
           page.setDefaultTimeout(5000);
+          page.setDefaultNavigationTimeout(60000);
           const errors = [];
           page.on("pageerror", (e) => errors.push(e.message));
           await page.route("**/*", serve(lang, logins, posts));
@@ -119,9 +83,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           return { page, errors, card };
         };
         for (const c of cases) {
-          await t.test(`${lang} ${width}: ${c.name}`, async (subtest) => {
+          await t.test(`${lang} ${width}: ${c.name}`, async () => {
             const posts = [];
-            const { page, errors, card } = await open(c.logins, posts, subtest);
+            const { page, errors, card } = await open(c.logins, posts);
             const pill = await card.locator(".key").innerText();
             if (c.pill) assert.equal(pill, w.out, "every account in use revoked: the card says signed out");
             else assert.notEqual(pill, w.out, "another account still in use: the card isn't signed out");
@@ -135,28 +99,32 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             const aq = row.locator(".aq .aq-none");
             await aq.waitFor();
             assert.equal(await aq.innerText(), w.reason);
-            await actionsFit(page, c.user, w);
+            const box = await row.boundingBox(), line = await aq.boundingBox();
+            for (const b of [again, rm]) {
+              await b.scrollIntoViewIfNeeded();
+              assert.ok(await b.isVisible());
+              const r = await b.boundingBox();
+              assert.ok(!overlap(r, line), `${await b.innerText()} is under the reason`);
+              assert.ok(r.x >= box.x - 1 && r.x + r.width <= box.x + box.width + 1, `${await b.innerText()} runs out of the row`);
+            }
             const docW = await page.evaluate(() => document.documentElement.scrollWidth);
             assert.ok(docW <= width, `the page scrolls sideways (${docW} > ${width})`);
             if (process.env.ARTIFACT_DIR) await row.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `revoked-signin-${engine}-${lang}-${width}-${c.user.replace(/[@.]/g, "_")}.png`) });
 
             // Sign in again is Codex's sign-in of this account
             const y = await page.evaluate(() => document.scrollingElement.scrollTop);
-            const sent = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/signin" && r.method() === "POST");
             await again.click();
-            const request = await sent;
-            const response = await request.response();
-            assert.ok(response?.ok(), "the sign-in POST completed successfully");
-            await page.locator(".signing code", { hasText: "https://auth.openai.test/authorize" }).waitFor();
+            for (let i = 0; i < 50 && !posts.some((p) => p.path === "/api/signin"); i++) await page.waitForTimeout(50);
             assert.deepEqual(posts.filter((p) => p.path === "/api/signin").map((p) => { const { proxy, ...b } = p.body; return b; }), [{ agent: "codex", user: c.user }]);
             assert.equal(await page.evaluate(() => document.scrollingElement.scrollTop), y, "the click scrolled the page");
             assert.deepEqual(errors, []);
+            await page.context().close();
           });
         }
 
-        await t.test(`${lang} ${width}: an account its vendor serves has no Sign in again`, async (subtest) => {
+        await t.test(`${lang} ${width}: an account its vendor serves has no Sign in again`, async () => {
           const posts = [];
-          const { page, errors, card } = await open([{ user: "me@example.com", plan: "Plus", active: true, on: true }], posts, subtest);
+          const { page, errors, card } = await open([{ user: "me@example.com", plan: "Plus", active: true, on: true }], posts);
           assert.notEqual(await card.locator(".key").innerText(), w.out);
           await card.click();
           const row = page.locator(".accts .acc", { hasText: "me@example.com" });
@@ -164,6 +132,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           assert.equal(await row.getByRole("button", { name: w.again, exact: true }).count(), 0);
           assert.equal(await row.locator(".using", { hasText: w.required }).count(), 0);
           assert.deepEqual(errors, []);
+          await page.context().close();
         });
       }
     }

@@ -10,7 +10,6 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const G = "https://relay.example.com/proxy/v1beta";
@@ -51,15 +50,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const page = await (await browser.newContext({ viewport: { width, height: 800 }, reducedMotion: "reduce" })).newPage();
         t.after(() => browser.close());
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         const errors = [], posts = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, posts));
         await page.goto("http://magpie.test/?view=providers");
         const S = L[lang];
         await page.locator("#addProvider").click();
-        const custom = page.locator("#addSheet .custom-foot .custom");
-        await reach(page, custom);
-        await custom.click();
+        await page.locator("#addSheet .row-head .custom").click();
         const ed = page.locator(".editor.new");
         await ed.locator(".base-url").waitFor();
         await ed.locator(`input[placeholder="${S.name}"]`).fill("Gem Relay");

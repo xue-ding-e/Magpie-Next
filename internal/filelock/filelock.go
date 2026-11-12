@@ -4,7 +4,6 @@
 package filelock
 
 import (
-	"context"
 	"errors"
 	"io/fs"
 	"log"
@@ -31,15 +30,6 @@ var mkdirAll = os.MkdirAll
 // held is false when it went on without the lock: on a file system
 // without locks, or after wait.
 func Lock(path string, wait time.Duration) (unlock func(), held bool) {
-	return LockContext(context.Background(), path, wait)
-}
-
-// LockContext is Lock with a cancelable wait. A canceled context returns
-// held=false; callers can distinguish cancellation through ctx.Err().
-func LockContext(ctx context.Context, path string, wait time.Duration) (unlock func(), held bool) {
-	if ctx.Err() != nil {
-		return func() {}, false
-	}
 	// the folder is made only when the file can't be opened for want of
 	// it: made first, each lock asked the system for the folder too, on
 	// every take (#1665: ~190 times in a Windows start's first 25s, each
@@ -54,21 +44,12 @@ func LockContext(ctx context.Context, path string, wait time.Duration) (unlock f
 	}
 	start := time.Now()
 	for {
-		if ctx.Err() != nil {
-			f.Close()
-			return func() {}, false
-		}
 		got, err := TryLock(f)
 		if err != nil { // a file system without locks, as an NFS home with no lockd
 			f.Close()
 			return func() {}, false
 		}
 		if got {
-			if ctx.Err() != nil {
-				Unlock(f)
-				f.Close()
-				return func() {}, false
-			}
 			return func() { Unlock(f); f.Close() }, true
 		}
 		if time.Since(start) > wait {
@@ -76,14 +57,7 @@ func LockContext(ctx context.Context, path string, wait time.Duration) (unlock f
 			log.Printf("%s: another magpie held it for %v; going on without it", path, wait)
 			return func() {}, false
 		}
-		timer := time.NewTimer(5 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			f.Close()
-			return func() {}, false
-		case <-timer.C:
-		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

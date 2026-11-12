@@ -14,7 +14,8 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { click, inView, reach } = require("./reader.cjs");
+const reader = require("./reader.cjs");
+const { click, inView } = reader;
 
 const assets = path.resolve(__dirname, "../assets");
 const now = Date.now();
@@ -52,7 +53,7 @@ function page(q) {
   };
 }
 
-function server(lang, theme, asked, { liveNewest = false } = {}) {
+function server(lang, theme, asked) {
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
@@ -60,9 +61,6 @@ function server(lang, theme, asked, { liveNewest = false } = {}) {
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/gateway/trace") {
       await new Promise((r) => setTimeout(r, 100));
-      if (liveNewest) return json({ mine: true, seq: 1,
-        routes: [{ id: 123, time: ROWS[0].t, agent: "codex", model: "gpt-6-sol", provider: "relay", order: [], tries: [], done: true, status: 200 }],
-        totals: { requests: 1, rerouted: 0, errors: 0 }, now: new Date().toISOString() });
       return json({ mine: false, seq: 0, routes: [], totals: { requests: 0, rerouted: 0, errors: 0 }, now: new Date().toISOString() });
     }
     if (url.pathname === "/api/gateway/history") return json({ days: [], routes: [], cut: false });
@@ -104,14 +102,14 @@ function server(lang, theme, asked, { liveNewest = false } = {}) {
 const L = {
   en: {
     tabs: ["Overview", "Requests", "Sessions", "Context"],
-    cols: ["Time", "Agent", "Requested", "Provider · account", "Sent", "Served", "Effort", "In", "Out", "Cache write", "Cache read", "Cost", "TTFT", "Duration", "Speed", "Status"],
+    cols: ["Time", "Agent", "Requested", "Provider · account", "Sent", "Served", "Effort", "In", "Out", "Cache write", "Cache read", "Cache hit rate", "Cost", "TTFT", "Duration", "Speed", "Status"],
     sum: "130 requests", pager: "1–100 of 130", older: "Older", newer: "Newer", failed: "Failed", export: "Export CSV",
     why: "The vendor was asked for gpt-6-sol, but its reply says gpt-6-luna answered",saved: "Saved 130 requests to ~/Downloads/magpie-requests-30d-2026-09-29.csv",
     none: "No requests match these filters.", bad: "Failed: the agent was answered 429", via: "Codex · via office-mac",
   },
   zh: {
     tabs: ["概览", "请求", "会话", "上下文"],
-    cols: ["时间", "Agent", "请求模型", "供应商 · 账号", "发送模型", "实际模型", "推理强度", "输入", "输出", "缓存写入", "缓存读取", "费用", "首响", "耗时", "速度", "状态"],
+    cols: ["时间", "Agent", "请求模型", "供应商 · 账号", "发送模型", "实际模型", "推理强度", "输入", "输出", "缓存写入", "缓存读取", "缓存命中率", "费用", "首字耗时", "耗时", "速度", "状态"],
     sum: "130 个请求", pager: "第 1–100 条，共 130 条", older: "较早", newer: "较新", failed: "失败", export: "导出 CSV",
     why: null, saved: "已将 130 个请求保存到 ~/Downloads/magpie-requests-30d-2026-09-29.csv",
     none: "没有符合这些筛选条件的请求。", bad: "失败：Agent 收到的是 429", via: "Codex · 来自 office-mac",
@@ -132,49 +130,6 @@ async function wheelTo(page, loc) {
   assert.fail("the row never came up");
 }
 
-// A viewport resize can leave the font and the ResizeObserver's next fit in
-// different frames. Wait for the browser's font promise, then two unchanged
-// geometry frames before judging the page's width.
-async function ledgerLayoutSettled(page) {
-  await page.evaluate(() => Promise.race([
-    document.fonts.ready,
-    new Promise((_, reject) => setTimeout(() => reject(new Error("ledger fonts did not become ready")), 5000)),
-  ]));
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    let previous = "", stable = 0, frame = 0, done = false;
-    const finish = (error) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      cancelAnimationFrame(frame);
-      error ? reject(error) : resolve();
-    };
-    const timer = setTimeout(() => finish(new Error("ledger layout did not settle: " + previous)), 5000);
-    const read = () => {
-      try {
-        const view = document.querySelector("#view-usage");
-        const split = document.querySelector("#ledSplit");
-        const bar = split?.parentElement?.parentElement;
-        const nodes = [view, bar, split, ...split?.children || [], document.querySelector("#usageCost"), document.querySelector("#ledWrap")];
-        if (nodes.some((e) => !e)) throw new Error("ledger layout nodes are not ready");
-        const signature = JSON.stringify([
-          document.documentElement.clientWidth,
-          document.documentElement.scrollWidth,
-          ...nodes.map((e) => {
-            const r = e.getBoundingClientRect();
-            return [r.x, r.y, r.width, r.height, e.clientWidth, e.scrollWidth];
-          }),
-        ]);
-        stable = signature === previous ? stable + 1 : 0;
-        previous = signature;
-        if (stable >= 2) return finish();
-        frame = requestAnimationFrame(read);
-      } catch (error) { finish(error); }
-    };
-    frame = requestAnimationFrame(read);
-  }));
-}
-
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": the Usage page's Requests", async (t) => {
     assert(["chromium", "webkit"].includes(engine), "BROWSER must be chromium or webkit");
@@ -183,20 +138,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     const shots = process.env.ARTIFACT_DIR;
     if (shots) await fs.mkdir(shots, { recursive: true });
 
-    const open = async (lang, theme, asked, { width = 1180, height = 640, liveNewest = false } = {}) => {
+    const open = async (lang, theme, asked, width = 1180, height = 640) => {
       const errors = [];
       const page = await (await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce" })).newPage();
       page.setDefaultTimeout(5000);
+      page.setDefaultNavigationTimeout(60000);
       page.on("pageerror", (e) => errors.push(e.message));
-      await page.route("**/*", server(lang, theme, asked, { liveNewest }));
-      if (liveNewest) {
-        // Routing asks for history after accepting its first live trace. A
-        // hidden Routing page correctly makes no later trace poll to wait for.
-        await Promise.all([
-          page.waitForRequest((r) => new URL(r.url()).pathname === "/api/gateway/history"),
-          page.goto("http://magpie.test/"),
-        ]);
-      } else await page.goto("http://magpie.test/");
+      await page.route("**/*", server(lang, theme, asked));
+      await page.goto("http://magpie.test/");
       await page.locator('nav [data-view="usage"], [data-view="usage"]').first().click();
       await page.locator(":is(#usageTab .opt, .nav-s):visible").nth(1).click();
       await page.locator("#ledWrap .led tbody tr").first().waitFor();
@@ -207,24 +156,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       for (let i = 0; i < 60 && !(asked.length && want(asked.at(-1))); i++) await page.waitForTimeout(40);
       assert(asked.length && want(asked.at(-1)), "asked: " + (asked.at(-1) || ""));
       await page.waitForTimeout(150);
-    };
-    // A refresh may follow an export. Bind the new request before the click,
-    // then its own response; an earlier POST's late reply cannot satisfy it.
-    const exportCSV = async (page) => {
-      const button = page.locator("#ledExport");
-      await reach(page, button); // Scrolling finishes before the response deadline starts.
-      let sent;
-      const [request, response] = await Promise.all([
-        page.waitForRequest((r) => {
-          if (new URL(r.url()).pathname !== "/api/usage/requests/export" || r.method() !== "POST") return false;
-          sent = r;
-          return true;
-        }, { timeout: 2400 }),
-        page.waitForResponse((r) => r.request() === sent, { timeout: 2400 }),
-        button.click(),
-      ]);
-      assert.equal(response.status(), 200);
-      return new URL(request.url()).searchParams;
     };
 
     for (const lang of ["en", "zh"]) {
@@ -252,12 +183,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             });
             await route.fulfill({ json: data });
           });
-          await tab.locator("#period .opt").nth(2).click();
+          await tab.locator("#period .opt").nth(3).click();
           await lastAsked(tab, asked, q => q.get("period") === "30d");
           await tab.locator(key === "agent" ? "#ledAgent" : "#ledProvider").click();
           await tab.locator(".sess-menu .pm-item", { hasText: name }).click();
           await lastAsked(tab, asked, q => q.get(key) === removed);
-          await tab.locator("#period .opt").nth(1).click();
+          await tab.locator("#period .opt").nth(2).click();
           await lastAsked(tab, asked, q => q.get("period") === "7d" && !q.has(key) && q.get("offset") === "0");
           assert.equal(await tab.locator(key === "agent" ? "#ledAgent" : "#ledProvider").textContent(), all);
           assert.equal(await tab.locator(".led-row").count(), Math.min(100, ROWS.filter(r => r[key] !== removed).length));
@@ -398,7 +329,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await lastAsked(page, asked, (q) => q.get("period") === "today" && q.get("offset") === "0");
 
         // Export CSV posts the filters shown, no page, and says where it went
-        await exportCSV(page);
+        await click(page, page.locator("#ledExport"));
+        await lastAsked(page, asked, (q) => q.method === "POST");
         const ex = asked.findLast((q) => q.method === "POST"); // a refresh may ask after it
         assert.equal(ex.get("period"), "today");
         assert.equal(asked.filter((q) => q.method === "POST").length, 1, "one export");
@@ -415,12 +347,19 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const originalPeriod = asked.at(-1).get("period");
         const routeTitle = lang === "en" ? "View routing" : "查看路由";
         const usageTitle = lang === "en" ? "View usage" : "查看用量";
-        assert.equal(await page.locator(".led tbody tr").nth(3).locator("button").count(), 0, "old rows have no route link");
+        // a row is no link of its own: its click opens the request's page,
+        // and Routing is a link there (geesehowardt7 on X)
+        assert.equal(await page.locator(".led tbody tr").first().locator("button").count(), 0, "the row's time is no link");
+        const old = await reader.openRequest(page, page.locator(".led tbody tr").nth(3));
+        assert.equal(await old.locator(".led-route-link").count(), 0, "old rows have no route link");
+        assert.equal(lookups.length, 0, "opening a request asks Routing nothing");
+        await reader.closeRequest(page);
         // the dashboard above the table can leave its first row below the fold:
         // bring it up first, and the return must come back to where it was
-        const link = page.locator(".led tbody tr").first().getByTitle(routeTitle);
-        await wheelTo(page, link);
+        const row = page.locator(".led tbody tr").first();
+        await wheelTo(page, row);
         const left = await scrolled(page);
+        const link = (await reader.openRequest(page, row)).getByText(routeTitle, { exact: true });
         await link.click();
         await page.locator("#view-routing").waitFor({ state: "visible" });
         await page.locator(".rt-log-head").getByText(usageTitle, { exact: true }).waitFor();
@@ -442,14 +381,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           return v.scrollTop === Math.min(left, v.scrollHeight - v.clientHeight); }, left)
           .catch(async () => assert.fail(`return keeps the Usage view position: left at ${left}, back at ${await scrolled(page)}, room ${await page.locator("#view-usage").evaluate((v) => v.scrollHeight - v.clientHeight)}`));
         await wheelTo(page, page.locator("#ledExport"));
-        const exported = await exportCSV(page);
-        assert.equal(exported.get("route"), "123");
+        await page.locator("#ledExport").click();
+        await lastAsked(page, asked, (q) => q.method === "POST" && q.get("route") === "123");
         await page.locator("#ledRouteClear").click();
         await lastAsked(page, asked, (q) => !q.has("route") && q.get("period") === originalPeriod);
         await page.waitForFunction(() => document.querySelectorAll(".led tbody tr").length === 100);
         // A pruned request stays in Usage and explains why its route cannot open.
-        const pruned = page.locator(".led tbody tr").nth(1).getByTitle(routeTitle);
-        await wheelTo(page, pruned);
+        await wheelTo(page, page.locator(".led tbody tr").nth(1));
+        const pruned = (await reader.openRequest(page, page.locator(".led tbody tr").nth(1))).getByText(routeTitle, { exact: true });
         await pruned.click();
         await page.waitForFunction((msg) => document.querySelector("#status").textContent === msg,
           lang === "en" ? "Routing history for this request is no longer available." : "此请求的路由历史已不可用。");
@@ -470,8 +409,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator("#ledKey").click();
         await page.locator(".sess-menu .pm-item", { hasText: "Laptop" }).click();
         await lastAsked(page, asked, q=>q.get("route") === "123" && q.get("callerKey") === "laptop");
-        const exported = await exportCSV(page);
-        assert(exported.get("route") === "123" && exported.get("callerKey") === "laptop" && !exported.has("offset") && !exported.has("limit"));
+        await page.locator("#ledExport").click();
+        await lastAsked(page, asked, q=>q.method === "POST" && q.get("route") === "123" && q.get("callerKey") === "laptop" && !q.has("offset") && !q.has("limit"));
         await page.locator("#ledRouteClear").click();
         await lastAsked(page, asked, q=>!q.has("route") && q.get("period") === "7d" && q.get("agent") === "codex" && q.get("callerKey") === "server" && q.get("failed") === "1" && q.get("q") === "sol" && q.get("offset") === "100");
         assert.equal(await page.locator("#ledQ").inputValue(), "sol");
@@ -480,9 +419,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       });
       await t.test(lang + ": newest live route needs no return-to-live button", async () => {
         const asked = [];
-        const { page, errors } = await open(lang, "light", asked, { liveNewest: true });
-        const link = page.locator(".led tbody tr").first().getByTitle(lang === "en" ? "View routing" : "查看路由");
-        await wheelTo(page, link);
+        const { page, errors } = await open(lang, "light", asked);
+        await page.route("**/api/gateway/trace?*", async route => {
+          await page.waitForTimeout(100);
+          await route.fulfill({json:{mine:true, seq:1, routes:[{id:123,time:ROWS[0].t,agent:"codex",model:"gpt-6-sol",provider:"relay",order:[],tries:[],done:true,status:200}],totals:{requests:1,rerouted:0,errors:0},now:new Date().toISOString()}}).catch(()=>{});
+        });
+        await page.waitForTimeout(5500);
+        await wheelTo(page, page.locator(".led tbody tr").first());
+        const link = (await reader.openRequest(page, page.locator(".led tbody tr").first())).getByText(lang === "en" ? "View routing" : "查看路由", { exact: true });
         await link.click();
         await page.locator("#view-routing").waitFor({state:"visible"});
         assert.equal(await page.locator(".rt-log-head").getByText(lang === "en" ? "Back to live" : "回到实时", {exact:true}).count(), 0);
@@ -496,7 +440,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         if (shots) await page.screenshot({ path: path.join(shots, `${engine}-usage-ledger-${lang}-dark.png`) });
         // the window at its narrowest (MinWidth in app.go)
         await page.setViewportSize({ width: 560, height: 700 });
-        await ledgerLayoutSettled(page);
+        await page.waitForTimeout(200);
         // the table scrolls in its box, and its scrollbar in its own; the page never sideways
         const sideways = () => page.evaluate(() => {
           const v = document.querySelector("#view-usage"), w = document.querySelector("#ledWrap");

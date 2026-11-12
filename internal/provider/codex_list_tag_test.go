@@ -90,23 +90,17 @@ func TestCodexListTagKeptWhileNothingChanged(t *testing.T) {
 	if CodexListTag() != want || CodexOwnListTag() != wantOwn {
 		t.Fatal("the tag isn't the one built afresh")
 	}
-	// Stamping copies the environment on Windows, allocating per entry.
-	// Measure that required work separately so an inherited environment
-	// cannot be mistaken for rebuilding the catalog. The extra-work budget
-	// remains the same with and without a held catalog.
-	stamps, stampBytes := measure(func() { codexListStampNow(); codexListStampNow() })
-	t.Logf("two stamps: %.0f allocs, %.0f bytes a call", stamps, stampBytes)
 	n, by := measure(func() { CodexListTag(); CodexOwnListTag() })
 	t.Logf("CodexListTag and CodexOwnListTag: %.0f allocs, %.0f bytes a call", n, by)
-	if n-stamps > 200 {
-		t.Errorf("with nothing changed, the tags took %.0f allocations (%.0f bytes) beyond stamping: the catalog built again", n-stamps, by-stampBytes)
+	if n > 200 {
+		t.Errorf("with nothing changed, the tags took %.0f allocations (%.0f bytes) a call: the catalog built again", n, by)
 	}
 	release := Hold()
 	n, by = measure(func() { CodexListTag(); CodexOwnListTag() })
 	release()
 	t.Logf("held: %.0f allocs, %.0f bytes a call", n, by)
-	if n-stamps > 200 {
-		t.Errorf("held, the tags took %.0f allocations (%.0f bytes) beyond stamping", n-stamps, by-stampBytes)
+	if n > 200 {
+		t.Errorf("held, the tags took %.0f allocations (%.0f bytes) a call", n, by)
 	}
 	if CodexListTag() != want || CodexOwnListTag() != wantOwn {
 		t.Fatal("the kept tag isn't the one built afresh")

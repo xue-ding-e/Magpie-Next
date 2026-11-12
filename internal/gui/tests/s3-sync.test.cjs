@@ -8,7 +8,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const { openPart, reach } = require("./reader.cjs");
+const { openPart } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 
@@ -90,17 +90,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       // picking S3 moves nothing on the page
       const top = () => page.evaluate(() => document.querySelector("#view-settings").scrollTop);
-      // at the page's end, then back up by the wheel till the choice is
-      // wholly in sight and clear of Settings' sticky heading
+      // at the page's end, then back up by the wheel till the choice is in sight
       await toEnd();
-      await reach(page, form.locator(".segs .opt", { hasText: "S3" }));
+      const segTop = () => page.evaluate(() => document.querySelector(".sync-form .segs").getBoundingClientRect().top - document.querySelector("#view-settings").getBoundingClientRect().top);
+      for (let i = 0; i < 40 && (await segTop()) < 10; i++) { await page.mouse.wheel(0, -40); await page.waitForTimeout(15); }
+      await page.waitForTimeout(300);
       const before = await top();
       assert.ok(before > 0, "the settings page must be scrolled");
       await form.locator(".segs .opt", { hasText: "S3" }).click();
       await page.waitForTimeout(250);
       assert.equal(await top(), before, "picking S3 must not scroll the page");
       assert.deepEqual(await labels(), zh
-        ? ["同步到", "终结点", "存储桶", "前缀", "区域", "Access Key", "Secret", "口令", "同时同步"]
+        ? ["同步到", "接口地址", "存储桶", "前缀", "区域", "Access Key", "Secret", "口令", "同时同步"]
         : ["Sync to", "Endpoint", "Bucket", "Prefix", "Region", "Access key", "Secret", "Passphrase", "Also sync"]);
       // every label fits its column
       for (const l of await form.locator(":scope > label:visible").all()) {
@@ -108,7 +109,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       }
 
       const box = (label) => form.locator(":scope > label:visible", { hasText: new RegExp("^" + label + "$") }).locator("xpath=following-sibling::div[1]").locator("input");
-      const L = zh ? { endpoint: "终结点", bucket: "存储桶", prefix: "前缀", region: "区域", key: "Access Key", secret: "Secret", phrase: "口令" }
+      const L = zh ? { endpoint: "接口地址", bucket: "存储桶", prefix: "前缀", region: "区域", key: "Access Key", secret: "Secret", phrase: "口令" }
         : { endpoint: "Endpoint", bucket: "Bucket", prefix: "Prefix", region: "Region", key: "Access key", secret: "Secret", phrase: "Passphrase" };
       await box(L.endpoint).fill("https://acct.r2.cloudflarestorage.com");
       await box(L.phrase).fill("correct horse");
@@ -126,7 +127,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // the WebDAV address typed before is still there, and isn't sent;
       // going back and forth, the shorter form too, moves nothing
       // the fields filled scrolled the choice out of sight: wheeled back to it
-      await reach(page, form.locator(".segs .opt", { hasText: "WebDAV" }));
+      await page.mouse.move(450, 300);
+      for (let i = 0; i < 40 && (await segTop()) < 10; i++) { await page.mouse.wheel(0, -40); await page.waitForTimeout(15); }
+      await page.waitForTimeout(300);
       const at = await top();
       assert.ok(at > 0, "the settings page must still be scrolled");
       await form.locator(".segs .opt", { hasText: "WebDAV" }).click();
@@ -140,7 +143,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await save.click();
       await form.waitFor({ state: "detached" });
       assert.deepEqual(posts, [{ url: "s3://magpie-sync/team", user: "AKIDEXAMPLE", password: "s3cr3t", endpoint: "https://acct.r2.cloudflarestorage.com",
-        region: "auto", pathStyle: true, passphrase: "correct horse", keys: true, agents: true, library: true }]);
+        region: "auto", pathStyle: true, passphrase: "correct horse", keys: true, agents: true, library: true, memory: true }]);
 
       assert.equal(await first.locator(".name").textContent(), zh ? "S3 同步" : "S3 sync");
       assert.equal(await first.locator(".sub").textContent(), (zh ? "尚未同步 · " : "Not synced yet · ") + "s3://magpie-sync/team · acct.r2.cloudflarestorage.com");

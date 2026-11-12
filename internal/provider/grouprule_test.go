@@ -216,6 +216,8 @@ func TestRuledEntry(t *testing.T) {
 		{"long rule to less", []string{"a/text", "a/vision"}, []Rule{{Use: "a/text", Tokens: 1000}}, false, 128000},
 		{"rule to one not ready", []string{"a/text", "b/huge"}, []Rule{{Use: "c/gone", Tokens: 100000}}, false, 128000},
 		{"one not ready before", []string{"a/text", "b/huge"}, []Rule{{Use: "c/gone", Agents: []string{"x"}}, {Use: "b/huge", Tokens: 100000}}, false, 128000},
+		{"images and a condition", []string{"a/text", "a/vision"}, []Rule{{Use: "a/vision", Images: true, Where: []Cond{{"agent", "is", "codex"}}}}, false, 128000},
+		{"long rule and a condition", []string{"a/text", "b/huge"}, []Rule{{Use: "b/huge", Tokens: 100000, Where: []Cond{{"subagent", "not", ""}}}}, false, 128000},
 	} {
 		e := run(tc.members, tc.rules)
 		if e.Images != tc.images || e.Context != tc.context {
@@ -313,10 +315,10 @@ func TestThenUses(t *testing.T) {
 		{Use: "ai/flash", Images: true},
 	}
 	q := RuleRequest{Images: true, Tokens: 50}
-	if got := ThenUses(rules, q, 1, "codex/gpt"); !slices.Equal(got, []string{"ai/flash"}) {
+	if got := ThenUses(rules, q, 1, []string{"codex/gpt"}); !slices.Equal(got, []string{"ai/flash"}) {
 		t.Fatal(got)
 	}
-	if got := ThenUses(rules, q, 4, "ai/flash"); len(got) != 0 {
+	if got := ThenUses(rules, q, 4, []string{"ai/flash"}); len(got) != 0 {
 		t.Fatal(got)
 	}
 }

@@ -8,16 +8,38 @@ import (
 	"testing"
 )
 
-// What the window's core may weigh, in bytes of script: everything
-// index.html loads that isn't a plugin's (assets/plugins/<id>/) and isn't
-// the words (i18n.js). A page belongs in a plugin. Each page moved out
-// lowers these to what is left, with about 1.5% room for the core's own work,
-// so a page can't quietly grow back into the core; a change that needs more
-// raises them and says why in its commit.
+// What the window's core may weigh, in bytes of script without its
+// whole-line comments: everything index.html loads that isn't a plugin's
+// (assets/plugins/<id>/) and isn't the words (i18n.js). A page belongs in
+// a plugin. Each page moved out lowers these to what is left, so a page
+// can't quietly grow back into the core; a change that needs more raises
+// them and says why in its commit. Comments aren't counted, so they are
+// never what pays for a change (#5918); the history of each number is in
+// `git log -L` of this file.
 const (
-	appScriptBudget  = 1_335_000 // app.js: 1,198,239 after Usage left (P2); 1,218,098 with the 10-15 fixes to pages still in the core; 1,232,466 with the provider editor's Advanced fold and every dialog holding its place, the core's own (10-16); 1,250,533 with the quota refresh kept through redraws, the core's own since the tray panel draws it too, plus 1.5% (#2397); 1,269,083 with Free first's option in the provider editor's ROUTINGS, which the Routing page reads too, plus 1.5%; 1,272,726 with the Providers page drawing its last list at once (#1519), the core's page, and the Routing trace's account names read without Object.entries (#1481), plus 1.5%; a dialog growing out of the row that opened it and folding back into it, the core's own since every page's dialogs open through it (10-20); Codex's and Claude Code's own settings moved from Settings into the agent's row on the Agents page, the core's own since the tray panel and the window both draw them (10-20); 1,314,432 with Settings › Privacy's record of what was masked (its summary, the records view and the local model's controls), which belongs to Settings, the core's own, plus 1.5%
-	coreScriptBudget = 1_528_800 // every core script: 1,358,034 after Usage left; 1,380,003 with them; 1,405,937 with the fold; 1,426,102 with 10-16's core work (the GitHub list loading, the move to plugins, Settings › Long conversations), plus 1.5% (#2612); 1,447,368 with loadBack, the window's one state read per return, which every page needs and so is the core's own (1,446,845 before it, 155 bytes under), plus 1.5%; OpenCode Zen's card saying OpenCode tells no key its balance adds ~390 bytes inside it; 1,472,589 with the dialog that grows out of its row and the agents' own settings in their rows, on main's 10-20 core work (the Providers page's last list, the Routing trace's names), plus 1.5% (10-20); 1,506,192 with Settings › Privacy's record of what was masked, plus 1.5%
+	appScriptBudget  = 1_086_267 // app.js: 1,080,614 at 8016205e3, with the 5,653 of room it had
+	coreScriptBudget = 1_263_333 // every core script at 8016205e3, the old measure 682 over its cap there (#5918)
 )
+
+// codeBytes is how many bytes of b are code: its blank lines, its lines
+// that are only a // comment, and its /* */ blocks that start a line,
+// aren't counted.
+func codeBytes(b []byte) int {
+	n, block := 0, false
+	for _, l := range strings.SplitAfter(string(b), "\n") {
+		t := strings.TrimSpace(l)
+		switch {
+		case block:
+			block = !strings.Contains(t, "*/")
+		case t == "", strings.HasPrefix(t, "//"):
+		case strings.HasPrefix(t, "/*") && (strings.HasSuffix(t, "*/") || !strings.Contains(t, "*/")):
+			block = !strings.HasSuffix(t, "*/")
+		default:
+			n += len(l)
+		}
+	}
+	return n
+}
 
 func TestCoreScriptBudget(t *testing.T) {
 	page, err := os.ReadFile("assets/index.html")
@@ -37,16 +59,17 @@ func TestCoreScriptBudget(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if name == "app.js" && len(b) > appScriptBudget {
-			t.Errorf("app.js is %d bytes, over its budget of %d: put the page's code in its plugin, or raise the budget and say why", len(b), appScriptBudget)
+		code := codeBytes(b)
+		if name == "app.js" && code > appScriptBudget {
+			t.Errorf("app.js is %d bytes of code, over its budget of %d: put the page's code in its plugin, or raise the budget and say why (comments aren't counted, so cutting them doesn't help)", code, appScriptBudget)
 		}
-		total += len(b)
+		total += code
 		n++
 	}
 	if n < 5 {
 		t.Fatalf("found only %d core scripts in index.html", n)
 	}
 	if total > coreScriptBudget {
-		t.Errorf("the core's scripts are %d bytes, over their budget of %d: put the page's code in its plugin, or raise the budget and say why", total, coreScriptBudget)
+		t.Errorf("the core's scripts are %d bytes of code, over their budget of %d: put the page's code in its plugin, or raise the budget and say why (comments aren't counted, so cutting them doesn't help)", total, coreScriptBudget)
 	}
 }

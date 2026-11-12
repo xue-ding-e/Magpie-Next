@@ -12,14 +12,15 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
       t.after(() => browser.close());
       const page = await (await browser.newContext({ viewport: { width: 1000, height: 760 }, reducedMotion: "reduce" })).newPage();
+      await page.addInitScript(() => { try { localStorage.setItem("magpie.gwConnectFolded", "0"); } catch {} }); // Connect opened, as a user who reads it
       page.setDefaultTimeout(6000);
+      page.setDefaultNavigationTimeout(60000);
       const events = [], errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.route("**/*", fixture(locale, "dark", events));
       const w = locale === "zh" ? { on: "开启", off: "关闭", gateway: "网关", disable: "停用密钥", enable: "启用密钥", remove: "移除", rotate: "轮换密钥", create: "创建", name: "网关密钥名称" }
         : { on: "On", off: "Off", gateway: "Gateway", disable: "Disable key", enable: "Enable key", remove: "Remove", rotate: "Rotate key", create: "Create", name: "Gateway key name" };
       const snippet = page.locator("#connect .snip");
-      const shell = await page.evaluate(() => /^Win/.test(navigator.platform) ? "PowerShell" : "Shell");
       const pick = async (id, name) => {
         await page.locator(id).click();
         await page.locator(".proto-menu .pm-item", { hasText: name }).click();
@@ -32,7 +33,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await page.locator("#gatewayKeysBlock").isVisible(), false, "most users never share");
       assert.equal(await page.locator("#connectKey").count(), 0, "local-only users see no gateway key picker");
       assert.equal(await page.locator("#connect").getByText(locale === "zh" ? "API 密钥" : "API key", { exact: true }).count(), 1);
-      await expectSecret(shell === "PowerShell" ? '$env:OPENAI_API_KEY="magpie"' : "export OPENAI_API_KEY=magpie");
+      await expectSecret('OPENAI_API_KEY=magpie');
       if (process.env.ARTIFACT_DIR) {
         await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
         await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-${locale}-local-connect.png`) });
@@ -111,7 +112,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.locator("#connect").getByRole("button", { name: api, exact: true }).click();
         const base = "http://10.0.0.10:3999" + (["OpenAI", "Responses"].includes(api) ? "/v1" : "");
         assert.equal(await page.locator("#connectAddress code").textContent(), base);
-        for (const dialect of [shell, "curl", "Python", "Node"]) {
+        for (const dialect of ["Shell", "curl", "Python", "Node"]) {
           await page.locator("#connect").getByRole("button", { name: dialect, exact: true }).click();
           const code = await snippet.textContent();
           assert(code.includes(base), `${api} ${dialect} must use the selected address`);

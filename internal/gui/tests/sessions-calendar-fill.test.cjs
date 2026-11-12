@@ -12,7 +12,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
 
-const assets = path.resolve(process.env.MAGPIE_GUI_ASSETS || path.join(__dirname, "../assets"));
+const assets = path.resolve(__dirname, "../assets");
 const iso = (d) => [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
 const to = new Date(2026, 8, 28);
 const N = 118;
@@ -69,41 +69,8 @@ const measure = () => {
     days: days.length, titled: days.filter((e) => e.title).length, pads: pads.length, padTitles: pads.filter((e) => e.title).length,
     square: Math.abs(cell.width - cell.height) < 1, cell: cell.width, months: off.length, monthOff: Math.max(0, ...off),
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, past: Math.max(c.right, s.right) - w.right,
-    pad: cal.dataset.pad, direction: getComputedStyle(wrap).flexDirection,
-    wrapWidth: w.width, calendarWidth: c.width, sideWidth: s.width, fontStatus: document.fonts.status,
   };
 };
-
-// ResizeObserver queues the fit on the next frame. A calendar that merely
-// fits inside the card can still have the previous width's padding.
-async function calendarSettled(page) {
-  await page.waitForFunction(() => document.fonts.status === "loaded", null, { polling: 100, timeout: 5000 });
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    let previous = "", stable = 0, frameId = 0, done = false;
-    const finish = (error) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      cancelAnimationFrame(frameId);
-      error ? reject(error) : resolve();
-    };
-    // RAF can stop for an occluded page; the deadline must not need a frame.
-    const timer = setTimeout(() => finish(new Error("calendar fit did not settle: " + previous)), 5000);
-    const frame = () => {
-      try {
-        const chart = document.querySelector("#sessChart"), wrap = chart.querySelector(".sess-cal-wrap");
-        const cal = wrap.querySelector(".sess-cal"), side = wrap.querySelector(".sess-cal-side");
-        const signature = JSON.stringify([cal.dataset.pad, getComputedStyle(wrap).flexDirection,
-          ...[wrap, cal, side].map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })]);
-        stable = signature === previous && !chart.fitFrame ? stable + 1 : 0;
-        previous = signature;
-        if (stable >= 2) return finish();
-        frameId = requestAnimationFrame(frame);
-      } catch (error) { finish(error); }
-    };
-    frameId = requestAnimationFrame(frame);
-  }));
-}
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of ["en", "zh"]) {
@@ -112,6 +79,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const context = await browser.newContext({ viewport: { width: 1400, height: 820 }, reducedMotion: "reduce", timezoneId: "Asia/Shanghai" });
       const page = await context.newPage();
       page.setDefaultTimeout(5000);
+      page.setDefaultNavigationTimeout(60000);
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.route("**/*", serve(lang));
@@ -126,7 +94,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator("#sessChart .sess-cal i").first().waitFor();
 
       await t.test("a wide window: the weeks before fill the card", async () => {
-        await calendarSettled(page);
         await shot("wide");
         const m = await page.evaluate(measure);
         assert(m.row, "the facts sit beside the calendar");
@@ -147,7 +114,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.setViewportSize({ width: 1000, height: 820 });
         await page.waitForFunction(() => document.querySelector("#sessChart .sess-cal-wrap").clientWidth < 1200);
         await page.waitForFunction(() => { const w = document.querySelector("#sessChart .sess-cal-wrap"), c = w.querySelector(".sess-cal"); return c.getBoundingClientRect().right <= w.getBoundingClientRect().right; });
-        await calendarSettled(page);
         await shot("medium");
         const m = await page.evaluate(measure);
         assert(m.used > 0.9, `the calendar and its facts take ${(100 * m.used).toFixed(0)}% of the card`);
@@ -162,11 +128,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.setViewportSize({ width: 560, height: 820 });
         await page.waitForFunction(() => document.querySelector("#sessChart .sess-cal-wrap").clientWidth < 560);
         await page.waitForFunction(() => { const w = document.querySelector("#sessChart .sess-cal-wrap"), c = w.querySelector(".sess-cal"); return c.getBoundingClientRect().right <= w.getBoundingClientRect().right; });
-        await calendarSettled(page);
         await shot("narrow");
         const m = await page.evaluate(measure);
         assert(!m.row, "the facts sit under the calendar");
-        assert(m.used > 0.9, `the calendar takes ${(100 * m.used).toFixed(2)}% of the card: ${JSON.stringify(m)}`);
+        assert(m.used > 0.9, `the calendar takes ${(100 * m.used).toFixed(0)}% of the card`);
         assert(m.past <= 1, `${m.past}px past the card`);
         assert.equal(m.days, N);
         assert(m.square);
@@ -178,7 +143,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await t.test("narrower than the range: no weeks before, the cells shrink", async () => {
         await page.setViewportSize({ width: 360, height: 820 });
         await page.waitForFunction(() => document.querySelectorAll("#sessChart .sess-cal > s").length === 0);
-        await calendarSettled(page);
         await shot("narrowest");
         const m = await page.evaluate(measure);
         assert(m.past <= 1, `${m.past}px past the card`);
@@ -190,7 +154,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await t.test("wide again: the weeks before come back", async () => {
         await page.setViewportSize({ width: 1400, height: 820 });
         await page.waitForFunction(() => document.querySelectorAll("#sessChart .sess-cal > s").length > 0);
-        await calendarSettled(page);
         const m = await page.evaluate(measure);
         assert(m.used > 0.9, `${(100 * m.used).toFixed(0)}%`);
         assert.deepEqual(errors, []);

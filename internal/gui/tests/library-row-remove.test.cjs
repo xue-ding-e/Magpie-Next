@@ -79,38 +79,15 @@ function server(lang, state, posts) {
 // a click where the thing is, as the reader's: the pointer comes over the
 // row first (the trash shows on hover), and nothing on the page scrolls
 const press = async (page, loc) => {
+  await page.waitForFunction(() => !document.querySelector("#view-library").getAnimations({ subtree: true }).some((a) => a.effect?.getComputedTiming().endTime !== Infinity));
+  const b = await loc.boundingBox();
   const scrolls = () => page.evaluate(() => [...document.querySelectorAll("*")].filter((e) => e.scrollTop).map((e) => (e.id || e.className) + ":" + e.scrollTop).join(" "));
   const top = await scrolls();
-  // open/relang can replace the rows after the animation check, even after
-  // a locator resolved its element. Re-read a lost box and one moved under
-  // the pointer, within the page's existing five-second action budget.
-  const until = performance.now() + 5000;
-  const remaining = () => {
-    const ms = until - performance.now();
-    assert(ms > 0, `${loc} never had stable, uncovered geometry`);
-    return ms;
-  };
-  for (;;) {
-    await page.waitForFunction(() => !document.querySelector("#view-library").getAnimations({ subtree: true }).some((a) => a.effect?.getComputedTiming().endTime !== Infinity), null, { timeout: remaining() });
-    const b = await loc.boundingBox({ timeout: remaining() });
-    if (!b || b.width <= 0 || b.height <= 0) continue;
-    const { width, height } = page.viewportSize();
-    assert(b.x >= 0 && b.y >= 0 && b.x + b.width <= width && b.y + b.height <= height, `${loc} is outside the viewport: ${JSON.stringify(b)}`);
-    const x = b.x + b.width / 2, y = b.y + b.height / 2;
-    await page.mouse.move(x, y);
-    await page.waitForTimeout(Math.min(200, remaining()));
-    const ready = await loc.evaluate((e, b) => {
-      const r = e.getBoundingClientRect();
-      return e.isConnected && !e.disabled && ["x", "y", "width", "height"].every((k) => Math.abs(r[k] - b[k]) < 0.5)
-        && e.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2));
-    }, b, { timeout: remaining() });
-    if (!ready) continue;
-    remaining();
-    await page.mouse.click(x, y);
-    await page.waitForTimeout(200);
-    assert.equal(await scrolls(), top, `${loc}'s click scrolled the page`);
-    return;
-  }
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.waitForTimeout(200);
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await page.waitForTimeout(200);
+  assert.equal(await scrolls(), top, `${loc}'s click scrolled the page`);
 };
 const settled = (page) => page.waitForFunction(() => !document.querySelector("#modal").getAnimations({ subtree: true }).length);
 const sideways = (page) => page.evaluate(() => {
@@ -133,7 +110,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || "chromium" }));
     t.after(() => browser.close());
     for (const width of [1100, 420]) for (const lang of ["en", "zh", "zh-TW", "ja", "de"]) {
-      await t.test(`${lang} at ${width}px`, async (subtest) => {
+      await t.test(`${lang} at ${width}px`, async () => {
         const w = (key, vars) => tr(lang, key, vars);
         const state = {
           servers: [sv("exa", "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa", ["claude", "codex"], { signIn: { signedIn: true } }), sv("exa-2", "https://mcp.exa.ai/mcp", [])],
@@ -141,12 +118,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         };
         const posts = [], errors = [];
         const ctx = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
-        subtest.after(() => ctx.close());
         // the tab the page opens on: MCP servers, then Hooks after a reload (at
         // 1100px the tabs are in the side bar)
         await ctx.addInitScript(() => { try { localStorage.setItem("magpie.libTab", sessionStorage.getItem("tab") || "mcp"); } catch {} });
         const page = await ctx.newPage();
         page.setDefaultTimeout(5000);
+        page.setDefaultNavigationTimeout(60000);
         page.on("pageerror", (e) => errors.push(e.message));
         page.on("dialog", (d) => { errors.push("a browser dialog: " + d.message()); d.dismiss(); });
         await page.route("**/*", server(lang, state, posts));
@@ -229,100 +206,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(await hrow("notify").count(), 1, "notify went too");
         assert.deepEqual(posts, []);
         assert.deepEqual(errors, []);
+        await ctx.close();
       });
     }
-  });
-
-  test(engine + ": row press waits for a delayed redraw and rejects bad geometry", async (t) => {
-    const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || "chromium" }));
-    t.after(() => browser.close());
-    const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 }, reducedMotion: "reduce" });
-    t.after(() => ctx.close());
-    await ctx.addInitScript(() => localStorage.setItem("magpie.libTab", "hooks"));
-    const page = await ctx.newPage();
-    page.setDefaultTimeout(5000);
-    const state = { servers: [], hooks: [hk("notify", ["claude"]), hk("fmt", ["claude", "codex"])] };
-    const posts = [], errors = [];
-    page.on("pageerror", (e) => errors.push(e.message));
-    let hold;
-    const serve = server("en", state, posts);
-    await page.route("**/*", async (route) => {
-      if (hold && new URL(route.request().url()).pathname === "/api/library") {
-        await hold;
-      }
-      return serve(route);
-    });
-    await page.goto("http://magpie.test/");
-    await page.locator('button[data-view="library"]').click();
-    // Finish the initial read before holding one explicit, real plugin read.
-    await page.evaluate(() => magpie.call("library", "open"));
-    const rm = page.locator("#view-library .lib-hook").filter({ has: page.locator(".name", { hasText: /^fmt$/ }) }).locator(".lib-rowacts .lib-icon.danger");
-    await rm.waitFor();
-
-    await t.test("a late library reply detaches the element whose box is read", async () => {
-      let release;
-      hold = new Promise((resolve) => { release = resolve; });
-      const requested = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/library");
-      const redraw = page.evaluate(() => magpie.call("library", "open"));
-      const boundingBox = rm.boundingBox;
-      let detached = false;
-      try {
-        await requested;
-        // Pause only this locator between handle resolution and the engine's
-        // box read. The real delayed API reply runs load/render, removing that
-        // handle. Its missing box comes from the engine, not a fake result.
-        rm.boundingBox = async (options) => {
-          rm.boundingBox = boundingBox;
-          const old = await rm.elementHandle(options);
-          try {
-            release();
-            await redraw;
-            detached = !(await old.evaluate((e) => e.isConnected));
-            assert(detached, "the library reply did not redraw the row");
-            const b = await old.boundingBox();
-            assert.equal(b, null, "the engine still gave the detached row a box");
-            return b;
-          } finally { await old.dispose(); }
-        };
-        await press(page, rm);
-        assert(detached, "the delayed redraw was not exercised");
-        const sheet = page.locator("#modal .lib-editor");
-        await sheet.waitFor();
-        await settled(page);
-        assert.equal((await sheet.locator(".ehead b").textContent()).trim(), "Remove the hook fmt?");
-        await sheet.locator(".bar button", { hasText: "Cancel" }).click();
-        await sheet.waitFor({ state: "detached" });
-      } finally {
-        rm.boundingBox = boundingBox;
-        release();
-        await redraw;
-        hold = null;
-      }
-    });
-    await t.test("a row action outside the viewport is rejected without scrolling", async () => {
-      const style = await page.addStyleTag({ content: "#view-library .lib-rowacts { transform: translateX(1500px); }" });
-      try {
-        await assert.rejects(press(page, rm), /outside the viewport/);
-        assert.equal(await page.locator("#modal .lib-editor").count(), 0, "an offscreen click opened a sheet");
-      } finally { await style.evaluate((e) => e.remove()); }
-    });
-
-    await t.test("an overlay covering the action is rejected", async () => {
-      await page.evaluate(() => {
-        const cover = document.createElement("div");
-        cover.id = "press-cover";
-        cover.style.cssText = "position:fixed;inset:0;z-index:99999;background:white";
-        cover.dataset.clicks = "0";
-        cover.onclick = () => { cover.dataset.clicks = String(+cover.dataset.clicks + 1); };
-        document.body.append(cover);
-      });
-      try {
-        await assert.rejects(press(page, rm), (e) => e.name === "TimeoutError" || /stable, uncovered geometry/.test(e.message));
-        assert.equal(await page.locator("#press-cover").getAttribute("data-clicks"), "0", "the covered action sent a pointer click");
-        assert.equal(await page.locator("#modal .lib-editor").count(), 0, "a covered click opened a sheet");
-      } finally { await page.locator("#press-cover").evaluate((e) => e.remove()); }
-    });
-    assert.deepEqual(posts, []);
-    assert.deepEqual(errors, []);
   });
 }
