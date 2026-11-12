@@ -99,14 +99,29 @@ for (const engine of (process.env.BROWSER?[process.env.BROWSER]:['chromium','web
   await open();await ready();
   assert.equal(await sample.textContent(),'DEMO_SECRET_123\nINTERNAL_PROJECT','text example follows the selected mask list');
   await input.fill('unsaved synthetic');
+  // An expanded example puts the field below the scrollable body. WebKit's
+  // fill can focus it there; a reader wheels it into sight before dragging.
+  for(let attempt=0;attempt<30;attempt++){
+   const at=await input.evaluate(e=>{
+    const r=e.getBoundingClientRect(),body=e.closest('.dictionary-body'),b=body.getBoundingClientRect();
+    const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+    return {clear:r.top>=b.top&&r.bottom<=b.bottom&&hit===e,was:body.scrollTop,x:b.left+b.width/2,y:b.top+b.height/2,dy:r.top<b.top?-80:80};
+   });
+   if(at.clear)break;
+   await page.mouse.move(at.x,at.y);await page.mouse.wheel(0,at.dy);
+   await page.waitForFunction(was=>document.querySelector('dialog.local-dictionary .dictionary-body').scrollTop!==was,at.was,{timeout:1000});
+   assert(attempt<29,'the import field can be wheeled fully into sight');
+  }
+  await input.click();
   await d.evaluate((e)=>{window.__dictionaryGesture=[];for(const kind of ['pointerdown','pointerup','click'])e.addEventListener(kind,(event)=>{const r=e.getBoundingClientRect();window.__dictionaryGesture.push({kind,trusted:event.isTrusted,outside:event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom});},true);});
   const field=await input.boundingBox();assert(field);
   await page.mouse.move(field.x+field.width/2,field.y+field.height/2);await page.mouse.down();await page.mouse.move(backdrop.x,backdrop.y,{steps:8});await page.mouse.up();
   assert.equal(await d.count(),1,'dragging a selection out must not dismiss the dictionary');
+  assert.equal(await confirm.count(),0,'dragging a selection out must not ask to discard the draft');
   assert.equal(await input.inputValue(),'unsaved synthetic');
   const gesture=await page.evaluate(()=>window.__dictionaryGesture);
   assert(gesture.every(e=>e.trusted),'the backdrop regression uses trusted pointer events');
-  assert(gesture.some(e=>e.kind==='pointerdown'&&!e.outside)&&gesture.some(e=>e.kind==='pointerup'&&e.outside),'the gesture starts inside and ends on the backdrop');
+  assert(gesture.some(e=>e.kind==='pointerdown'&&!e.outside)&&gesture.some(e=>e.kind==='pointerup'&&e.outside),'the gesture starts inside and ends on the backdrop: '+JSON.stringify({field,backdrop,gesture,visible:await input.evaluate(e=>{const b=e.getBoundingClientRect(),p=e.parentElement.getBoundingClientRect(),hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return {field:{top:b.top,bottom:b.bottom},body:{top:p.top,bottom:p.bottom},hit:hit?.tagName,hitClass:hit?.className};})}));
   await d.getByRole('button',{name:labels.cancel,exact:true}).click();await accept('Cancel');
   assert.equal(await input.inputValue(),'unsaved synthetic','canceling close keeps the draft');assert.equal(await d.count(),1);
   await d.getByRole('button',{name:labels.cancel,exact:true}).click();await accept('Discard');await d.waitFor({state:'detached'});assert.equal(writes,0);
