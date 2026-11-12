@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -155,6 +156,19 @@ func TestProviderSaveClientCert(t *testing.T) {
 	if code, _, out := app(mtlsReq("/api/settings/mtls/issue", `{"name":"laptop"}`)); code != 200 {
 		t.Fatalf("%d %s", code, out)
 	}
+	// Save fetches a new provider's model list. Its server and CA belong to
+	// this test too, so saving the client paths never contacts a real host.
+	serverCert, err := gateway.MTLSStore().ServerCert([]string{"localhost"}, []net.IP{net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"sample-model"}]}`))
+	}))
+	fake.TLS = &tls.Config{Certificates: []tls.Certificate{serverCert}}
+	fake.StartTLS()
+	t.Cleanup(fake.Close)
 	mux := http.NewServeMux()
 	providerRoutes(mux, nil)
 	post := func(body string) (int, string) {
@@ -163,7 +177,11 @@ func TestProviderSaveClientCert(t *testing.T) {
 		mux.ServeHTTP(w, httptest.NewRequest("POST", "/api/provider/save", strings.NewReader(body)))
 		return w.Code, w.Body.String()
 	}
-	base := `{"id":"home","name":"Home","key":"k","chat":"https://home.example:3425/v1","icon":"generic"`
+	chat, err := json.Marshal(fake.URL + "/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := `{"id":"home","name":"Home","key":"k","chat":` + string(chat) + `,"icon":"generic"`
 	certs := `"clientCert":"~/Downloads/magpie-laptop/client.pem","clientKey":"~/Downloads/magpie-laptop/client-key.pem","serverCA":"~/Downloads/magpie-laptop/ca.pem"`
 	if code, out := post(base + `,"new":true,` + certs + `}`); code != 200 {
 		t.Fatalf("%d %s", code, out)
@@ -173,7 +191,7 @@ func TestProviderSaveClientCert(t *testing.T) {
 		t.Fatalf("saved %q %q", p.ClientCert, p.ServerCA)
 	}
 	info := providerInfo(*p, nil)
-	if !info.TakesClientCert || info.ClientCert != "~/Downloads/magpie-laptop/client.pem" {
+	if !info.TakesClientCert || info.ClientCert != filepath.Join("~", "Downloads", "magpie-laptop", "client.pem") {
 		t.Fatalf("shown %v %q", info.TakesClientCert, info.ClientCert)
 	}
 	if code, out := post(base + `,"from":"home","models":[],"headers":{}}`); code != 200 {
