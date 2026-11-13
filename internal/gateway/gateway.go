@@ -6125,6 +6125,11 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		}
 		path, body = at, b
 	}
+	codexResponses := p.Account != nil && p.Account.Agent == "codex" && to == provider.Responses &&
+		(path == "/responses" || path == "/responses/compact")
+	if codexResponses {
+		body = responsesWireBody(body)
+	}
 	base := p.Base(to)
 	zenFree := p.IsOpenCode() && p.OpenCodeFree(gjson.GetBytes(body, "model").String())
 	if zenFree {
@@ -6336,6 +6341,20 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	res, err := p.Do(s.client, req)
 	// what comes back is counted as it is read, as what went is (#4456)
 	res = gotDown(ctx, res)
+	historyBytes := 0
+	if err == nil && codexResponses && !p.PassesErrors() {
+		if smaller, ok := codexHistoryRetry(res, body); ok {
+			res.Body.Close()
+			historyBytes = len(body)
+			body = smaller
+			req = req.Clone(ctx)
+			defer provider.LetGo(req)
+			req.Header.Del("Content-Encoding")
+			provider.SetBody(req, body)
+			sent = provider.CodexCompressed(req, body)
+			res, err = again(req)
+		}
+	}
 	if err == nil && res.StatusCode >= 400 && provider.OpenCodeURL(req.URL.String()) {
 		logOpenCodeRefusal(p, req, res.StatusCode)
 	}
@@ -6374,6 +6393,12 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		// a large request ChatGPT closed the connection on: asked again,
 		// nobody resting for it, and said what may help (#1628)
 		res = codexDropped(res, sent)
+		size := max(len(body), historyBytes)
+		if codexResponses && !p.PassesErrors() && res.StatusCode == http.StatusBadRequest && size >= codexBareCapLeast {
+			if codexByteCapRefused(res.StatusCode, peekError(res), size) {
+				res = codexByteCapReply(res, size)
+			}
+		}
 	}
 	// what a Codex account's reply says it has used, for its cap (#1295)
 	heardCodexLimits(p, res)

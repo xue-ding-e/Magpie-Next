@@ -379,10 +379,8 @@ func TestPortCodexRolloutsKeepsBytePlaces(t *testing.T) {
 	}
 }
 
-// A line whose portable form is longer (a short summary, under Codex's
-// prefix) can't keep its length: in a paginated rollout it is left as it
-// was, never moving what follows; in a legacy one, where Codex keeps no
-// place by byte, it is written as before.
+// A record too small even for the shorter prefix stays at its original
+// byte position, as do all the records after it.
 func TestPortCodexRolloutsLongerLine(t *testing.T) {
 	lines := portRolloutLines("short")
 	lines[0] = strings.Replace(lines[0], `"model_provider":"openai"`, `"model_provider":"openai","history_mode":"paginated"`, 1)
@@ -396,7 +394,7 @@ func TestPortCodexRolloutsLongerLine(t *testing.T) {
 	}
 	got := readRollout(t, path)
 	if got[2] != lines[2] {
-		t.Errorf("a longer line was written: %s", got[2])
+		t.Errorf("an overlength record was written: %s", got[2])
 	}
 	if strings.Contains(got[4], "magpie1:%%%") {
 		t.Errorf("the shorter one wasn't: %s", got[4])

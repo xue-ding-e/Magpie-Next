@@ -37,6 +37,12 @@ func Encrypted(summary string) string {
 // msg nil for one of magpie's whose summary can't be read, which is left
 // out.
 func Message(encrypted string) (msg map[string]any, ours bool) {
+	return MessageWithPrefix(encrypted, Prefix+"\n")
+}
+
+// MessageWithPrefix fits the summary into its original paginated record
+// when Codex's full prefix would make the record grow.
+func MessageWithPrefix(encrypted, prefix string) (msg map[string]any, ours bool) {
 	b64, ok := strings.CutPrefix(encrypted, Mark)
 	if !ok {
 		return nil, false
@@ -45,7 +51,7 @@ func Message(encrypted string) (msg map[string]any, ours bool) {
 	if err != nil {
 		return nil, true
 	}
-	return UserMessage(Prefix + "\n" + string(b)), true
+	return UserMessage(prefix + string(b)), true
 }
 
 // UserMessage is a Responses input message of the user's.

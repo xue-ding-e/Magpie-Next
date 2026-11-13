@@ -14,7 +14,10 @@ something else shows up as drift.
 retain upstream's portable summaries, reasoning retirement and paginated-rollout
 support. Next does not reject all paginated histories: upstream's line fitting
 preserves decompressed record boundaries, and a line that cannot fit is not
-published in place. Incomplete scans keep pending work without advancing the scan
+published in place. A paginated Magpie summary whose full Codex prefix does
+not fit can use a shorter text prefix with the full summary intact. Existing
+scan checkpoints are revisited once to catch records previously skipped for
+this reason. Incomplete scans keep pending work without advancing the scan
 watermark. Per-rollout writer locks use cancellable waits, and publication checks
 cancellation again before replacing a file.
 
@@ -24,6 +27,10 @@ are exact unsigned integers; valid gaps remain supported. The planning and legac
 preview helpers do not by themselves authorize rewriting arbitrary `history_base`
 graphs or restoring every old AI Toolbox history. Those operations still need
 their complete provenance, index and recovery protocol.
+
+The Codex gateway effort picker gets its options for a stopped WSL
+distribution from Magpie's model catalog. It can display the available
+efforts without opening the distribution's Codex configuration.
 
 ## Responsibilities and sources of truth
 

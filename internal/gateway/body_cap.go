@@ -67,6 +67,37 @@ func byteCapRefusal(status int, errBody []byte) bool {
 	return status == http.StatusRequestEntityTooLarge || bodyCapWords.MatchString(words)
 }
 
+// #6214 saw the ChatGPT backend parse 879,968 bytes and answer a
+// bare 400 at 899,968. Use the size as evidence only after this backend
+// rejects the cleaned request. A large request can still succeed.
+const codexBareCapLeast = 899_968
+
+func codexByteCapRefused(status int, body []byte, sent int) bool {
+	if status != http.StatusBadRequest || sent < codexBareCapLeast {
+		return false
+	}
+	q, err := rawObject(body)
+	if err != nil || len(q) != 1 {
+		return false
+	}
+	var detail string
+	return json.Unmarshal(q["detail"], &detail) == nil && detail == "Bad Request"
+}
+
+func codexByteCapReply(res *http.Response, sent int) *http.Response {
+	res.Body.Close()
+	msg := fmt.Sprintf("ChatGPT refused the %d-byte request with a bare HTTP 400. Compact the conversation before retrying.", sent)
+	out, _ := json.Marshal(map[string]any{"error": map[string]string{"type": "request_too_large", "message": msg}})
+	h := res.Header.Clone()
+	h.Set("Content-Type", "application/json")
+	h.Del("Content-Length")
+	h.Del("Content-Encoding")
+	r := *res
+	r.StatusCode, r.Status = http.StatusRequestEntityTooLarge, "413 Request Entity Too Large"
+	r.Header, r.Body, r.ContentLength = h, io.NopCloser(bytes.NewReader(out)), int64(len(out))
+	return &r
+}
+
 // pageCapLeast is the least a request weighs before a proxy's page in
 // place of the API's answer is read as a refusal of its bytes.
 const pageCapLeast = 4 << 20
@@ -186,6 +217,13 @@ func (s *Server) capFit(p provider.Provider, to provider.Protocol, path string, 
 // is refused again. When nothing more can go, the refusal is said as a
 // 413 that names the size, the cap and what was kept.
 func (s *Server) refitOverCap(ctx context.Context, p provider.Provider, to provider.Protocol, path string, body []byte, in http.Header, res *http.Response) (*http.Response, error) {
+	if p.Account != nil && p.Account.Agent == "codex" && to == provider.Responses &&
+		res.StatusCode >= 400 && compactionTriggerIn(body) && byteCapRefusal(res.StatusCode, peekError(res)) {
+		if smaller, ok := nativeCompactAsText(body); ok {
+			res.Body.Close()
+			return s.forwardOnce(ctx, p, to, path, smaller, in)
+		}
+	}
 	var err error
 	for range 3 {
 		if res.StatusCode < 400 || countsTokens(path) {

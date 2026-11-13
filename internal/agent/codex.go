@@ -240,6 +240,16 @@ func codexEfforts(ms []catalog.Model, model string) []Option {
 	return append([]Option{d}, static(e...)...)
 }
 
+func codexGatewayEffortOptions(models []catalog.Model, model string) []Option {
+	out := []Option{{Value: ""}}
+	for _, o := range codexEfforts(models, model) {
+		if o.Value != "" {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
 // codexGatewayEffortField is the live override in either Codex wiring.
 // It is separate from the startup default: an existing conversation can
 // still send its previous level. Its default clears the override.
@@ -249,13 +259,7 @@ func codexGatewayEffortField(models func() []catalog.Model) Field {
 		Get: func() string { return provider.AgentEffort("codex") },
 		Set: func(v string) error { return provider.SetAgentEffort("codex", v) },
 		Options: func(cur map[string]string) []Option {
-			out := []Option{{Value: ""}}
-			for _, o := range codexEfforts(models(), cur["model"]) {
-				if o.Value != "" {
-					out = append(out, o)
-				}
-			}
-			return out
+			return codexGatewayEffortOptions(models(), cur["model"])
 		},
 	}
 }

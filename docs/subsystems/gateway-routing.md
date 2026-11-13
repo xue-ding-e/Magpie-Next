@@ -63,16 +63,24 @@ xwang_sh on X), so a model a provider lists later brings no new one; the
 removed records stay and turning them on again restores the groups as they were.
 
 
-The native Codex path also preflights the finalized request's decoded JSON
-size. The ChatGPT Codex backend has a smaller byte boundary than the model's
-token window and can answer an oversized replay with only `{"detail":"Bad
-Request"}`. Requests above the local 800 KiB budget are compacted through the
-same Codex account using a bounded plain-text summary request before the
-original history is sent upstream. A request that already carries a
-`compaction_trigger` follows the existing compaction path. See
-[`codex_body_budget.go`](../../internal/gateway/codex_body_budget.go),
-`TestCodexOversizedTurnCompactsBeforeUpstream` and
-`TestCodexBodyBudgetScopeAndIdempotence`.
+ChatGPT Responses requests through Codex's sign-in or the account pool remove
+desktop bookkeeping from replayed input items before signing and sending the
+body (`responsesWireBody`). A regular turn stays a turn at any size the
+gateway accepts. If ChatGPT refuses at least 899,968 decoded bytes with the
+exact bare HTTP 400 from #6214, the gateway can retry once with shorter text
+in older tool outputs, when that fits within 800 KiB. The latest user turn,
+tool pairing and encrypted checkpoints stay intact. A request that still
+cannot be sent this way reports a size refusal.
+Streaming Codex clients receive `response.failed` with
+`context_length_exceeded`, so Codex can request compaction through its own
+lifecycle. A routed Magpie summary that hits the same refusal uses the bounded
+text fallback in `codexCompact`. Explicit native compaction can retry once in
+its original protocol with a bounded text transcript when there is no native
+checkpoint to preserve. Previously saved Magpie summaries are restored on replay
+by `codexInputAs`. The relay that serves still-open Codex threads after the
+gateway exits also removes desktop bookkeeping before forwarding. See
+[`TestCodexLongTurnContinues`](../../internal/gateway/codex_long_turn_test.go)
+and `TestCodexBareByteCapCanCompactAndResume`.
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |
