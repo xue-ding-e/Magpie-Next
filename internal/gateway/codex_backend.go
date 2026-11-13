@@ -186,6 +186,15 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 		// here, never relayed to the ChatGPT backend; a magpie model is
 		// refused by serve
 		if !strings.Contains(model, "/") {
+			if isCodexOwnResponsesTurn(rest, model, body) && codexBodyNeedsCompaction(body) {
+				// Compact before the request reaches the backend's smaller
+				// byte limit. The client receives the same Responses compaction
+				// item it would have received from its own trigger and can keep
+				// the conversation alive.
+				compactBody := withModel(codexBudgetedCompactBody(body), "codex/"+model)
+				s.codexCompact(w, r, compactBody)
+				return
+			}
 			if msg, off := codexNativeOff(model); off {
 				writeError(w, provider.Responses, http.StatusForbidden, msg)
 				return
