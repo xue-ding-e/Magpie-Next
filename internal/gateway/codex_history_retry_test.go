@@ -141,6 +141,16 @@ func TestCodexBodyBudgetPreservesUnfittableInput(t *testing.T) {
 	}
 }
 
+func TestCodexBodyBudgetPreservesCurrentOutputBeforeGoalReminder(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","input":[{"role":"user","content":"current request"},` +
+		`{"type":"function_call","call_id":"call_now","name":"exec","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"call_now","output":"` + strings.Repeat("current log ", 95_000) +
+		`"},{"type":"message","role":"user","content":"<codex_internal_context source=\"goal\">\nContinue working.\n</codex_internal_context>"}]}`)
+	if got, ok := codexSmallerHistory(body); ok || !bytes.Equal(got, body) {
+		t.Fatal("the goal reminder must not make the current turn's tool output eligible for shortening")
+	}
+}
+
 func TestCodexHistoryRetryAfterSecondBareRefusalSignalsOverflow(t *testing.T) {
 	var mu sync.Mutex
 	calls := 0

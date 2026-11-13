@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/tidwall/gjson"
@@ -29,7 +30,7 @@ func codexHistoryRetry(res *http.Response, body []byte) ([]byte, bool) {
 // only if this brings the whole body below the budget.
 func codexSmallerHistory(body []byte) ([]byte, bool) {
 	items := getIn(body, "input").Array()
-	latest := latestUser(provider.Responses, items)
+	latest := codexHistoryUserBoundary(items)
 	if latest < 1 {
 		return body, false
 	}
@@ -50,6 +51,40 @@ func codexSmallerHistory(body []byte) ([]byte, bool) {
 		}
 	}
 	return body, false
+}
+
+// A Codex runtime reminder can follow a tool result under role user.
+// Use the latest real user message as the trimming boundary.
+func codexHistoryUserBoundary(items []gjson.Result) int {
+	for end := len(items); end > 0; {
+		i := latestUser(provider.Responses, items[:end])
+		if i < 0 {
+			return -1
+		}
+		content := items[i].Get("content")
+		if !content.IsArray() {
+			if !codexHistoryContextText(content.String()) {
+				return i
+			}
+		} else {
+			parts := content.Array()
+			if len(parts) == 0 || slices.ContainsFunc(parts, func(part gjson.Result) bool {
+				return part.Get("type").Str != "input_text" || !codexHistoryContextText(part.Get("text").Str)
+			}) {
+				return i
+			}
+		}
+		end = i
+	}
+	return -1
+}
+
+func codexHistoryContextText(text string) bool {
+	text = strings.TrimSpace(text)
+	if strings.HasPrefix(text, "<codex_internal_context ") && strings.HasSuffix(text, "</codex_internal_context>") {
+		return true
+	}
+	return text != "" && !userSays(text)
 }
 
 func fitCodexOutputs(q map[string]json.RawMessage, input []json.RawMessage, history []gjson.Result, edge int) []byte {
