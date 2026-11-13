@@ -186,15 +186,6 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 		// here, never relayed to the ChatGPT backend; a magpie model is
 		// refused by serve
 		if !strings.Contains(model, "/") {
-			if isCodexOwnResponsesTurn(rest, model, body) && codexBodyNeedsCompaction(body) {
-				// Compact before the request reaches the backend's smaller
-				// byte limit. The client receives the same Responses compaction
-				// item it would have received from its own trigger and can keep
-				// the conversation alive.
-				compactBody := withModel(codexBudgetedCompactBody(body), "codex/"+model)
-				s.codexCompact(w, r, compactBody)
-				return
-			}
 			if msg, off := codexNativeOff(model); off {
 				writeError(w, provider.Responses, http.StatusForbidden, msg)
 				return
@@ -1082,6 +1073,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		// url_citation) as Codex stored it, turned them away alike
 		// (#4921)
 		body = withoutOffsetlessCitations(body)
+		body = responsesWireBody(body)
 	}
 	u := base + rest
 	if r.URL.RawQuery != "" {
@@ -1096,7 +1088,8 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	// fallbacks; nobody rests for it (夜松云 on Discord)
 	overload := r.Method == http.MethodPost && rest == "/responses" && base == provider.CodexBase && on == nil
 	streams := streamOf(body)
-	kept := &keptAlive{proto: provider.Responses, told: start, streams: streams}
+	kept := &keptAlive{proto: provider.Responses, told: start, streams: streams,
+		codex: rest == "/responses"}
 	busyAgain := 0     // times the turn was asked again for an overload
 	var tried []string // what each of those said, for the request log
 	// a turn goes in the Routing view's live trace as the others do, to
@@ -1207,16 +1200,13 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	creditsAsked := false // asked again onto the account's credits, once (relayOnCredits)
 	resetNote := ""       // what spending it did, for the request log
 	resets := 0           // times a large request ChatGPT closed on was asked again (#1628)
-	sent := len(body)     // the bytes that went, compressed (provider.CodexCompressed)
-	began := start        // when the try now going began
+	retriedCompact := false
+	sent := len(body) // the bytes that went, compressed (provider.CodexCompressed)
+	began := start    // when the try now going began
 	// failWith tells Codex of a failure before any reply: as the stream's
 	// error once it was sent the stream's headers while it waited
 	failWith := func(status int, msg string) {
-		if kept.sent {
-			streamError(w, provider.Responses, kept.model, status, msg)
-			return
-		}
-		writeError(w, provider.Responses, status, msg)
+		failTo(w, kept, provider.Responses, status, msg)
 	}
 	// handOn notes a try that failed for an overload, which the turn goes
 	// on from, after wait: in the trace, and as a row handed on, as the
@@ -1427,6 +1417,17 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 					}
 				}
 			}
+			if !retriedCompact && base == provider.CodexBase && res.StatusCode >= 400 &&
+				(rest == "/responses/compact" || rest == "/responses" && compactionTriggerIn(body)) {
+				msg := peekError(res)
+				if byteCapRefusal(res.StatusCode, msg) || codexByteCapRefused(res.StatusCode, msg, len(body)) {
+					if smaller, ok := nativeCompactAsText(body); ok {
+						res.Body.Close()
+						body, retriedCompact = smaller, true
+						continue
+					}
+				}
+			}
 			if rest != "/responses" || tries >= 3 || (res.StatusCode != 400 && res.StatusCode != 404) {
 				break
 			}
@@ -1479,7 +1480,21 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		}
 		if (rest == "/responses" || rest == "/responses/compact") && res.StatusCode >= 400 {
 			msg, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+			res.Body.Close()
 			res.Body = io.NopCloser(bytes.NewReader(msg))
+			if base == provider.CodexBase && codexByteCapRefused(res.StatusCode, msg, len(body)) {
+				res = codexByteCapReply(res, len(body))
+				msg = peekError(res)
+			}
+			if rest == "/responses" && (res.StatusCode == http.StatusRequestEntityTooLarge || overflowed(res.StatusCode, msg)) {
+				said := provider.APIError(msg, res.Status)
+				failWith(res.StatusCode, said)
+				s.record(Call{Route: routeOf(tr), Time: start, From: provider.Responses, To: provider.Responses, Model: modelOf(body),
+					Provider: "openai", Agent: callerOf(r).agent, Kind: kind, Status: res.StatusCode,
+					Millis: time.Since(start).Milliseconds(), Error: said, headers: headerLogOf(r.Context())})
+				end(res.StatusCode, said, 0, 0)
+				return
+			}
 			// its credits and resets looked at above, a 429 that names
 			// when the account is back holds it till then (codexHolds)
 			noteCodexHold(holdKey, res.StatusCode, res.Header, msg)
@@ -4245,6 +4260,19 @@ func plainCompact(body []byte) []byte {
 	if q == nil {
 		return body
 	}
+	q["input"], _ = json.Marshal([]map[string]any{
+		userMessage(compactConversationText(items)),
+		userMessage(codexCompactPrompt),
+	})
+	delete(q, "previous_response_id")
+	nb, err := marshalJSON(q)
+	if err != nil {
+		return body
+	}
+	return nb
+}
+
+func compactConversationText(items []map[string]any) string {
 	var b strings.Builder
 	for _, it := range items {
 		role, text := itemText(it)
@@ -4257,16 +4285,35 @@ func plainCompact(body []byte) []byte {
 	if len(t) > plainCompactMax {
 		t = "…\n" + t[len(t)-plainCompactMax:]
 	}
-	q["input"], _ = json.Marshal([]map[string]any{
-		userMessage("This is the conversation so far:\n\n" + t),
-		userMessage(codexCompactPrompt),
-	})
-	delete(q, "previous_response_id")
-	nb, err := marshalJSON(q)
-	if err != nil {
-		return body
+	return "This is the conversation so far:\n\n" + t
+}
+
+// nativeCompactAsText retries an explicit native compaction in the
+// same wire format. The native checkpoint belongs to its writer and
+// must not be flattened into text.
+func nativeCompactAsText(body []byte) ([]byte, bool) {
+	if len(sealedCompactions(body)) != 0 {
+		return nil, false
 	}
-	return nb
+	q, history := compactItems(body)
+	if len(history) == 0 {
+		return nil, false
+	}
+	items := []map[string]any{userMessage(compactConversationText(history))}
+	for _, it := range history {
+		if it["type"] == "compaction_trigger" {
+			items = append(items, it)
+			break
+		}
+	}
+	delete(q, "previous_response_id")
+	var err error
+	q["input"], err = marshalPlain(items)
+	if err != nil {
+		return nil, false
+	}
+	fitted, err := marshalPlain(q)
+	return fitted, err == nil && len(fitted) < len(body)
 }
 
 // plainCompactMax bounds the conversation's text a plain summary request

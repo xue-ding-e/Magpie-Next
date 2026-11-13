@@ -9,9 +9,41 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yetone/magpie/internal/codexsummary"
+	"github.com/yetone/magpie/internal/steady"
 )
+
+func TestPortCodexRolloutsRevisitsShortPaginatedSummary(t *testing.T) {
+	// The preexisting scan passed this file after the full Codex
+	// summary prefix made the converted record too long.
+	summary := strings.Repeat("Prior task state. ", 24)
+	lines := portRolloutLines(summary)
+	lines[0] = strings.Replace(lines[0], `"model_provider":"openai"`, `"model_provider":"openai","history_mode":"paginated"`, 1)
+	home, path := portHome(t, lines, false)
+	before := lineEnds(t, path)
+	b := []byte(fmt.Sprintf(`{"homes":{%q:{"since":%q,"lineage":true}}}`, filepath.Clean(home)+codexLeftKey, time.Now().Format(time.RFC3339Nano)))
+	if err := os.MkdirAll(filepath.Dir(codexPortPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := steady.WriteFile(codexPortPath(), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := PortCodexRolloutsLeft(context.Background(), home)
+	if err != nil || !res.Done || !reflect.DeepEqual(res.Rewritten, []string{path}) {
+		t.Fatalf("old scan did not revisit the short checkpoint: %+v, %v", res, err)
+	}
+	got := readRollout(t, path)
+	for _, i := range []int{2, 3} {
+		if strings.Contains(got[i], codexsummary.Mark) || !strings.Contains(got[i], summary) {
+			t.Fatalf("record %d did not preserve the complete summary as text", i)
+		}
+	}
+	if ends := lineEnds(t, path); !reflect.DeepEqual(ends, before) || got[5] != lines[5] {
+		t.Fatal("portable rewrite moved record boundaries or changed a native seal")
+	}
+}
 
 // Codex 0.163.0-alpha.11 (5425d3e625daa58eea3ad1de27c087eb3b2ffbd3)
 // stores both ordinals and byte offsets in its SQLite projection and in fork

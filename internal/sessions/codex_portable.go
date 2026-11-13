@@ -86,6 +86,9 @@ type codexPortState struct {
 type codexPortHome struct {
 	Since   time.Time `json:"since"`
 	Pending []string  `json:"pending,omitempty"`
+	// ShortSummaries marks a complete scan with the compact text encoding
+	// for summaries that did not fit their paginated record before.
+	ShortSummaries bool `json:"shortSummaries,omitempty"`
 	// Lineage: every fork's place in its parent was looked at once
 	// (repairLineages), after magpie before it moved them
 	Lineage bool `json:"lineage,omitempty"`
@@ -164,7 +167,7 @@ func portCodexRollouts(ctx context.Context, home string, left bool, walkDir func
 	}
 	was := st.Homes[key]
 	since := first
-	if !was.Since.IsZero() {
+	if was.ShortSummaries && !was.Since.IsZero() {
 		since = was.Since.Add(-codexPortSlack)
 	}
 	start := time.Now()
@@ -216,7 +219,7 @@ func portCodexRollouts(ctx context.Context, home string, left bool, walkDir func
 		}
 	}
 	res.Done = res.Done && scanComplete && ctx.Err() == nil
-	now := codexPortHome{Since: was.Since, Pending: pending, Lineage: was.Lineage}
+	now := codexPortHome{Since: was.Since, Pending: pending, Lineage: was.Lineage, ShortSummaries: was.ShortSummaries}
 	if res.Done && !was.Lineage {
 		fixed, whole := repairLineages(ctx, home, walkDir)
 		res.Repaired = fixed
@@ -227,6 +230,7 @@ func portCodexRollouts(ctx context.Context, home string, left bool, walkDir func
 	}
 	if res.Done {
 		now.Since = start
+		now.ShortSummaries = true
 	} else {
 		now.Pending = append(now.Pending, was.Pending...)
 		now.Pending = uniq(now.Pending)
@@ -346,11 +350,25 @@ func portRollout(ctx context.Context, home, path string, left bool) (bool, error
 					ours = false
 				}
 			}
-			out, ok := portLineAs(line, left && ours)
-			if ok {
-				out, ok = fitLine(line, out, paged)
+			original := line
+			retired := false
+			if left && ours && unsealedReasoning(line) {
+				line, retired = retireReasoning(line)
 			}
-			return out, ok
+			if out, changed := portLine(line); changed || retired {
+				if fit, ok := fitLine(original, out, paged); ok {
+					return fit, true
+				}
+				// Keep all the summary text while keeping every byte
+				// offset. The full Codex prefix is optional on a plain
+				// Responses message when it cannot fit this record.
+				if short, ok := portLineWithPrefix(line, "Conversation summary:\n"); ok {
+					if fit, ok := fitLine(original, short, paged); ok {
+						return fit, true
+					}
+				}
+			}
+			return original, false
 		}
 	})
 }
@@ -757,17 +775,6 @@ func ordinalEnds(ctx context.Context, path string) (map[uint64]int64, error) {
 	}
 }
 
-// portLineAs is portLine, with magpie's reasoning items written as
-// magpie_reasoning first when left.
-func portLineAs(line []byte, left bool) ([]byte, bool) {
-	retired := false
-	if left && unsealedReasoning(line) {
-		line, retired = retireReasoning(line)
-	}
-	out, ok := portLine(line)
-	return out, ok || retired
-}
-
 // retireReasoning is a rollout line with each reasoning item in it that
 // OpenAI didn't seal (a response_item's, those in a compacted line's
 // replacement_history) written as magpie_reasoning: a type Codex reads
@@ -848,6 +855,10 @@ func retireReasoning(line []byte) ([]byte, bool) {
 // gateway leaves it out; a line that is one alone stays as it is, as
 // leaving a line out would move every line after it.
 func portLine(line []byte) ([]byte, bool) {
+	return portLineWithPrefix(line, codexsummary.Prefix+"\n")
+}
+
+func portLineWithPrefix(line []byte, prefix string) ([]byte, bool) {
 	if !bytes.Contains(line, magpieMark) && !bytes.Contains(line, claudeMark) {
 		return line, false
 	}
@@ -859,7 +870,7 @@ func portLine(line []byte) ([]byte, bool) {
 	if d.Decode(&v) != nil || d.More() {
 		return line, false
 	}
-	v, changed, _ := portValue(v)
+	v, changed, _ := portValue(v, prefix)
 	if !changed {
 		return line, false
 	}
@@ -874,12 +885,12 @@ func portLine(line []byte) ([]byte, bool) {
 
 // portValue is v with magpie's compaction items in it written as their
 // messages; drop says v is one of magpie's that can't be read.
-func portValue(v any) (_ any, changed, drop bool) {
+func portValue(v any, prefix string) (_ any, changed, drop bool) {
 	switch x := v.(type) {
 	case map[string]any:
 		if t, _ := x["type"].(string); t == "compaction" || t == "compaction_summary" {
 			enc, _ := x["encrypted_content"].(string)
-			if msg, ours := codexsummary.Message(enc); ours {
+			if msg, ours := codexsummary.MessageWithPrefix(enc, prefix); ours {
 				if msg == nil {
 					return x, false, true
 				}
@@ -900,7 +911,7 @@ func portValue(v any) (_ any, changed, drop bool) {
 		for k, c := range x {
 			list, isList := c.([]any)
 			if !isList {
-				if nv, ch, dr := portValue(c); ch && !dr {
+				if nv, ch, dr := portValue(c, prefix); ch && !dr {
 					x[k], changed = nv, true
 				}
 				continue
@@ -912,7 +923,7 @@ func portValue(v any) (_ any, changed, drop bool) {
 			meta, hasMeta := x[k+"_metadata"]
 			metaList, _ := meta.([]any)
 			drop := !hasMeta || meta == nil || len(metaList) == len(list)
-			kept, gone, ch := portList(list, drop)
+			kept, gone, ch := portList(list, drop, prefix)
 			if !ch {
 				continue
 			}
@@ -929,16 +940,16 @@ func portValue(v any) (_ any, changed, drop bool) {
 		}
 		return x, changed, false
 	case []any:
-		kept, _, ch := portList(x, true)
+		kept, _, ch := portList(x, true, prefix)
 		return kept, ch, false
 	}
 	return v, false, false
 }
 
-func portList(list []any, drop bool) (_ []any, gone map[int]bool, changed bool) {
+func portList(list []any, drop bool, prefix string) (_ []any, gone map[int]bool, changed bool) {
 	out := make([]any, 0, len(list))
 	for i, e := range list {
-		nv, ch, dr := portValue(e)
+		nv, ch, dr := portValue(e, prefix)
 		if dr && drop {
 			if gone == nil {
 				gone = map[int]bool{}
