@@ -67,14 +67,18 @@ ChatGPT Responses requests through Codex's sign-in or the account pool remove
 desktop bookkeeping from replayed input items before signing and sending the
 body (`responsesWireBody`). A regular turn stays a turn at any size the
 gateway accepts. If ChatGPT refuses at least 899,968 decoded bytes with the
-exact bare HTTP 400 from #6214, the gateway reports a request size refusal.
+exact bare HTTP 400 from #6214, the gateway can retry once with shorter text
+in older tool outputs, when that fits within 800 KiB. The latest user turn,
+tool pairing and encrypted checkpoints stay intact. A request that still
+cannot be sent this way reports a size refusal.
 Streaming Codex clients receive `response.failed` with
 `context_length_exceeded`, so Codex can request compaction through its own
 lifecycle. A routed Magpie summary that hits the same refusal uses the bounded
 text fallback in `codexCompact`. Explicit native compaction can retry once in
 its original protocol with a bounded text transcript when there is no native
 checkpoint to preserve. Previously saved Magpie summaries are restored on replay
-by `codexInputAs`. See
+by `codexInputAs`. The relay that serves still-open Codex threads after the
+gateway exits also removes desktop bookkeeping before forwarding. See
 [`TestCodexLongTurnContinues`](../../internal/gateway/codex_long_turn_test.go)
 and `TestCodexBareByteCapCanCompactAndResume`.
 ## Responsibilities and sources of truth

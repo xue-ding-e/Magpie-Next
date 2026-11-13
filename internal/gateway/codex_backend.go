@@ -1201,6 +1201,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	resetNote := ""       // what spending it did, for the request log
 	resets := 0           // times a large request ChatGPT closed on was asked again (#1628)
 	retriedCompact := false
+	historyBytes := 0
 	sent := len(body) // the bytes that went, compressed (provider.CodexCompressed)
 	began := start    // when the try now going began
 	// failWith tells Codex of a failure before any reply: as the stream's
@@ -1417,6 +1418,15 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 					}
 				}
 			}
+			if historyBytes == 0 && base == provider.CodexBase && r.Method == http.MethodPost &&
+				(rest == "/responses" || rest == "/responses/compact") {
+				if smaller, ok := codexHistoryRetry(res, body); ok {
+					res.Body.Close()
+					historyBytes = len(body)
+					body = smaller
+					continue
+				}
+			}
 			if !retriedCompact && base == provider.CodexBase && res.StatusCode >= 400 &&
 				(rest == "/responses/compact" || rest == "/responses" && compactionTriggerIn(body)) {
 				msg := peekError(res)
@@ -1482,8 +1492,11 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 			msg, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 			res.Body.Close()
 			res.Body = io.NopCloser(bytes.NewReader(msg))
-			if base == provider.CodexBase && codexByteCapRefused(res.StatusCode, msg, len(body)) {
-				res = codexByteCapReply(res, len(body))
+			// Classify the bare refusal against the original large request.
+			// The smaller retry, if any, is already below the evidence floor.
+			size := max(len(body), historyBytes)
+			if base == provider.CodexBase && codexByteCapRefused(res.StatusCode, msg, size) {
+				res = codexByteCapReply(res, size)
 				msg = peekError(res)
 			}
 			if rest == "/responses" && (res.StatusCode == http.StatusRequestEntityTooLarge || overflowed(res.StatusCode, msg)) {
