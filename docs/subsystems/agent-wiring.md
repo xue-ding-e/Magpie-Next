@@ -28,6 +28,10 @@ preview helpers do not by themselves authorize rewriting arbitrary `history_base
 graphs or restoring every old AI Toolbox history. Those operations still need
 their complete provenance, index and recovery protocol.
 
+The Codex gateway effort picker gets its options for a stopped WSL
+distribution from Magpie's model catalog. It can display the available
+efforts without opening the distribution's Codex configuration.
+
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |
