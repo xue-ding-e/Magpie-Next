@@ -1,0 +1,78 @@
+# Upstream alignment guard
+#
+# 这次事故的教训：一次「同步原版」的整树替换把上游已经修好的能力（脱敏模型
+# 15 秒上限：pii.FindContext + masking.strictWait）静默删掉了，源码能编译、
+# 大部分测试能过，只有运行时日志才看得出差别。这个工作流把「不许再丢」变成
+# 每次 push 都会跑的检查。
+#
+# 见 docs/upstream-tracking.md。
+name: upstream alignment guard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  keep-upstream-capabilities:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # 1. 上游已修好、Next 必须保留的能力，逐个在源码里点名。
+      #    加新的一行比事后 debug 便宜得多。
+      - name: Upstream capabilities we must keep
+        run: |
+          set -euo pipefail
+          fail=0
+          check() {
+            local what="$1" file="$2" pattern="$3"
+            if ! grep -qE "$pattern" "$file" 2>/dev/null; then
+              echo "::error file=$file::missing $what (pattern: $pattern)"
+              fail=1
+            else
+              echo "ok: $what"
+            fi
+          }
+          # 脱敏模型最多等 15 秒，读到多少用多少（上游 874b86653）
+          check "pii.FindContext"          internal/pii/find.go          'func FindContext\('
+          check "pii.Find delegates"       internal/pii/find.go          'FindContext\(context\.Background\(\)'
+          check "masking strictWait = 15s" internal/masking/masking.go   'strictWait = 15 \* time\.Second'
+          check "masking partial kept"     internal/masking/masking.go   'pii\.Partial|partial'
+          # 上游把工具参数按 JSON 脱敏，同一个保证不许回退
+          check "tool call arguments"      internal/redact/json.go       'namedSecret|keepIn'
+          exit $fail
+
+      # 2. 这些能力必须有自己的回归测试，否则下一个人删掉实现时没人发现。
+      - name: Their regression tests still exist
+        run: |
+          set -euo pipefail
+          fail=0
+          need() {
+            local file="$1" name="$2"
+            if ! grep -qE "^func $name\(" "$file" 2>/dev/null; then
+              echo "::error file=$file::missing guard test $name"
+              fail=1
+            else
+              echo "ok: $name"
+            fi
+          }
+          need internal/masking/masking_test.go TestStrictModelStalledIsTheRulesForWhatItDidntRead
+          need internal/masking/masking_test.go TestDefaultModelHangingIsTheRules
+          need internal/redact/toolargs_test.go  TestEveryToolCallsArgumentsAreMasked
+          exit $fail
+
+      # 3. 跑这些测试。源码里有实现但行为坏了，同样算失败。
+      - name: Run the guards
+        run: |
+          go test -tags nogui -count=1 \
+            -run 'TestStrictModelStalledIsTheRulesForWhatItDidntRead|TestDefaultModelHangingIsTheRules|TestDefaultModelIsBounded' \
+            ./internal/masking/
+          go test -tags nogui -count=1 \
+            -run 'TestEveryToolCallsArgumentsAreMasked' \
+            ./internal/redact/
