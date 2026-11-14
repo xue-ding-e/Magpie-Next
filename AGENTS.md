@@ -18,6 +18,37 @@ For upstream maintenance and Windows release delivery, follow the
 Git history linear, validate locally on the current OS, and use GitHub
 Actions for the release jobs and their platform checks.
 
+## Repository ownership and cleanup
+
+`origin` is our development and release repository,
+`xue-ding-e/Magpie-Next`. Its permanent development branch is `main`.
+`upstream` tracks `yetone/magpie` and supplies upstream changes for future
+Next batches. Fetch upstream references and pin the reviewed commit before
+bringing changes into Next. Keep Next's own features and fixes when updating
+the upstream baseline.
+
+Keep Git history linear. Never run `git merge`, use a pull that creates a
+merge commit, or use GitHub's merge-commit action. Integrate reviewed work
+with rebase, cherry-pick, or the runbook's single-parent upstream snapshot,
+then use an ordinary fast-forward push. Recheck the remote tip before
+publishing. A cleanup request does not authorize rewriting published history.
+
+Keep temporary local branches, origin branches and worktrees only while
+their work is needed. Before removing one, inspect its commits, staged and
+unstaged changes, untracked files and needed ignored files. Check actual
+content when work was rebased, ported or superseded on a newer upstream tree.
+For unfinished work, find the chats using that checkout, ask their authors
+to finish and commit, and wait for their handoff before removing it. Bring
+useful work into Next, verify its replacement when superseded, then remove
+the completed branches and worktrees. Close an obsolete PR after its work
+has been delivered. The primary checkout and upstream's own branches stay
+outside temporary-worktree and origin-branch cleanup.
+
+Follow the user's validation and delivery scope for each batch. When the
+user requests building and installing locally after a push without running
+tests or waiting for CI, perform that delivery and report what was checked.
+CI completion is required only when the requested outcome depends on it.
+
 Every source build of this fork, including plain `go build`, uses this fork's
 Next repository for updates. The distribution is defined unconditionally in
 [`distribution_next.go`](internal/update/distribution_next.go), independently

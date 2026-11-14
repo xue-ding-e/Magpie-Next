@@ -10,6 +10,14 @@ Magpie Next 的发布仓库是 [xue-ding-e/Magpie-Next](https://github.com/xue-d
 - 本机验证与仓库发布门禁各自生效。当前 [发布工作流](../.github/workflows/next-windows-package.yml) 依赖既有 [Go 平台矩阵](../.github/workflows/test.yml) 和 [完整 Windows 双浏览器分片](../.github/workflows/test-ui.yml)。由 GitHub Actions 执行这些作业；如果将来调整发布门禁，应让工作流和本手册同步更新。
 - 在独立 worktree 操作，保留别人的分支、暂存区和测试记录。Git 历史保持线性，禁止 git merge、会隐式合并的 git pull、改写远端历史和强推。
 
+## 仓库与分支的归属
+
+`origin` 指向我们自行开发和发布的 `xue-ding-e/Magpie-Next`，长期开发分支为 `main`。`upstream` 跟踪 `yetone/magpie` 的上游引用，后续持续从中选择更新并按本手册接入 Next。上游引用由 fetch 更新。每批先固定审查截止的 SHA，再保留 Next 的自有功能和修复。清理我们的开发分支时，删除范围限于 origin 和本地的临时分支。
+
+临时分支和 worktree 在完成交付后清理。删除前检查提交、暂存区、未暂存修改、未跟踪文件和需要保留的忽略文件。改动曾被重放或移植时，比较实际内容和调用点，核实已经交付或被更新实现取代。尚未完成的内容先找到该工作目录下的相关对话，通知原作者完成并 commit，取得交接后再清理。仍有价值的工作先线性接入 main，已由后续实现取代的草稿确认替代关系后删除。工作交付后关闭过时 PR，移除其远端分支、本地分支和 worktree，最后 fetch --prune 并回读剩余引用。主工作目录继续承载 main。
+
+本手册中的验证步骤适用于相应的发布验收。每批同时遵循用户指定的交付范围。用户明确要求免测、push 触发 CI 后直接构建并替换本地程序时，按该范围执行，记录实际完成的构建和安装核对。需要确认正式 Release 时，再跟踪相应运行及制品。
+
 ## 1. 固定上游和 Next 主线
 
 在仓库根目录检查 remote。缺少 upstream 时再添加，已有同名 remote 时先核对地址。
