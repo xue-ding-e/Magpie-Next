@@ -97,6 +97,18 @@ preserved. The Codex compaction-replay conversion also decodes tool outputs with
 `UseNumber` so a rewritten summary does not round unrelated nested integers or
 reject large exponent forms.
 
+An accepted subagent model replacement gives the Routing request, stage,
+panel, replay and context heading the latest attempt's model, including a
+fallback. Before an attempt, those labels show the selected replacement.
+The request record and explanation retain the original requested model.
+A kept replacement shows that requested model and its reason. Context and
+replay refresh keys include the displayed model so a new attempt updates
+the label even when token counts are unchanged. The shared context card
+accepts a display model through its options. See `requestModel` in
+[`client.js`](../../internal/gui/assets/plugins/routing/client.js), `ctxCard` in
+[`context.js`](../../internal/gui/assets/context.js), and
+[`routing-subagent-used-model.test.cjs`](../../internal/gui/tests/routing-subagent-used-model.test.cjs).
+
 [`mtls.Store.ServerCert`](../../internal/mtls/mtls.go) encodes internationalized
 computer and DNS names as IDNA ASCII labels in the server certificate's DNS SANs,
 including wildcard suffixes. The display common name keeps the original text;

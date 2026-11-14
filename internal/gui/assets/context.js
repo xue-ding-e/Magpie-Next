@@ -397,6 +397,7 @@
   // total}, when the route carries no usage), session (the key of the
   // session it is of), prev (that session's last answered request, whose
   // cache a request under way shows), crumbs (the footer's path),
+  // model (the model label displayed in the heading),
   // place (for its width: see cardWidth). The card's ctxUpdate(r, opts)
   // draws another route in it, keeping the nodes that are the same (grid
   // cells too), so nothing flashes and the grid keeps its height.
@@ -784,9 +785,10 @@
         who.append(agentIcon(r.agent), el("span", "ctx-who-n", agentLabel(r.agent)));
         route.append(who);
       }
-      if (r.model) {
+      const model = opts.model ?? r.model;
+      if (model) {
         const what = el("span", "ctx-what");
-        what.append(...labIcon(r.model), el("code", "ctx-model", r.model));
+        what.append(...labIcon(model), el("code", "ctx-model", model));
         if (r.agent) route.append(el("span", "ctx-sep", "›"));
         route.append(what);
       }

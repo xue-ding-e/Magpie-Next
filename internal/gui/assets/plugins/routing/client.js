@@ -844,6 +844,13 @@ function routingPage(part) {
   // an agent's subagents that magpie put a subagent on in its place
   const wentOn = (r) => (r.subagent && !r.subagent.kept ? r.subagent.to : r.model);
 
+  // An accepted subagent replacement shows its latest actual try.
+  // Before any try, show the configured replacement.
+  function requestModel(r) {
+    if (!r.subagent || r.subagent.kept) return r.model;
+    return r.tries[r.tries.length - 1]?.model || r.subagent.to || r.model;
+  }
+
   // the routing of the group x's place is in: the innermost group in the
   // group (via), else the group asked for; "" when no group was
   const placeRouting = (r, x) => {
@@ -2709,8 +2716,8 @@ function routingPage(part) {
       const n = now(), going = pinned ? [] : [...src().values()].filter((x) => srcOf(x) === id && (!x.done || at(x.time) + (x.ms || 0) > n - LINGER));
       const fs = foldersOf([...new Set([...going, ...rs.filter((x) => srcOf(x) === id)])].sort((x, y) => x.id - y.id));
       // told again every second (countdown): only what changed is written
-      setText(a.sub, fs.length > 1 ? fs.map(lastLevel).join(", ") : r.model);
-      const tip = [...new Set([callerName(r), agentName(r.agent)]), r.model, ...fs.map((f) => t("Folder") + ": " + f)].join("\n");
+      setText(a.sub, fs.length > 1 ? fs.map(lastLevel).join(", ") : requestModel(r));
+      const tip = [...new Set([callerName(r), agentName(r.agent)]), requestModel(r), ...fs.map((f) => t("Folder") + ": " + f)].join("\n");
       if (a.node.title !== tip) a.node.title = tip;
     }
     // the account sets, the latest of each
@@ -3404,7 +3411,8 @@ function routingPage(part) {
     // the session by its name where it has one (tjhhhh), else its id
     const named = sessionName(r), sess = named || groupSession(r) || r.conv || "";
     const cut = named ? 28 : 14;
-    const key = JSON.stringify([document.documentElement.lang, ctxFor, r.id, r.done, r.prompt.tokens, r.prompt.counted, r.prompt.window, r.usage?.length, series?.map((x) => x.id + ":" + x.tokens).join(), sess]);
+    const model = requestModel(r);
+    const key = JSON.stringify([document.documentElement.lang, ctxFor, r.id, r.done, model, r.prompt.tokens, r.prompt.counted, r.prompt.window, r.usage?.length, series?.map((x) => x.id + ":" + x.tokens).join(), sess]);
     if (key === ctxKey) return;
     ctxKey = key;
     const still = ctxShown === r.id;
@@ -3415,7 +3423,7 @@ function routingPage(part) {
     // its cache stands for a request under way's till that one is read
     const prev = !r.done && series ? sessionReqs.filter((x) => same(x) && x.done && x.id < r.id && x.usage?.length).sort((a, b) => b.id - a.id)[0] : null;
     draw(r, {
-      still, series, tab: ctxTab, place: "routing", foldable: true,
+      still, series, model, tab: ctxTab, place: "routing", foldable: true,
       session: sk || r.conv || series?.[0]?.id, prev,
       open: ctxFor === r.id, onFold: () => { ctxFor = 0; },
       onTab: (id) => { ctxTab = id; },
@@ -3915,16 +3923,20 @@ function routingPage(part) {
   // once it was rerouted — not the provider it resolved to first, which
   // the row no longer says (#337)
   function reqTitle(r, how, tr) {
-    const head = `${agentName(r.agent)} · ${r.model} → `;
+    const model = requestModel(r);
+    const head = `${agentName(r.agent)} · ${model} → `;
+    const asked = model !== r.model
+      ? "\n" + t("{agent} asked for {model}", { agent: agentName(r.agent), model: r.model })
+      : "";
     // the folder its agent works in, the last two levels of it (#1068),
     // and why it went on another model than it named
     const folder = (movedSays(r) ? "\n" + movedWhy(r) : "") + (r.folder ? "\n" + t("Folder") + ": " + r.folder : "")
       + (r.callerKey ? "\n" + t("Gateway key") + ": " + keyName(r) : "");
     const w = !noAnswer(how) && r.tries.length > 1 && tr && tried(r, tr);
-    if (!w) return head + r.provider + folder;
+    if (!w) return head + r.provider + asked + folder;
     const first = r.tries[0], f = tried(r, first);
     const from = f && seat(f) !== seat(w) ? "\n" + t("rerouted from {from}", { from: `${where(f)} · ${first.model || f.model}` }) : "";
-    return head + `${where(w)} · ${tr.model || w.model}` + from + folder;
+    return head + `${where(w)} · ${tr.model || w.model}` + asked + from + folder;
   }
 
   // the requests the gateway keeps, newest first: pick one to see how it was routed
@@ -4494,7 +4506,7 @@ function routingPage(part) {
     return isNaN(d) ? "" : clockFmt.format(d);
   };
   // what decides a row's width in each column sized by its content: its
-  // time, what was asked for, its numbers
+  // time, its displayed model, its numbers
   function shapes(r, key) {
     const was = probeShapes.get(r);
     if (was && was.key === key) return was.s;
@@ -4502,7 +4514,7 @@ function routingPage(part) {
     // a request in flight's numbers too (60 B, ≈ tokens, ago): measured
     // without them, its column was as wide as no numbers, and they were
     // drawn past the list's edge, cut off (normalcoder_ on X)
-    const s = ["t" + digits(rowClock(r.time)), "a" + JSON.stringify([r.model, tagKind(r) ? kindName(tagKind(r)) : ""]),
+    const s = ["t" + digits(rowClock(r.time)), "a" + JSON.stringify([requestModel(r), tagKind(r) ? kindName(tagKind(r)) : ""]),
       "m" + digits(JSON.stringify([meta, requestMetrics(r, how).map((m) => [m[0], m[2]]), liveParts(probeOf(r)).map((p) => p[0])]))];
     probeShapes.set(r, { key, s });
     return s;
@@ -4673,7 +4685,7 @@ function routingPage(part) {
     const asked = el("span", "asked");
     const sw = el("i", "ag");
     sw.style.setProperty("--agent", hueOf(srcOf(r)));
-    asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", r.model));
+    asked.append(sw, icon(ag?.icon || "generic"), el("span", "m", requestModel(r)));
     const tags = rowTags(r);
     if (tags.length) { asked.classList.add("kinded"); asked.append(...tags); }
     // the reasoning the model was sent at — the turn's pick, or the
@@ -5461,7 +5473,7 @@ function routingPage(part) {
       const m = el("i", "rp-mark");
       m.style.left = (g.s / (v || 1)) * 100 + "%";
       m.style.setProperty("--agent", hueOf(srcOf(g.r)));
-      m.title = `${clock(g.r.time)} · ${callerName(g.r)} · ${g.r.model}`;
+      m.title = `${clock(g.r.time)} · ${callerName(g.r)} · ${requestModel(g.r)}`;
       g.mark = m;
       return m;
     }));
@@ -5534,7 +5546,10 @@ function routingPage(part) {
     const on = p.plan.filter((g) => playing.has(g.r.id) || (p.routes.has(g.r.id) && !p.routes.get(g.r.id).done));
     const shown_ = on.length ? on : p.plan.filter((g) => p.routes.has(g.r.id)).slice(-1);
     for (const g of p.plan) g.mark.classList.toggle("on", on.includes(g));
-    const key = shown_.map((g) => g.r.id + ":" + p.routes.get(g.r.id)?.tries.length + ":" + p.routes.get(g.r.id)?.done).join(",") + (shown_.length ? "" : "-");
+    const key = shown_.map((g) => {
+      const r = p.routes.get(g.r.id);
+      return g.r.id + ":" + r?.tries.length + ":" + r?.done + ":" + requestModel(r || g.r);
+    }).join(",") + (shown_.length ? "" : "-");
     if (rWhat.dataset.key === key) return;
     rWhat.dataset.key = key;
     rWhat.replaceChildren(...(shown_.length ? shown_.map((g) => {
@@ -5543,7 +5558,7 @@ function routingPage(part) {
       sw.style.setProperty("--agent", hueOf(srcOf(r)));
       const [said] = outcome(r);
       row.append(el("span", "rp-n", t("request {i} of {n}", { i: g.n, n: p.plan.length })), sw,
-        el("b", "", callerName(r)), el("code", "mdl", r.model), ...rowTags(r), el("span", "rp-to", "→ " + said),
+        el("b", "", callerName(r)), el("code", "mdl", requestModel(r)), ...rowTags(r), el("span", "rp-to", "→ " + said),
         el("span", "rp-at", t("sent {time}", { time: new Date(r.time).toLocaleTimeString(intlLang(), { hour: "2-digit", minute: "2-digit", second: "2-digit", ...hourClock() }) })));
       row.onclick = () => { cur = r; renderLog(); };
       return row;
@@ -9408,7 +9423,7 @@ function routingPage(part) {
     b.type = "button";
     const ag = agentOf(r.agent);
     const asked = el("span", "pr-a");
-    asked.append(icon(ag?.icon || "generic"), el("span", "pr-who", callerName(r)), el("code", "m", r.model));
+    asked.append(icon(ag?.icon || "generic"), el("span", "pr-who", callerName(r)), el("code", "m", requestModel(r)));
     asked.append(...rowTags(r));
     const when = el("span", "at", new Date(r.time).toLocaleTimeString(intlLang(), { hour: "2-digit", minute: "2-digit", second: "2-digit", ...hourClock() }));
     // where it went: the provider, the account or key, and the model that
