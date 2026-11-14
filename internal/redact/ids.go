@@ -30,10 +30,14 @@ import (
 
 // noIDs is found without what is in an id of s, but for what the user
 // chose and the credentials named for one.
-func noIDs(s string, found []span) []span {
+func noIDs(s string, found []span, field string) []span {
+	element := elementValue(field, s)
 	return slices.DeleteFunc(found, func(f span) bool {
 		if f.by == ByWord || f.by == ByYours {
 			return false
+		}
+		if element {
+			return true
 		}
 		l, r, ok := idAround(s, f.start, f.end)
 		if !ok {
@@ -75,6 +79,17 @@ func noIDs(s string, found []span) []span {
 		}
 		return true
 	})
+}
+
+// elementValue applies the ordinary token parser to a decoded argument
+// with its field name restored. Other fields, including element_api_key,
+// and values that are not whole element tokens keep their masking rules.
+func elementValue(field, value string) bool {
+	if !elementField(nameWords(field)) {
+		return false
+	}
+	const prefix = `{"element_token":"`
+	return elementToken(prefix+value+`"}`, len(prefix), len(prefix)+len(value))
 }
 
 // idAround is the id that s[a:b] is in, or is: the run of hex digits and

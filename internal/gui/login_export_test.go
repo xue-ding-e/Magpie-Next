@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,22 +26,46 @@ func TestSigninExportWritesPrivateFiles(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(h, "Downloads"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claims := func(m map[string]any) string {
-			b, _ := json.Marshal(m)
-			return "e30." + base64.RawURLEncoding.EncodeToString(b) + ".sig"
+	claims := func(m map[string]any) string {
+		t.Helper()
+		b, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
 		}
-		json.NewEncoder(w).Encode(map[string]any{
-			"id_token": claims(map[string]any{"email": "a@example.com",
-				"https://api.openai.com/auth": map[string]any{"chatgpt_plan_type": "pro", "chatgpt_account_id": "acct-a"}}),
-			"access_token":  claims(map[string]any{"exp": float64(time.Now().Add(time.Hour).Unix())}),
-			"refresh_token": "SECRET-refresh",
-		})
+		return "e30." + base64.RawURLEncoding.EncodeToString(b) + ".sig"
+	}
+	access := claims(map[string]any{"exp": time.Now().Add(time.Hour).Unix()})
+	var verified, refreshed atomic.Int32
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			refreshed.Add(1)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path != "/wham/usage" || r.Header.Get("Authorization") != "Bearer "+access || r.Header.Get("chatgpt-account-id") != "acct-a" {
+			t.Errorf("unexpected snapshot verification: %s", r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		verified.Add(1)
+		json.NewEncoder(w).Encode(map[string]any{"plan_type": "pro"})
 	}))
-	defer fake.Close()
-	t.Cleanup(provider.CodexTokenURLForTest(fake.URL))
-	seed := `{"tokens":{"id_token":"x","access_token":"y","refresh_token":"r-a","account_id":"acct-a"}}`
-	if res, err := provider.ImportLogins(context.Background(), "codex", []string{seed}); err != nil || len(res) == 0 || res[0].Status != "added" {
+	t.Cleanup(fake.Close)
+	t.Cleanup(provider.CodexTokenURLForTest(fake.URL + "/token"))
+	oldBase := provider.CodexBase
+	provider.CodexBase = fake.URL + "/codex"
+	t.Cleanup(func() { provider.CodexBase = oldBase })
+	// A complete snapshot imports through its usable access token; exporting
+	// it must preserve the source tool's refresh token without consuming it.
+	seed, err := json.Marshal(map[string]any{"tokens": map[string]any{
+		"id_token": claims(map[string]any{"email": "a@example.com",
+			"https://api.openai.com/auth": map[string]any{"chatgpt_plan_type": "pro", "chatgpt_account_id": "acct-a"}}),
+		"access_token": access, "refresh_token": "SECRET-refresh", "account_id": "acct-a",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := provider.ImportLogins(context.Background(), "codex", []string{string(seed)}); err != nil || len(res) != 1 || res[0].Status != "added" {
 		t.Fatalf("%+v %v", res, err)
 	}
 	mux := http.NewServeMux()
@@ -82,5 +107,8 @@ func TestSigninExportWritesPrivateFiles(t *testing.T) {
 	}
 	if code, _, _ := post(map[string]any{"agent": "gemini", "format": "sub2api"}); code == 200 {
 		t.Error("gemini was exported")
+	}
+	if verified.Load() != 1 || refreshed.Load() != 0 {
+		t.Fatalf("snapshot verification = %d, refreshes = %d; want 1 and 0", verified.Load(), refreshed.Load())
 	}
 }

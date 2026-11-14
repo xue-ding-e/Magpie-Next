@@ -23,6 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/capre"
@@ -63,7 +64,10 @@ var CodexServiceTiers = []string{"", CodexTierStandard, "priority", "ultrafast"}
 
 // Settings is what the user chose. "" and "system" both mean "follow the OS".
 type Settings struct {
-	Theme string `json:"theme,omitempty"` // system | light | dark
+	// AllowedModels is Next's optional exact outbound-model policy. An empty
+	// list retains the upstream's normal unrestricted model selection.
+	AllowedModels []string `json:"allowedModels,omitempty"`
+	Theme         string   `json:"theme,omitempty"` // system | light | dark
 	// Colorblind switches chart series (--c1…--c7) to an Okabe–Ito palette
 	// and gives each quota curve window, and its legend key, a dash of its
 	// own (#2073).
@@ -1107,8 +1111,9 @@ type Settings struct {
 	OwnModelsHidden []string `json:"ownModelsHidden,omitempty"`
 	// AgentEfforts are the reasoning efforts the gateway asks for on an
 	// agent's requests, by agent id, for an agent whose own config can't
-	// carry one (Cursor Private Inference, #1003): one of the levels in
-	// provider.MemberEfforts.
+	// carry one (Cursor Private Inference, #1003), or an explicit live
+	// override for Codex's running conversations. Levels are those in
+	// provider.MemberEfforts; Codex also keeps its Ultra selection here.
 	AgentEfforts map[string]string `json:"agentEfforts,omitempty"`
 	// OrderedModels is the order an agent's lists put its models in, by
 	// agent id and then entry id, as the user dragged them on the Agents
@@ -2517,6 +2522,15 @@ func saveOwn(s Settings, recording, reads bool) error {
 	// settled as it was read, and one made without reading has its Dock
 	// choice read as that file's would be
 	s = s.settleDock().normal()
+	// Normalize this copy: a caller may still hold the slice it passed.
+	s.AllowedModels = slices.Clone(s.AllowedModels)
+	for i, model := range s.AllowedModels {
+		model = strings.TrimSpace(model)
+		if model == "" || strings.ContainsAny(model, "*?") || strings.ContainsFunc(model, unicode.IsControl) {
+			return fmt.Errorf("allowed models must be nonempty exact model ids, not %q", model)
+		}
+		s.AllowedModels[i] = model
+	}
 	if !slices.Contains(Themes, s.Theme) {
 		return fmt.Errorf("theme must be one of %v, not %q", Themes, s.Theme)
 	}

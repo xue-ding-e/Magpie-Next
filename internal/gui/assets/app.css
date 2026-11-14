@@ -493,7 +493,7 @@ body.side-nav #nav button.has-dot::after { top: 50%; right: 10px; margin-top: -3
    close to the button they come from; the foot takes more of a short
    sidebar while they show */
 .side-foot > .nav-sub { margin: 6px 0 2px 16px; }
-.side-foot:has(> .nav-sub) { max-height: 80%; }
+.side-foot.with-tabs { max-height: 80%; }
 .nav-sub::before { content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 1px; background: var(--line); }
 /* rows keep their size while the list unrolls or folds: squeezed, a strip
    drawn again then (Installed gets its count) marked the selection a third
@@ -1156,7 +1156,7 @@ body.panel .row.pref.flash { border-radius: 10px; }
 .credit-days .cd-note { margin-top: 4px; font-size: 10px; color: var(--muted); }
 /* what was left over time (#651): a line a window, an even burn dashed, now
    upright; the range (or Off) is picked once, in the allowances' head */
-#view-usage .row-head.quota-head { gap: 8px; }
+#view-usage .row-head.quota-head { gap: 8px; flex-wrap: wrap; height: auto; min-height: 26px; }
 .quota-curve { margin-top: 10px; }
 .quota-curve .qc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 10.5px; color: var(--muted); }
 .quota-curve .qc-range { font-size: 10px; color: var(--muted); }
@@ -1859,7 +1859,7 @@ details.cx-part[open] > summary .cx-h { margin-bottom: 2px; }
 .sess-cal-side b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .sess-cal-side span { font-size: 10.5px; color: var(--muted); }
 .sess-cal-side small { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
-@container (max-width: 560px) { .sess-cal-wrap { flex-direction: column; gap: 10px; } .sess-cal-side { flex-direction: row; flex-wrap: wrap; gap: 16px; padding-top: 0; } }
+@container (max-width: 560px) { .sess-cal-wrap { flex-direction: column; gap: 10px; } .sess-cal { width: 100%; } .sess-cal-side { flex-direction: row; flex-wrap: wrap; gap: 16px; padding-top: 0; } }
 .sess-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
 .sess-grid[hidden] { display: none; }
 .sess-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px; min-width: 0; display: flex; flex-direction: column; }
@@ -2620,6 +2620,7 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 /* the state centred on the title's line, not sat on its baseline: a
    smaller run of CJK on the baseline reads as dropped below it */
 .gw .name { display: flex; align-items: center; gap: 8px; }
+.gw .name .gw-title { flex: none; }
 .gw .name .state { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 500; color: var(--green); }
 .gw .gw-mark:not(.on) ~ .who .state { color: var(--amber); }
 .gw .sub.old { white-space: normal; overflow: visible; text-overflow: clip; }
@@ -2677,6 +2678,11 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .gw-keys .gw-key-more:is(:hover, .open) { color: var(--fg); }
 #view-gateway .row-head, #view-usage .row-head { margin: 14px 0 6px; padding: 0 2px; }
 #view-usage .row-head.quota-head { margin: 6px 0 6px; }
+#view-usage .row-head .us-sort { display: inline-flex; align-items: center; gap: 3px; max-width: 50%; padding: 1px 4px; border-radius: 5px; font-size: 11px; color: var(--muted); transition: background .12s ease, color .12s ease; }
+#view-usage .row-head .us-sort > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-usage .row-head .us-sort svg { flex: none; }
+#view-usage .row-head .us-sort.open { background: var(--pill); color: var(--fg-2); }
+@media (hover: hover) and (pointer: fine) { #view-usage .row-head .us-sort:hover { background: var(--pill); color: var(--fg-2); } }
 #view-gateway .row-head .note { font-size: 11px; color: var(--faint); }
 /* providers switched off, folded below the ones on */
 #view-providers .off-head { margin: 14px 0 6px; padding: 0 2px; flex: none; }
@@ -3134,6 +3140,10 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .acc .acc-tools { flex-basis: 100%; display: none; align-items: center; flex-wrap: wrap; gap: 6px; padding-left: 25px; min-width: 0; }
 .acc.tools-open .acc-tools { display: flex; }
 .acc .acc-tools > :is(.amodels, .acap, .alane, .text.quiet) { opacity: 1; }
+/* Keep the policy controls together as the editor narrows. The group moves
+   below the other tools first; very small windows can still wrap its pills. */
+.acc .acc-limits { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.acc .acc-limits > :is(.amodels, .acap, .alane) { opacity: 1; }
 /* Remove ends the line, and where the line wraps it ends the next */
 .acc .acc-tools > .text.quiet { margin-left: auto; }
 /* a key's row (#841): its controls are always shown, and the row is laid
@@ -3853,7 +3863,7 @@ body:not(.side-nav) #addSheet > .row-head.stuck::before { box-shadow: 0 1px 0 va
    list's ends pass the wheel on to the body, and the names' list is held
    to a part of the window as the chips are. */
 @media (max-height: 640px) {
-  .mchips { overscroll-behavior: auto; }
+  .mchips { overscroll-behavior: auto; --wheel-chain: auto; }
   .mnames { max-height: min(240px, 40vh); }
 }
 .mchip {
@@ -4625,6 +4635,8 @@ body.panel .modal { padding: 16px 12px; }
   body.web .proxy-controls, body.web .proxy-auth { justify-content: flex-start; }
   body.web .usage-head { height: auto; min-height: 44px; flex-wrap: wrap; gap: 8px; }
   body.web .usage-head > .segs { max-width: 100%; flex-wrap: wrap; }
+  /* Keep the trend and split controls within the card on a phone. */
+  body.web .led-bar > .segs { max-width: 100%; flex-wrap: wrap; }
   /* Requests' Split by (#4943): its five choices ran 86px past a phone */
   body.web .led-split { max-width: 100%; flex-wrap: wrap; }
   body.web .led-split > .segs { max-width: 100%; flex-wrap: wrap; }
@@ -5431,3 +5443,29 @@ body.linux .action-confirm::backdrop { -webkit-backdrop-filter: none; backdrop-f
 .sync-preview .sync-item { display: flex; justify-content: space-between; gap: 12px; min-width: 0; }
 .sync-preview .sync-item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sync-preview .sync-item .sub, .sync-preview .sync-items > .sub, .sync-preview .lib-confirm.sub { color: var(--muted); }
+
+/* Next's shared pointer and keyboard resize handle. */
+.surface-resize {
+  position: absolute; z-index: 2; right: 8px; bottom: 8px; width: 24px; height: 24px;
+  padding: 0; border: 0; border-radius: 0; color: var(--muted); background: transparent;
+  cursor: nwse-resize; touch-action: none; user-select: none;
+  opacity: .7;
+}
+/* Keep the entire square reachable. The painted glyph and rounded hover
+   background stay on a pseudo-element, which does not receive pointer input. */
+.surface-resize::before {
+  content: ""; position: absolute; inset: 0; border-radius: 6px; pointer-events: none;
+}
+.surface-resize::after {
+  content: ""; position: absolute; right: 1px; bottom: 1px; width: 18px; height: 18px;
+  background: repeating-linear-gradient(135deg, transparent 0 3px, currentColor 3px 4px, transparent 4px 6px);
+  clip-path: polygon(100% 20%, 100% 100%, 20% 100%); pointer-events: none;
+}
+.surface-resize:hover { opacity: 1; color: var(--accent); }
+.surface-resize:hover::before { background: var(--accent-soft); }
+.surface-resize:focus-visible { opacity: 1; color: var(--accent); outline-offset: -3px; }
+.surface-resize:focus-visible::before { background: var(--accent-soft); }
+.surface-sizing { user-select: none; }
+.modal .dialog.next-resizable { min-width: min(360px, 100%); min-height: min(300px, 100%); max-width: 100%; overflow: hidden; resize: none; }
+.modal .dialog.next-resizable > .editor { flex: 1 1 auto; }
+.modal .dialog.next-resizable > .editor > .bar { padding-right: 38px; }

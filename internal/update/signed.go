@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -41,11 +40,11 @@ type Signed struct {
 }
 
 // signedRequired reports whether version must carry a valid signature.
-// MAGPIE_UPDATE_FEED, which points updates at a server of one's own for
-// testing, lifts the requirement (that server can't sign with our key); a
-// signature it does give is still checked.
+// An accepted isolated transport fixture lifts the requirement (that
+// server cannot sign with upstream's key); a signature it gives is still
+// checked. An ambient feed variable alone never lifts the requirement.
 func signedRequired(version string) bool {
-	if os.Getenv("MAGPIE_UPDATE_FEED") != "" {
+	if fixtureFeed("MAGPIE_UPDATE_FEED") != "" {
 		return false
 	}
 	return !Newer(firstSigned, version)

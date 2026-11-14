@@ -1,6 +1,6 @@
-// Package update keeps magpie current. Builds are published as GitHub
-// releases of yetone/magpie-releases; usemagpie.ai/api/latest describes the
-// newest one: its version, notes, and every file with its SHA-256.
+// Package update keeps this fork current through the source-bound manifests
+// in its own Magpie-Next repository. Every source and release build uses that
+// distribution; build tags and ambient feed variables cannot change it.
 //
 // The macOS app replaces its own bundle: the new zip is downloaded, checked
 // against its hash, unpacked, and accepted only if it is signed by the same
@@ -38,19 +38,12 @@ import (
 	"github.com/yetone/magpie/internal/rosetta"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/source"
+	"github.com/yetone/magpie/internal/update/nextrelease"
+	"github.com/yetone/magpie/internal/webview2env"
 )
 
-// Site is magpie's home; its /api/latest is the update feed.
-const Site = "https://usemagpie.ai"
-
-// Feed is where the newest release is described. MAGPIE_UPDATE_FEED points
-// it elsewhere, for testing an update against a local server.
-func Feed() string {
-	if f := os.Getenv("MAGPIE_UPDATE_FEED"); f != "" {
-		return f
-	}
-	return siteFeed
-}
+// Feed is the fixed own-repository release source in every build of this fork.
+func Feed() string { return nextFeed }
 
 // Release is one published version.
 type Release struct {
@@ -131,28 +124,38 @@ func (u updateProxy) CloseIdleConnections() {
 func Latest(ctx context.Context) (*Release, error) { return LatestIn(ctx, "") }
 
 // LatestIn asks the feed for the newest release, its notes in lang (see
-// InLang): the app's language, which What's new follows. On Settings'
-// Stable channel it is Stable's release (see Stable).
+// InLang): the app's language, which What's new follows. Next always uses
+// its source-bound manifest; isolated fixtures can exercise Stable's query.
 func LatestIn(ctx context.Context, lang string) (*Release, error) {
-	return latestAt(ctx, withChannel(withLang(Feed(), lang)), lang)
+	if feed := fixtureFeed("MAGPIE_UPDATE_FEED"); feed != "" {
+		return latestAt(ctx, withChannel(withLang(feed, lang)), lang)
+	}
+	return latestNext(ctx, lang)
 }
 
 // LatestEvery is LatestIn on every version, whatever Settings' channel:
 // what Stable's "up to date" leaves out, the newest release out.
 func LatestEvery(ctx context.Context, lang string) (*Release, error) {
-	return latestAt(ctx, withLang(Feed(), lang), lang)
+	if feed := fixtureFeed("MAGPIE_UPDATE_FEED"); feed != "" {
+		return latestAt(ctx, withLang(feed, lang), lang)
+	}
+	return latestNext(ctx, lang)
 }
 
+// latestAt reads the isolated transport fixture accepted by fixtureFeed.
+// Ordinary source and release builds cannot select this path.
 func latestAt(ctx context.Context, feed, lang string) (*Release, error) {
-	if githubOnly() {
+	if !fixtureEndpoint(feed) {
+		return nil, errors.New("legacy update feeds are only available to isolated transport tests")
+	}
+	if githubOnly(feed) {
 		return githubLatest(ctx, lang)
 	}
-	if !fallsBack(ctx) {
+	if !fallsBack(ctx, feed) {
 		return latestFrom(ctx, feed, lang)
 	}
-	// the site may be unreachable where github.com is (a company's allow
-	// list): after a failed feed, GitHub's own release is read and held
-	// to the same signature (fallback.go)
+	// Keep upstream's signed fallback covered by its private transport
+	// fixtures. The ordinary Next path above never enters this reader.
 	fctx, cancel := context.WithTimeout(ctx, feedWait)
 	defer cancel()
 	rel, err := latestFrom(fctx, feed, lang)
@@ -201,6 +204,9 @@ func latestFrom(ctx context.Context, feed, lang string) (*Release, error) {
 // source ("dev", "0bcb2cc-dirty", git describe's "v0.1.0-3-g0bcb2cc");
 // only releases update themselves.
 func Released(v string) bool {
+	if nextDistribution && strings.Contains(v, "-next") {
+		return nextrelease.VersionSequence(v) > 0
+	}
 	s := parse(v)
 	return s != nil && !describe.MatchString(s.pre) && !strings.Contains(s.pre, "dirty")
 }
@@ -211,6 +217,12 @@ var describe = lazyre.New(`^\d+-g[0-9a-f]+`)
 // Newer reports whether version a comes after b. A pre-release comes before
 // the release it leads up to.
 func Newer(a, b string) bool {
+	if nextDistribution {
+		x, y := nextrelease.VersionSequence(a), nextrelease.VersionSequence(b)
+		if x > 0 || y > 0 {
+			return x > 0 && y > 0 && x > y
+		}
+	}
 	x, y := parse(a), parse(b)
 	if x == nil || y == nil {
 		return false
@@ -313,6 +325,12 @@ func arch() string {
 // AppAsset and BinaryAsset name the files this machine would install.
 func AppAsset() string { return "magpie-darwin-" + arch() + ".zip" }
 func BinaryAsset() string {
+	if nextDistribution {
+		if GUI {
+			return "Magpie-Next.exe"
+		}
+		return "magpie-next-cli.exe"
+	}
 	name := "magpie-cli-" + goos + "-" + arch()
 	if GUI && goos != "darwin" {
 		name = "magpie-" + goos + "-" + arch()
@@ -660,6 +678,9 @@ func ReplaceBinary(ctx context.Context, rel *Release) error {
 // StageBinary downloads the release's build for this binary out of sight
 // (binaryStage), ready for InstallBinary.
 func StageBinary(ctx context.Context, rel *Release) (string, error) {
+	if nextDistribution && (runtime.GOOS != "windows" || runtime.GOARCH != "amd64") && fixtureFeed("MAGPIE_UPDATE_FEED") == "" {
+		return "", errors.New("Magpie Next self-updates are published for Windows x64 only")
+	}
 	a, ok := rel.Assets[BinaryAsset()]
 	if !ok {
 		return "", fmt.Errorf("release %s has no %s", rel.Version, BinaryAsset())
@@ -1119,7 +1140,7 @@ func InstallBinaryAsAdmin(staged, exe string) error {
 // one then runs on rather than quitting.
 func RelaunchBinary(exe, old string, window bool, view string) error {
 	args := RelaunchArgs(window, view)
-	env := append(os.Environ(), "MAGPIE_REPLACES="+strconv.Itoa(os.Getpid()))
+	env := append(relaunchEnvironment(), "MAGPIE_REPLACES="+strconv.Itoa(os.Getpid()))
 	if old != "" {
 		return startChecked(exe, old, args, env)
 	}
@@ -1230,7 +1251,11 @@ func download(ctx context.Context, a Asset, path string) error {
 	toAPI := mirrorOf(ctx) == ""
 	// Settings' update source (source.go): GitHub only starts at github.com
 	// and goes on to its API route; the site only goes to no other
-	switch Source() {
+	var sourceChoice string
+	if fixtureEndpoint(a.URL) {
+		sourceChoice = Source()
+	}
+	switch sourceChoice {
 	case settings.UpdateSourceGitHub:
 		if toGitHub {
 			on.URL, toGitHub = a.GitHub, false
@@ -1520,6 +1545,15 @@ func fetch(ctx context.Context, a Asset, path string) error {
 		}
 		return fail(err)
 	}
+	if nextDistribution && a.Size > 0 {
+		info, err := os.Stat(path)
+		if err != nil {
+			return fail(err)
+		}
+		if info.Size() != a.Size {
+			return fail(errors.New("Next executable size does not match its manifest"))
+		}
+	}
 	return nil
 }
 
@@ -1582,13 +1616,13 @@ func openBeside(bundle string, window, quiet bool) string {
 // isn't told to wait for this one (MAGPIE_REPLACES): it takes the gateway
 // from it while it runs.
 func StartBeside(exe string, window bool, view string) error {
-	_, _, err := launch(exe, RelaunchArgs(window, view), os.Environ())
+	_, _, err := launch(exe, RelaunchArgs(window, view), relaunchEnvironment())
 	return err
 }
 
-// githubAddresses gives each file the feed names on the site its
-// github.com address, where download goes on when the site's can't be
-// reached; the hash it is checked against is the same.
+// githubAddresses gives each file the inherited fixture feed names on the
+// site its GitHub address. Ordinary Next manifests carry their own fixed
+// repository's asset addresses and do not enter this path.
 func (rel *Release) githubAddresses() {
 	for name, a := range rel.Assets {
 		if a.GitHub != "" || rel.Version == "" || !strings.HasPrefix(a.URL, Site+"/") {
@@ -1597,4 +1631,14 @@ func (rel *Release) githubAddresses() {
 		a.GitHub = fmt.Sprintf("%s/%s/releases/download/v%s/%s", githubWeb, releaseRepo, rel.Version, url.PathEscape(name))
 		rel.Assets[name] = a
 	}
+}
+
+// Wails clears its loader variable after webview2env captures it. Both restart
+// paths keep the user's original browser arguments without changing this process.
+func relaunchEnvironment() []string {
+	env := os.Environ()
+	if runtime.GOOS == "windows" && webview2env.Args != "" {
+		env = append(env, webview2env.Name+"="+webview2env.Args)
+	}
+	return env
 }

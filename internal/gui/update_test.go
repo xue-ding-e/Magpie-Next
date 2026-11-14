@@ -47,6 +47,7 @@ func TestUpdateStagedGivesWayToNewer(t *testing.T) {
 	u := &updater{exe: exe}
 	u.self, _ = os.Stat(exe)
 	defer os.Remove(exe + ".new")
+	defer u.loops.Wait()
 
 	u.check()
 	if j := u.json(); j.State != "ready" || j.Latest != "0.1.11" || downloads.Load() != 1 {

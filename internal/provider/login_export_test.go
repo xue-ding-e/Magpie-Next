@@ -103,11 +103,15 @@ func TestExportClaudeRoundTrip(t *testing.T) {
 	}
 }
 
-// A ChatGPT account makes the round trip too, each file refreshed on the
-// way in as any import is.
+// A ChatGPT account makes the round trip too: renewed when it has no access
+// token, otherwise verified without rotating the exported sign-in.
 func TestExportCodexRoundTrip(t *testing.T) {
 	claudeHome(t)
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/wham/usage" {
+			_, _ = w.Write([]byte(`{"plan_type":"plus"}`))
+			return
+		}
 		var body map[string]string
 		json.NewDecoder(r.Body).Decode(&body)
 		rt := body["refresh_token"]
@@ -125,8 +129,11 @@ func TestExportCodexRoundTrip(t *testing.T) {
 	}))
 	defer fake.Close()
 	t.Cleanup(CodexTokenURLForTest(fake.URL))
-	in := `[{"type":"codex","email":"a@example.com","id_token":"x","access_token":"y","refresh_token":"r1","account_id":"acct-1"},
-	{"type":"codex","email":"b@example.com","id_token":"x","access_token":"y","refresh_token":"r2","account_id":"acct-2"}]`
+	oldBase := CodexBase
+	CodexBase = fake.URL + "/codex"
+	t.Cleanup(func() { CodexBase = oldBase })
+	in := `[{"type":"codex","email":"a@example.com","id_token":"x","access_token":"","refresh_token":"r1","account_id":"acct-1"},
+	{"type":"codex","email":"b@example.com","id_token":"x","access_token":"","refresh_token":"r2","account_id":"acct-2"}]`
 	if _, err := ImportLogins(context.Background(), "codex", []string{in}); err != nil {
 		t.Fatal(err)
 	}

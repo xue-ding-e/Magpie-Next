@@ -25,7 +25,7 @@ const state = {
 };
 
 async function serve(route) {
-  const url = new URL(route.request().url());
+  const req = route.request(), url = new URL(req.url());
   const json = data => route.fulfill({ json: data });
   if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: 'window.bootPrefs = {lang:"en",theme:"light",web:true};' });
   if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
@@ -46,6 +46,11 @@ async function serve(route) {
   if (url.pathname === "/api/plugin-pages" || url.pathname === "/api/plugin-panels") return json([]);
   // the sidebar's gateway line, when no page has read the providers
   if (url.pathname === "/api/providers") return json({ providers: [], gateway: { url: "http://127.0.0.1:3425", running: true } });
+  if (url.pathname === "/api/update/using") {
+    assert.equal(req.method(), "POST");
+    assert.equal(typeof req.postDataJSON().open, "boolean");
+    return json({});
+  }
   assert(!url.pathname.startsWith("/api/"), "Unexpected API: " + url.pathname);
   const file = path.join(assets, url.pathname === "/" ? "index.html" : url.pathname);
   const contentType = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" }[path.extname(file)];

@@ -93,7 +93,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           // Discover: the card's Sign in asks which, and Qoder CN signs in to qoder-cn
           let { page, errors, asked } = await open(browser, lang, width, true, "plugins");
           const card = page.locator(`#view-plugins .pm-card[data-pkg="${QODER}"] .pm-act`);
-          await card.waitFor();
+          await card.filter({ hasText: w.signIn }).waitFor();
           assert.equal((await card.innerText()).trim(), w.signIn);
           await card.click();
           let menu = await menuOf(page);

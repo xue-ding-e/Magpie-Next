@@ -44,6 +44,7 @@ func TestUpdateNotWritableSaysWhy(t *testing.T) {
 
 	canElevate = func() bool { return false }
 	u := &updater{}
+	defer u.loops.Wait()
 	u.placeExe(exe)
 	u.check()
 	j := u.json()

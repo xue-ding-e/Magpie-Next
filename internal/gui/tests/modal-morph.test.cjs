@@ -54,7 +54,8 @@ const shown = (page, at) => page.evaluate((at) => {
   for (const a of [...d.parentElement.getAnimations(), ...d.getAnimations()]) { a.pause(); a.currentTime = at * a.effect.getTiming().duration; }
   const box = d.getBoundingClientRect(), s = box.width / d.offsetWidth;
   const clip = getComputedStyle(d).clipPath;
-  const m = clip.match(/^inset\(([-\d.]+)px(?: ([-\d.]+)px)?(?: ([-\d.]+)px)?(?: ([-\d.]+)px)?/);
+  const length = "(-?(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)(?:e[+-]?[0-9]+)?)px";
+  const m = clip.match(new RegExp("^inset\\(" + length + ("(?: " + length + ")?").repeat(3), "i"));
   if (!m) return { clip, top: box.top, bottom: box.bottom, left: box.left, right: box.right };
   const [t, r = t, b = t, l = r] = m.slice(1).map((v) => v === undefined ? undefined : +v);
   return { clip, top: box.top + Math.max(0, t) * s, bottom: box.bottom - Math.max(0, b) * s, left: box.left + Math.max(0, l) * s, right: box.right - Math.max(0, r) * s };
@@ -94,11 +95,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         return was === y;
       }, null, { polling: 100 });
       await page.evaluate(() => { window.__hold = true; });
-      const r = await row.boundingBox();
+      // Sample the origin at the same pointer press the app handles.
+      await row.evaluate((row) => row.addEventListener("pointerdown", () => {
+        const { x, y, width, height } = row.getBoundingClientRect();
+        window.__morphRow = { x, y, width, height };
+      }, { once: true, capture: true }));
 
       // held at the start: a strip of the dialog over the row, pressed on
       // its logo, the row's handle (it rose from below, 10-24)
       await row.locator(".pv-handle").click();
+      const r = await page.evaluate(() => window.__morphRow);
+      assert(r, "the pointer press measured the provider row");
       await page.locator("#modal:not([hidden]) > .dialog").waitFor();
       const start = await shown(page, 0);
       assert.match(start.clip, /^inset\(/, `${engine} ${width}: the opening clips the dialog: ${start.clip}`);

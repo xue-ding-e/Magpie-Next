@@ -11,7 +11,11 @@ endif
 # version keeps only what a version is spelled with.
 VERSION ?= $(or $(shell git describe --tags --always --dirty 2>/dev/null | tr -cd 'A-Za-z0-9._+-'),dev)
 LDFLAGS  = -s -w -X main.version=$(VERSION)
+# This fork's desktop and CLI builds use the Next repository's updater.
+# Source builds select it independently of tags and version labels.
 TAGS     = production
+APP_TAGS = $(TAGS) next
+CLI_TAGS = nogui next
 TARGETS  = darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64 android/arm64
 
 # The GUI links the platform webview through cgo, so it is built natively.
@@ -48,16 +52,16 @@ assets-pack:
 OVERLAY = F=$$(sh build/darwin/footprint-overlay.sh .overlay) || exit 1;
 
 build:
-	$(OVERLAY) go build $$F -tags "$(TAGS)" -trimpath -ldflags="$(LDFLAGS)" -o magpie .
+	$(OVERLAY) go build $$F -tags "$(APP_TAGS)" -trimpath -ldflags="$(LDFLAGS)" -o magpie .
 
 cli:
-	$(OVERLAY) CGO_ENABLED=0 go build $$F -tags nogui -trimpath -ldflags="$(LDFLAGS)" -o magpie .
+	$(OVERLAY) CGO_ENABLED=0 go build $$F -tags "$(CLI_TAGS)" -trimpath -ldflags="$(LDFLAGS)" -o magpie .
 
 build-release: assets-pack
-	$(OVERLAY) go build $$F -tags "$(TAGS) packedassets" -trimpath -ldflags="$(LDFLAGS)" -o magpie .
+	$(OVERLAY) go build $$F -tags "$(APP_TAGS) packedassets" -trimpath -ldflags="$(LDFLAGS)" -o magpie .
 
 install:
-	go install -tags "$(TAGS)" -trimpath -ldflags="$(LDFLAGS)" .
+	go install -tags "$(APP_TAGS)" -trimpath -ldflags="$(LDFLAGS)" .
 
 test:
 	go vet -tags "$(TAGS)" ./... && go test -tags "$(TAGS)" ./...
@@ -119,7 +123,7 @@ release-cli: assets-pack
 	@$(OVERLAY) for t in $(TARGETS); do \
 		os=$${t%/*}; arch=$${t#*/}; ext=""; [ $$os = windows ] && ext=.exe; \
 		echo "  $$os/$$arch (cli)"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build $$F -tags "nogui packedassets" -trimpath -ldflags="$(LDFLAGS)" -o dist/magpie-cli-$$os-$$arch$$ext . || exit 1; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build $$F -tags "$(CLI_TAGS) packedassets" -trimpath -ldflags="$(LDFLAGS)" -o dist/magpie-cli-$$os-$$arch$$ext . || exit 1; \
 	done
 
 # The desktop app for Windows: the system WebView2 needs no cgo, so both
@@ -139,7 +143,7 @@ release-windows: assets-pack
 	@for arch in amd64 arm64; do \
 		echo "  windows/$$arch (app)"; \
 		CGO_ENABLED=0 GOOS=windows GOARCH=$$arch go build -trimpath -buildvcs=false -ldflags="-s -w" -o internal/update/launcher-$$arch.com ./internal/update/launcher || exit 1; \
-		CGO_ENABLED=0 GOOS=windows GOARCH=$$arch go build -tags production,comlauncher,packedassets -trimpath -ldflags="$(LDFLAGS) -H windowsgui" -o dist/magpie-windows-$$arch.exe . || exit 1; \
+		CGO_ENABLED=0 GOOS=windows GOARCH=$$arch go build -tags "$(APP_TAGS) comlauncher packedassets" -trimpath -ldflags="$(LDFLAGS) -H windowsgui" -o dist/magpie-windows-$$arch.exe . || exit 1; \
 	done; rm -f rsrc_windows_*.syso internal/update/launcher-*.com
 
 # The desktop app for Linux links GTK 3 and WebKitGTK 4.1 through cgo, so it
@@ -147,7 +151,7 @@ release-windows: assets-pack
 release-linux: assets-pack
 	@mkdir -p dist
 	@echo "  linux/$(shell go env GOARCH) (app)"
-	@go build -tags "$(TAGS) packedassets" -trimpath -ldflags="$(LDFLAGS)" -o dist/magpie-linux-$(shell go env GOARCH) .
+	@go build -tags "$(APP_TAGS) packedassets" -trimpath -ldflags="$(LDFLAGS)" -o dist/magpie-linux-$(shell go env GOARCH) .
 
 clean:
 	rm -rf magpie magpie.exe magpie.app dist .overlay internal/gui/assets.zip rsrc_windows_*.syso internal/update/launcher-*.com

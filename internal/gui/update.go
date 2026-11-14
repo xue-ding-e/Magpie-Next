@@ -99,7 +99,7 @@ type updater struct {
 	gaveUp    bool
 	whenIdle  func() bool
 	onWait    func()
-	loops     sync.WaitGroup // the waits going on
+	loops     sync.WaitGroup // restart waits and background notes owned by this updater
 	// With Settings' AutoRestart, the clock has autoRestart run (the app's
 	// or magpie web's restart) once a downloaded update is ready and the
 	// gateway idle (#2096); autoSkip is the version whose wait the user
@@ -569,8 +569,10 @@ func (u *updater) run() {
 		u.behind = update.NoteBehind(Version, rel.Version, update.UrgentIn(rel.Notes), time.Now())
 		if u.behind.Urgent == "" {
 			// an urgent release between this one and the latest: its
-			// notes aren't the latest's
-			go u.urgentBetween(rel.Version, lang)
+			// notes aren't the latest's. Register before handing it off,
+			// and keep this check's base rather than reading it later.
+			parent, current, latest := backendCtx, Version, rel.Version
+			u.loops.Go(func() { u.urgentBetween(parent, current, latest, lang) })
 		}
 	}
 	switch {
@@ -662,7 +664,7 @@ func (u *updater) install(ask bool) bool {
 			err = update.InstallAsAdmin(u.staged, u.bundle)
 		}
 	} else {
-		u.aside, err = update.InstallBinaryAside(u.staged, u.exe)
+		u.aside, err = installBinaryAside(u.staged, u.exe)
 		if ask && update.NeedsAdmin(err) && update.CanElevate() {
 			err = update.InstallBinaryAsAdmin(u.staged, u.exe)
 		}
@@ -734,7 +736,8 @@ func (u *updater) jsonIn(lang string) updateJSON {
 		u.lang = lang
 		if u.latest != nil && u.notesIn != lang && u.state != "checking" && time.Since(u.relangAt) >= time.Minute {
 			u.relangAt = time.Now()
-			go u.relang(u.latest.Version, lang)
+			parent, version := backendCtx, u.latest.Version
+			u.loops.Go(func() { u.relang(parent, version, lang) })
 		}
 	}
 	j := updateJSON{State: u.state, Current: Version, Error: u.err, Retry: u.retry}
@@ -795,16 +798,16 @@ func (u *updater) jsonIn(lang string) updateJSON {
 
 // urgentBetween notes it when a release after this one up to latest is
 // urgent: a security fix a few releases back isn't in the latest's notes.
-func (u *updater) urgentBetween(latest, lang string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+func (u *updater) urgentBetween(parent context.Context, current, latest, lang string) {
+	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
 	defer cancel()
-	notes, err := update.NotesBetween(ctx, Version, latest, lang)
-	if err != nil {
+	notes, err := update.NotesBetween(ctx, current, latest, lang)
+	if err != nil || ctx.Err() != nil {
 		return
 	}
 	for _, n := range notes {
 		if update.UrgentIn(n.Notes) {
-			b := update.NoteUrgent(Version, n.Version, time.Now())
+			b := update.NoteUrgent(current, n.Version, time.Now())
 			u.mu.Lock()
 			u.behind = b
 			u.mu.Unlock()
@@ -833,11 +836,11 @@ func (u *updater) inLang(lang string) {
 
 // relang asks the feed again for version's notes in lang, the pages'
 // language not being the one they were asked in.
-func (u *updater) relang(version, lang string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (u *updater) relang(parent context.Context, version, lang string) {
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	rel, err := update.LatestIn(ctx, lang)
-	if err != nil {
+	if err != nil || ctx.Err() != nil {
 		return
 	}
 	u.mu.Lock()
@@ -981,6 +984,10 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 
 // relaunchBinary is update.RelaunchBinary; tests stand in for it.
 var relaunchBinary = update.RelaunchBinary
+
+// installBinaryAside is the native installer; tests of the later relaunch
+// failure can model a successful install without executing a synthetic image.
+var installBinaryAside = update.InstallBinaryAside
 
 // restartFrom is restartToUpdate asked from w's page, on view: a browser
 // on the app's page restarts the app, with its window up as it was, not

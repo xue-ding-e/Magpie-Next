@@ -1184,6 +1184,8 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		webPage.Store(true)
 	}
 	mux := http.NewServeMux()
+	codexAuthRoutes(mux, w)
+	localDictionaryRoutes(mux)
 	page := devPage(revalidated(http.FileServer(http.FS(staticFS()))))
 	mux.Handle("/", http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		if warmsSessions(r) {
@@ -1284,6 +1286,7 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// and the accent and wallpaper of the user's own (appearance.go),
 		// drawn before the first paint
 		boot["look"] = lookKey(s)
+		boot["fixedUpdateSource"] = true
 		b, _ := json.Marshal(boot)
 		rw.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		rw.Header().Set("Cache-Control", "no-store")

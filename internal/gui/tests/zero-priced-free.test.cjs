@@ -46,7 +46,7 @@ function serve(lang) {
     models, deciders: [], pools: [],
     groups: [{ id: "g", name: "G", members: ["or/glm-5"], off: [], routing: "order", ready: true, memberInfo: [{ id: "or/glm-5", ready: true, provider: "or", name: "OpenRouter", model: "glm-5" }] }],
   });
-  const state = { agents: [{ id: "codex", name: "Codex", path: "/test/config.toml", icon: "codex-color", wired: false, fields: [{ key: "model", label: "model", value: "magpie/or/glm-5", options }] }], profiles: [], settings: { lang, theme: "light" } };
+  const state = { agents: [{ id: "codex", name: "Codex", path: "/test/config.toml", icon: "codex-color", wired: true, fields: [{ key: "model", label: "model", value: "magpie/or/glm-5", options }] }], profiles: [], settings: { lang, theme: "light" } };
   return async (r) => {
     const url = new URL(r.request().url());
     const json = (data) => r.fulfill({ json: data });
@@ -72,7 +72,9 @@ function serve(lang) {
 }
 
 // a picker row's free tag: its text, its hover, and whether it sits in the row
-const tagOf = (row) => row.evaluate((li) => {
+// Resolve the live row and read its geometry in one browser call.
+const tagOf = (row) => row.evaluateAll(([li]) => {
+  if (!li) return null;
   const f = li.querySelector(".badge.free");
   if (!f) return null;
   const r = li.getBoundingClientRect(), b = f.getBoundingClientRect();
@@ -97,9 +99,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // the agent's model picker
         await page.goto("http://magpie.test/");
         await page.locator('#nav [data-view="agents"]').click();
-        await page.locator('#agents [data-key="model"]').first().click();
+        const modelField = page.locator('#agents [data-key="model"]').first();
+        await modelField.click();
         const row = (label) => page.locator("#list li:not(.group):not(.custom)", { hasText: label }).first();
-        await row("Nemotron Lite").waitFor();
+        await row("Nemotron Lite").locator(".badge.free").waitFor();
         const zero = await tagOf(row("Nemotron Lite"));
         assert.ok(zero, "the $0 model has no free tag in the agent's picker");
         assert.equal(zero.text, w.free);
@@ -134,7 +137,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await card.locator("button", { hasText: w.edit }).click();
         await page.locator(".rt-gedit .rt-madds button.rt-gadd").click();
         const opt = (name) => page.locator("#pop li", { has: page.locator(".v", { hasText: new RegExp(`^${name}$`) }) }).first();
-        await opt("nemotron-lite").waitFor();
+        await opt("nemotron-lite").locator(".badge.free").waitFor();
         const rz = await tagOf(opt("nemotron-lite"));
         assert.ok(rz, "the $0 model has no free tag in the group's picker");
         assert.equal(rz.text, w.free);

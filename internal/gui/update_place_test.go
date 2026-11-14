@@ -51,6 +51,7 @@ func TestUpdateTakesTheMacTerminalBuild(t *testing.T) {
 	Version = "0.1.10"
 	defer func() { Version = old }()
 	update.GUI = false
+	defer u.loops.Wait()
 	u.check()
 	if j := u.json(); j.State == "available" {
 		t.Fatalf("the Mac's terminal build was sent to the release page: %+v", j)

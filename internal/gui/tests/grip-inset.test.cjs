@@ -187,11 +187,21 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             look();
           }));
           let b = await still();
-          for (let i = 0; i < 6 && (b.y < 60 || b.y + b.height > viewport.height - 20); i++) {
-            await page.mouse.move(viewport.width / 2, viewport.height / 2);
-            await page.mouse.wheel(0, b.y + b.height / 2 - viewport.height / 2);
+          const hit = () => row.evaluate((r) => {
+            const b = r.getBoundingClientRect();
+            return r.contains(document.elementFromPoint(b.left + 6, b.top + b.height / 2));
+          });
+          for (let i = 0; i < 6 && !(await hit()); i++) {
+            const view = await row.evaluate((r) => {
+              const v = r.closest(".view")?.getBoundingClientRect();
+              return v && { x: v.left + 3, y: v.top + v.height / 2 };
+            });
+            const x = view?.x ?? viewport.width / 2, y = view?.y ?? viewport.height / 2;
+            await page.mouse.move(x, y);
+            await page.mouse.wheel(0, b.y + b.height / 2 - y);
             b = await still();
           }
+          assert(await hit(), `${k.name}: the reader can point at the row beside its grip`);
           await page.mouse.move(b.x + 6, b.y + b.height / 2);
           await page.waitForFunction(([r, g]) => {
             const e = document.querySelector(r)?.querySelector(g);

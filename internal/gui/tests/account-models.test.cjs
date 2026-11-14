@@ -192,6 +192,51 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.deepEqual(errors, []);
     });
 
+    test(`${engine} ${lang}: account controls stay together while the outer editor is resized`, async (t) => {
+      const { page, errors, posts } = await open(t, "Codex", ".editor .accts .acc");
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await reveal(page, "me@example.com");
+      const dialog = page.locator("#modal .dialog");
+      const grip = dialog.locator(":scope > .surface-resize");
+      await grip.waitFor();
+      const controls = row(page, "me@example.com").locator(".acc-tools .acc-limits");
+      const fits = () => controls.evaluate(e => {
+        const bounds = e.getBoundingClientRect();
+        const rects = [...e.children].map(x => x.getBoundingClientRect());
+        return { lines: new Set(rects.map(r => Math.round(r.top))).size,
+          fits: rects.every(r => r.left >= bounds.left - 1 && r.right <= bounds.right + 1) };
+      });
+      assert.deepEqual(await fits(), { lines: 1, fits: true });
+      const original = await dialog.boundingBox(); assert(original);
+      const hit = await grip.boundingBox(); assert(hit);
+      const reachable = await grip.evaluate(handle => {
+        const r = handle.getBoundingClientRect();
+        return [[2, 2], [r.width - 2, 2], [2, r.height - 2], [r.width - 2, r.height - 2]]
+          .every(([x, y]) => handle.contains(document.elementFromPoint(r.left + x, r.top + y)));
+      });
+      assert(reachable, "the whole resize handle receives pointer input inside the rounded dialog");
+      await page.mouse.move(hit.x + hit.width - 4, hit.y + hit.height - 4);
+      await page.mouse.down();
+      await page.mouse.move(hit.x + hit.width + 95, hit.y + hit.height + 35, { steps: 12 });
+      await page.mouse.up();
+      await page.waitForFunction(width => document.querySelector("#modal .dialog").getBoundingClientRect().width > width + 30, original.width);
+      assert.deepEqual(await fits(), { lines: 1, fits: true });
+      assert.equal(posts.length, 0, "resizing the editor cannot change account policy");
+      await grip.focus();
+      const wide = (await dialog.boundingBox()).width;
+      await page.keyboard.press("ArrowLeft");
+      assert((await dialog.boundingBox()).width < wide, "resize handle is also keyboard accessible");
+      await page.keyboard.press("Home");
+      await page.setViewportSize({ width: 420, height: 760 });
+      const small = await dialog.boundingBox(); assert(small && small.x >= 0 && small.x + small.width <= 421);
+      assert.deepEqual(await fits(), { lines: 1, fits: true }, "compact layouts move the group without breaking its labels");
+      if (process.env.MAGPIE_UI_ARTIFACTS) {
+        await fs.mkdir(process.env.MAGPIE_UI_ARTIFACTS, { recursive: true });
+        await page.screenshot({ path: path.join(process.env.MAGPIE_UI_ARTIFACTS, `accounts-${engine}-${lang}-420.png`) });
+      }
+      assert.deepEqual(errors, []);
+    });
+
     test(`${engine} ${lang}: a key is kept for some models by its id`, async (t) => {
       const { page, errors, posts } = await open(t, "Relay", ".editor .accts .acc");
       // a key's All models badge takes no room till its row is hovered (#841)

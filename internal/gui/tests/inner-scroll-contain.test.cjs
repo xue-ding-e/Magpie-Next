@@ -181,8 +181,11 @@ for (const engine of engines) {
       const after = await tops(view, box(id));
       assert.ok(after.page < up.page, `${id}, wheeled up over: the page moved: ${JSON.stringify([up, after])}`);
     });
-    // the page itself chains as before
-    assert.equal(await view.evaluate((v) => getComputedStyle(v).overscrollBehaviorY), "auto", "the page's own");
+    // The page's own wheel stays uncontained.
+    assert.ok(await view.evaluate((v) => CSS.supports("overscroll-behavior-y", "contain")
+      ? getComputedStyle(v).overscrollBehaviorY === "auto"
+      : v.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 }))),
+      "the page's own wheel is not contained");
     await ctx.close();
 
     // a short window: the model chips pass the wheel on to the editor's
@@ -198,7 +201,11 @@ for (const engine of engines) {
     await short.mouse.move(b.x + 20, b.y + 20);
     await short.waitForTimeout(100);
     assert.ok(await chips.evaluate((m) => m.scrollHeight > m.clientHeight), "the chips scroll");
-    assert.equal(await chips.evaluate((m) => getComputedStyle(m).overscrollBehaviorY), "auto", "the chips in a short window pass the wheel on");
+    const shortView = short.locator("#view-routing");
+    const before = await shortView.evaluate(v => v.scrollTop);
+    await chips.evaluate(m => { m.scrollTop = m.scrollHeight; });
+    await wheel(short, chips, 120, 2);
+    assert.ok(await shortView.evaluate(v => v.scrollTop) > before, "the chips in a short window pass the wheel on");
     await short.close();
   });
 }
@@ -269,7 +276,17 @@ function tryBox({ parts }) {
   }
   const overflowY = getComputedStyle(box).overflowY, overflows = box.scrollHeight > box.clientHeight + 1;
   box.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, composed: true }));
-  return done({ overflowY, overflows, overscroll: getComputedStyle(box).overscrollBehaviorY });
+  let contained;
+  if (CSS.supports("overscroll-behavior-y", "contain")) {
+    contained = getComputedStyle(box).overscrollBehaviorY === "contain";
+  } else {
+    const blocked = deltaY => !box.dispatchEvent(new WheelEvent("wheel", { deltaY, bubbles: true, cancelable: true }));
+    box.scrollTop = -box.scrollHeight;
+    const top = blocked(-120);
+    box.scrollTop = box.scrollHeight;
+    contained = top && blocked(120);
+  }
+  return done({ overflowY, overflows, contained });
 }
 
 for (const engine of engines) {
@@ -326,7 +343,7 @@ for (const engine of engines) {
         if (got.skip) bad.push(`${name}: ${got.skip}`);
         else if (!/auto|scroll|overlay/.test(got.overflowY)) bad.push(`${name}: built from its selector, but the rule didn't take (overflow-y ${got.overflowY})`);
         else if (!got.overflows) bad.push(`${name}: filled, but doesn't overflow`);
-        else if (got.overscroll !== "contain") bad.push(`${name}: overscroll-behavior-y ${got.overscroll}, so the wheel at its ends moves the page`);
+        else if (!got.contained) bad.push(`${name}: the wheel at its ends moves the page`);
         else held.push(name);
       }
       assert.deepEqual(bad, [], `${held.length} scrollers hold the wheel; these don't`);
@@ -359,7 +376,10 @@ for (const engine of engines) {
       const view = page.locator("#view-routing");
       await page.locator("#view-routing .rt-req").nth(39).waitFor();
       const list = page.locator("#view-routing .rt-reqs").first();
-      assert.equal(await list.evaluate((l) => getComputedStyle(l).overscrollBehaviorY), "auto", "the engine is made to lack it");
+      assert.deepEqual(await list.evaluate((l) => ({
+      native: CSS.supports("overscroll-behavior-y", "contain"),
+      contains: getComputedStyle(l).overscrollBehaviorY === "contain",
+    })), { native: false, contains: false }, "the engine is made to lack native containment");
       await heldAtEnds(page, view, list, "the requests' list");
       // the page's own wheel still moves it, over its gutter
       const vb = await view.boundingBox(), before = await view.evaluate((v) => v.scrollTop);

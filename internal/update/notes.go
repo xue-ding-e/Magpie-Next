@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -25,20 +24,12 @@ type Note struct {
 	Pending bool `json:"pending,omitempty"`
 }
 
-// NotesFeed is where the notes of past releases are listed: beside the
-// update feed, on magpie's site. MAGPIE_NOTES_FEED points it elsewhere.
-func NotesFeed() string {
-	if f := os.Getenv("MAGPIE_NOTES_FEED"); f != "" {
-		return f
-	}
-	return Site + "/api/notes"
-}
+// NotesFeed is the fixed own-repository notes source in every build.
+func NotesFeed() string { return nextFeed }
 
-// ReleasePage is version's page on GitHub, where its notes are when the
-// site can't give them (#661).
-func ReleasePage(version string) string {
-	return "https://github.com/yetone/magpie-releases/releases/tag/v" + strings.TrimPrefix(strings.TrimSpace(version), "v")
-}
+// ReleasePage opens the own repository. Its source-bound manifest resolves
+// individual release tags during update checks.
+func ReleasePage(version string) string { return Site }
 
 // NotesBetween asks the site for the notes of every release after after
 // (none when "") up to and including upto, newest first, in lang (see
@@ -52,6 +43,13 @@ func NotesBetween(ctx context.Context, after, upto, lang string) ([]Note, error)
 // all before MostNotes keeps the newest, so a list cut short can say so
 // (sujingshen on X: 156 releases behind read "40 releases").
 func NotesBetweenTotal(ctx context.Context, after, upto, lang string) ([]Note, int, error) {
+	if fixtureFeed("MAGPIE_NOTES_FEED") == "" {
+		notes, err := nextNotes(ctx, after, upto, lang)
+		if err != nil {
+			return nil, 0, err
+		}
+		return capNotes(notes), len(notes), nil
+	}
 	q := url.Values{"upto": {upto}}
 	if after != "" {
 		q.Set("after", after)
@@ -73,6 +71,13 @@ var BackCounts = []int{10, 20, 50, 100}
 // it, newest first, in lang. The site is asked for those alone (limit); one
 // from before it took a limit sends them all, and Back keeps n+1.
 func NotesBack(ctx context.Context, upto string, n int, lang string) ([]Note, error) {
+	if fixtureFeed("MAGPIE_NOTES_FEED") == "" {
+		notes, err := nextNotes(ctx, "", upto, lang)
+		if err != nil {
+			return nil, err
+		}
+		return Back(notes, upto, n), nil
+	}
 	notes, err := askNotes(ctx, url.Values{"upto": {upto}, "limit": {strconv.Itoa(n + 1)}}, lang)
 	if err != nil {
 		return nil, err
@@ -80,12 +85,16 @@ func NotesBack(ctx context.Context, upto string, n int, lang string) ([]Note, er
 	return Back(notes, upto, n), nil
 }
 
-// askNotes is the site's list for q, each release's notes in lang.
+// askNotes reads an isolated fixture's list for q, each release's notes in lang.
 func askNotes(ctx context.Context, q url.Values, lang string) ([]Note, error) {
+	feed := fixtureFeed("MAGPIE_NOTES_FEED")
+	if feed == "" {
+		return nil, fmt.Errorf("release notes: no isolated fixture")
+	}
 	if lang != "" {
 		q.Set("lang", lang)
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", NotesFeed()+"?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", feed+"?"+q.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}

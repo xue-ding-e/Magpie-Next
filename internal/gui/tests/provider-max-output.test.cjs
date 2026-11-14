@@ -47,7 +47,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.route("**/*", serve(lang, posts));
       await page.goto("http://magpie.test/?view=providers");
       const zh = lang === "zh";
-      await page.locator(".row.provider").click();
+      await page.locator(".row.provider", { has: page.getByText("Relay", { exact: true }) }).click();
       const label = page.getByText(zh ? "最大输出" : "Max output", { exact: true });
       assert(await label.isVisible(), "the field is there");
       const box = page.locator("input.outputs");
@@ -81,18 +81,28 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("**/*", serve(lang, []));
         await page.goto("http://magpie.test/?view=providers");
-        await page.locator(".row.provider").click();
+        await page.locator(".row.provider", { has: page.getByText("Relay", { exact: true }) }).click();
         const box = page.locator("input.outputs");
         await box.waitFor();
         const hint = await box.evaluate((b) => document.getElementById(b.getAttribute("aria-describedby").split(" ").pop()).textContent);
         assert.match(hint, /max_tokens/, hint);
         assert.match(hint, /Anthropic/, hint);
         if (lang !== "en") assert.doesNotMatch(hint, /sent as max_tokens/, "translated: " + hint);
-        const over = await box.evaluate((b) => {
-          const h = document.getElementById(b.getAttribute("aria-describedby").split(" ").pop());
-          return h.scrollWidth - h.clientWidth + Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        await page.locator(".set-hint").waitFor({ state: "attached" });
+        await box.scrollIntoViewIfNeeded();
+        await page.mouse.move(0, 0);
+        await box.hover();
+        const card = page.locator(".set-hint.on", { hasText: hint.trim() });
+        await card.waitFor();
+        const fit = await card.evaluate((card) => {
+          const rect = card.getBoundingClientRect();
+          return {
+            wraps: card.firstElementChild.scrollWidth === card.firstElementChild.clientWidth,
+            cardFits: rect.left >= 0 && rect.right <= innerWidth,
+            pageFits: document.documentElement.scrollWidth === document.documentElement.clientWidth,
+          };
         });
-        assert.equal(over, 0, "the hint wraps inside the window");
+        assert.deepEqual(fit, { wraps: true, cardFits: true, pageFits: true }, "the hint wraps inside the window");
         assert.deepEqual(errors, []);
       });
     }

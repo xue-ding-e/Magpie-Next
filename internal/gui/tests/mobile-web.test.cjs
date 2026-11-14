@@ -1,7 +1,7 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
 // Phone navigation and content stay usable in both languages (#391). The
 // desktop screenshots match BASE_REF within a small rendering tolerance
-// (origin/main by default), but for the Agents page while BASE_REF hasn't its
+// (origin/main by default; CI supplies a sealed commit SHA), but for the Agents page while BASE_REF hasn't its
 // 「接入」 rows yet. Until BASE_REF has the visibility manager, its new footer
 // alone is excluded; agent-bulk-visibility and agent-grip cover that footer's
 // layout and controls. Its height is rounded only for the pixel comparison,
@@ -12,12 +12,18 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { test } = require("node:test");
+
+const assets = path.resolve(__dirname, "../assets");
+const baseRef = process.env.BASE_REF || "origin/main";
+// Resolve before loading either engine. A missing Git object is a fixture
+// setup error, not an asset 404 followed by a navigation timeout.
+const base = execFileSync("git", ["rev-parse", "--verify", `${baseRef}^{commit}`], {
+  cwd: path.resolve(assets, "../../.."), windowsHide: true, encoding: "utf8",
+}).trim();
 const { chromium, webkit } = require("playwright");
 const { reach, openPage } = require("./reader.cjs");
 const { PNG } = require("playwright-core/lib/utilsBundle");
 
-const assets = path.resolve(__dirname, "../assets");
-const base = process.env.BASE_REF || "origin/main";
 const baseline = new Map();
 const at = "2026-09-30T12:00:00.000Z";
 const groups = [{ name: "Claude Code", icon: "claudecode-color", calls: 123, errors: 2,
@@ -87,10 +93,12 @@ function server(lang, original = false, opened = []) {
     if (url.pathname === "/api/providers") return json({ providers: [], presets: [], excluded: [], gateway: { running: true, window: true, calls: [], groups: [] } });
     if (url.pathname === "/api/groups") return json({ groups: [], pools: [], models: [] });
     if (url.pathname === "/api/usage/quotas") {
-      // main's usage render can reveal the empty quota heading again if it
-      // finishes last. Deliver the empty allowances after the totals paint,
-      // so both screenshot pages compare the same completed API state.
-      await route.request().frame().page().locator("#usageAgents .row.stat").first().waitFor({ state: "attached", timeout: 30000 });
+      // On Usage, deliver empty allowances after totals paint so the two
+      // screenshot pages compare the same completed API state. Other views
+      // may also poll quotas; they must not wait for Usage's absent DOM.
+      const page = route.request().frame().page();
+      if (await page.locator("#view-usage").isVisible())
+        await page.locator("#usageAgents .row.stat").first().waitFor({ state: "attached", timeout: 30000 });
       return json([]);
     }
     if (url.pathname === "/api/usage") return json(usage);
@@ -117,6 +125,7 @@ function server(lang, original = false, opened = []) {
 
 async function open(browser, lang, width, { original = false, touch = true, opened = [] } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: touch, reducedMotion: "reduce", colorScheme: "light" });
+  page.on("crash", () => console.error("MOBILE_FIXTURE_PAGE_CRASH", JSON.stringify({ lang, width, original })));
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(60000);
   await page.addInitScript(at => {
@@ -130,6 +139,13 @@ async function open(browser, lang, width, { original = false, touch = true, open
   await page.goto("http://magpie.test/");
   await page.locator("#nav button").first().waitFor();
   return page;
+}
+
+async function closePage(page) {
+  // A failed action can leave a fixture request in flight. Keep its original
+  // failure and end the page's routes before the context goes away.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.close();
 }
 
 async function go(page, view) {
@@ -260,6 +276,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     assert(["chromium", "webkit"].includes(engine), "BROWSER must be chromium or webkit");
     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
     t.after(() => browser.close());
+    await t.test("quota reads outside Usage answer without waiting for its DOM", async () => {
+      const page = await open(browser, "en", 900, { touch: false });
+      try {
+        assert.equal(await page.locator("#view-usage").isVisible(), false);
+        const reply = page.waitForResponse(r => new URL(r.url()).pathname === "/api/usage/quotas", { timeout: 5000 });
+        const request = page.evaluate(() => fetch("/api/usage/quotas").then(r => r.json()));
+        const [response, body] = await Promise.all([reply, request]);
+        assert.equal(response.status(), 200);
+        assert.deepEqual(body, []);
+      } finally { await closePage(page); }
+    });
     for (const lang of ["en", "zh"]) {
       for (const width of [360, 390, 430, 820]) {
         await t.test(`${lang} ${width}: every tab and page fits`, async () => {
@@ -285,7 +312,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             }
             assert.deepEqual(errors, []);
             assert.deepEqual(failures, []);
-          } finally { await page.close(); }
+          } finally { await closePage(page); }
         });
       }
       await t.test(lang + ": idle scripts cannot scroll, touch momentum can, then protection returns", async () => {
@@ -317,15 +344,25 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await view.evaluate(v => { v.scrollTop = 450; });
           await page.waitForTimeout(100);
           assert.equal(await view.evaluate(v => v.scrollTop), 300, "protection returns after momentum stops");
-        } finally { await page.close(); }
+        } finally { await closePage(page); }
       });
       for (const width of [900, 1280]) {
-        await t.test(`${lang} ${width}: desktop matches ${base}`, async () => {
-          const current = await open(browser, lang, width, { touch: false });
-          const original = await open(browser, lang, width, { touch: false, original: true });
+        await t.test(`${lang} ${width}: desktop matches ${base}`, async t => {
+          // Windows WebKit can crash on the next navigation after taking a
+          // desktop screenshot, even with just the upstream page open.
+          // Keep these comparisons on fresh documents and leave the
+          // multi-page navigation checks to the phone cases above.
+          const isolated = engine === "webkit" && process.platform === "win32";
+          const currentBrowser = isolated ? await webkit.launch() : browser;
+          if (isolated) t.after(() => currentBrowser.close());
+          const baselineBrowser = isolated ? await webkit.launch() : browser;
+          if (isolated) t.after(() => baselineBrowser.close());
+          let current, original;
           try {
             for (const view of views) {
               if (view === "agents" && !baselineFile("app.js").includes("function connectPanel")) continue;
+              current ??= await open(currentBrowser, lang, width, { touch: false });
+              original ??= await open(baselineBrowser, lang, width, { touch: false, original: true });
               await go(current, view); await go(original, view);
               await current.mouse.move(0, 0); await original.mouse.move(0, 0);
               // Removing hover can repaint the tab's shadow in a later frame.
@@ -368,15 +405,23 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
               // has it, the page is compared with the row taken out;
               // claude-lean-prompt-setting.test.cjs covers the row.
               if (view === "settings" && !baselineFile("app.js").includes("claudeLeanRow")) {
-                await current.locator("#claudeLeanRow").evaluate((r) => r.remove());
-                await current.waitForTimeout(350);
+                const row = current.locator("#claudeLeanRow");
+                if (await row.count() && !await original.locator("#claudeLeanRow").count()) {
+                  await row.evaluate((r) => r.remove());
+                  await current.waitForTimeout(350);
+                }
               }
               // Replies' Claude Code's interactive mode row is new: until
               // BASE_REF has it, the page is compared with the row taken
               // out; claude-tui-setting.test.cjs covers the row.
               if (view === "settings" && !baselineFile("app.js").includes("claudeTuiRow")) {
-                await current.locator("#claudeTuiRow").evaluate((r) => r.remove());
-                await current.waitForTimeout(350);
+                // The row can live in a lazy module and on Replies alone.
+                // Normalize only a row actually added to this visible part.
+                const row = current.locator("#claudeTuiRow");
+                if (await row.count() && !await original.locator("#claudeTuiRow").count()) {
+                  await row.evaluate((r) => r.remove());
+                  await current.waitForTimeout(350);
+                }
               }
               // The Routing page's Settings › button is new: until BASE_REF
               // has it, the page is compared with the button taken out;
@@ -439,8 +484,15 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
                 await save(current, `${engine}-${lang}-${width}-${view}-desktop-after`);
               }
               assert(same, `${view}: desktop screenshot changed (${sameSize ? changedPixels + " pixels differ by more than 48; limit 300" : "dimensions differ"})`);
+              if (isolated) {
+                await closePage(current); current = undefined;
+                await closePage(original); original = undefined;
+              }
             }
-          } finally { await current.close(); await original.close(); }
+          } finally {
+            if (current) await closePage(current);
+            if (original) await closePage(original);
+          }
         });
       }
     }

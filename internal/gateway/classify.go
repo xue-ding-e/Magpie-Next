@@ -184,7 +184,9 @@ func classify(ask classifier, model string, intents []string, prev before, effor
 	c.err = err
 	if err != nil {
 		f := classifyFailure{err: err.Error(), at: time.Now()}
-		if !errors.As(err, new(answerError)) && !errors.As(err, new(waitSpent)) {
+		// A local policy can change before the next turn. It says nothing
+		// about the classifier's health and must not delay its recovery.
+		if !errors.As(err, new(answerError)) && !errors.As(err, new(waitSpent)) && !errors.Is(err, provider.ErrModelPolicy) {
 			classified.failed[model] = f
 		}
 		if was, ok := classified.last[model]; !ok || was.err != f.err {

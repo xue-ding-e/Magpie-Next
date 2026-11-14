@@ -1036,6 +1036,9 @@ func (p Provider) decideAsked(ctx context.Context) ([]catalog.Model, error) {
 // AskSystemOne sends model the smallest System One question at p's
 // decision API, and says why it wasn't answered.
 func (p Provider) AskSystemOne(ctx context.Context, model string) error {
+	if err := RequireAllowedModel(model); err != nil {
+		return err
+	}
 	// the model's own headers
 	ctx = WithModel(ctx, p.ID, model)
 	if pat, off := ModelDisabled(p.ID, model); off { // never asked (#1867)
@@ -1057,6 +1060,9 @@ func (p Provider) AskSystemOne(ctx context.Context, model string) error {
 	req.Header.Set("Content-Type", "application/json")
 	p.DecideHeaders(req.Header)
 	if err := p.Sign(ctx, req, Chat, nil); err != nil {
+		return err
+	}
+	if err := RequireAllowedModel(model); err != nil {
 		return err
 	}
 	// a plugin's goes through its fetch (Do), at plugin://<id>/v1/systemone

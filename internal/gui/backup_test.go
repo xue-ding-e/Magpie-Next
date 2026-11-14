@@ -24,16 +24,20 @@ func (folderOnly) OpenFolder(string) error { return nil }
 func sandboxHome(t *testing.T) string {
 	t.Helper()
 	h := t.TempDir()
+	for _, v := range agentenv.Vars {
+		t.Setenv(v, "")
+	}
 	t.Setenv("HOME", h)
 	t.Setenv("USERPROFILE", h)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(h, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(h, ".cache"))
+	// Agents also use the state root. Set shared private roots after
+	// clearing inherited agent folders, just as testenv.Isolate does.
+	t.Setenv("XDG_DATA_HOME", filepath.Join(h, ".local", "share"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(h, ".local", "state"))
 	t.Setenv("PATH", "")
-	for _, v := range agentenv.Vars {
-		t.Setenv(v, "")
-	}
-	t.Setenv("APPDATA", "")
-	t.Setenv("LOCALAPPDATA", "")
+	t.Setenv("APPDATA", filepath.Join(h, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(h, "AppData", "Local"))
 	return h
 }
 

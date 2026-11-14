@@ -119,6 +119,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // its menu: no global proxy, Claude's without its password, Bob's ticked
         // in sight first: Playwright scrolls to what it clicks
         await via.scrollIntoViewIfNeeded();
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         const before = await scrolls();
         await via.click();
         const menu = page.locator(".proto-menu");
@@ -148,7 +149,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await form.waitFor();
         const go = form.locator("button", { hasText: w.go });
         assert.equal(await go.isDisabled(), true, "nothing to sign in through yet");
-        await form.locator("input").first().fill("http://127.0.0.1:8888");
+        await form.locator(":scope > input").fill("http://127.0.0.1:8888");
         await go.click();
         await page.waitForFunction(() => document.querySelector(".editor .signing .acts .via")?.textContent.includes("8888"));
         assert.deepEqual(seen.starts[2], { agent: "claude", user: "bob@example.com", proxy: "http://127.0.0.1:8888" });

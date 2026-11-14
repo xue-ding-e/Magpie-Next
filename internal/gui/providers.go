@@ -927,8 +927,13 @@ func desktopNumbers(agents []agentUse) map[string]string {
 	return out
 }
 
+// providerInfoList builds the models for one provider row. A test supplies
+// the same builder with its calls counted, rather than inferring how often
+// the list was built from process-wide allocation totals.
+var providerInfoList = provider.Provider.Listing
+
 func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
-	return providerInfoWith(p, p.Listing(), agents, desktopNumbers(agents))
+	return providerInfoWith(p, providerInfoList(p), agents, desktopNumbers(agents))
 }
 
 // providerInfoWith is providerInfo with the Claude Desktop numbers read

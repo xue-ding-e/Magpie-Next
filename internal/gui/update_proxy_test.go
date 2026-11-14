@@ -46,7 +46,7 @@ func TestSettingsProxyRechecksAFailedUpdate(t *testing.T) {
 	t.Setenv("MAGPIE_UPDATE_FEED", "http://feed.magpie.invalid/api/latest")
 	old := updates
 	updates = &updater{}
-	defer func() { updates = old }()
+	defer func() { updates.loops.Wait(); updates = old }()
 	updates.check()
 	if j := updates.json(); j.State != "error" {
 		t.Fatalf("direct: %+v", j)

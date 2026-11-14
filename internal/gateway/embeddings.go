@@ -437,6 +437,9 @@ func (s *Server) retrieveOpen(ctx context.Context, p provider.Provider, url, cty
 	if err := p.Sign(ctx, req, provider.Chat, body); err != nil {
 		return nil, nil, "", 502, err
 	}
+	if err := requireAllowedMediaRequest(req.URL.String(), req.Header.Get("Content-Type"), body); err != nil {
+		return nil, nil, "", http.StatusForbidden, err
+	}
 	res, err := p.Do(s.client, req)
 	heardReply(ctx, p, res)
 	if err != nil {

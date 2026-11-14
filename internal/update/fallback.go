@@ -15,6 +15,10 @@ import (
 	"github.com/yetone/magpie/internal/source"
 )
 
+// This reader preserves upstream's signed-feed transport contract for
+// isolated tests. Latest and LatestEvery use Next's source-bound manifest;
+// neither a failed Next check nor an ambient variable can reach this feed.
+//
 // A network that lets github.com through and nothing else (a company's
 // allow list: ssharpcc on X) can't reach usemagpie.ai's feed. When the
 // default feed fails, the newest release is read from GitHub itself:
@@ -45,16 +49,16 @@ const maxSmall = 1 << 20
 
 // fallsBack says whether a failed feed goes on to GitHub: the default
 // feed, not the Stable channel, and not an ask already cancelled.
-func fallsBack(ctx context.Context) bool {
-	return ctx.Err() == nil && Feed() == siteFeed && !Stable() && Source() == ""
+func fallsBack(ctx context.Context, feed string) bool {
+	return ctx.Err() == nil && fixtureEndpoint(feed) && feed == siteFeed && !Stable() && Source() == ""
 }
 
 // githubOnly says whether the release is read from GitHub alone, with no
 // try at the feed: Settings' GitHub only, on the default feed and not on
 // Stable (whose release only the site knows; its files still come from
 // GitHub).
-func githubOnly() bool {
-	return Feed() == siteFeed && !Stable() && Source() == settings.UpdateSourceGitHub
+func githubOnly(feed string) bool {
+	return fixtureEndpoint(feed) && feed == siteFeed && !Stable() && Source() == settings.UpdateSourceGitHub
 }
 
 // githubLatest is the newest release as GitHub gives it, verified.

@@ -98,7 +98,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(posts.length, n);
     };
     const later = () => { let done; const p = new Promise((r) => { done = r; }); return { p, done }; };
-    const scrolled = (page) => page.evaluate(() => [window.scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => `${e.className}:${e.scrollTop}`)].join(" "));
+    const scrolled = (page) => page.evaluate(() => [window.scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => `${e.classList[0] || e.tagName}:${e.scrollTop}`)].join(" "));
     const posted = async (posts) => {
       for (let i = 0; i < 60 && !posts.length; i++) await new Promise((r) => setTimeout(r, 50));
       return posts.at(-1);
@@ -123,6 +123,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(body.key, "sk-one\nsk-two, sk-three\n\nsk-two");
       await page.locator('.acc[data-account-id="dddddddddd"]').waitFor();
       assert.equal(await page.locator(".acc.adding").count(), 0, "the box stays open");
+      await page.waitForFunction(note => document.querySelector("#status")?.textContent.trim() === note, w.note);
       assert.equal((await page.locator("#status").textContent()).trim(), w.note);
       assert.deepEqual(errors, []);
     });
@@ -186,6 +187,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal((await add.textContent()).trim(), w.adding);
       taken.done(true);
       await page.locator('.acc[data-account-id="eeeeeeeeee"]').waitFor();
+      await row.waitFor({ state: "detached" });
       assert.equal(await page.locator(".acc.adding").count(), 0);
       assert.deepEqual(posts.map((b) => b.key), ["sk-bad", "sk-good"]);
       assert.deepEqual(errors, []);

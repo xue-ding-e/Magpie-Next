@@ -18,11 +18,11 @@ package provider
 // a line is taken too. They all sign in with the agents' own OAuth clients, the ones
 // magpie uses.
 //
-// A ChatGPT one is checked the way a sign-in is finished: its refresh token
-// traded for new tokens and the account asked for. That rotates the token,
-// so the file it came from stops working: the account is magpie's from then
-// on, as a sign-in in magpie would make it. A Claude one is kept as it
-// came, magpie asking Anthropic nothing; Claude Code refreshes it the first
+// A ChatGPT snapshot's access token is checked first without rotating its
+// refresh token. A missing or refused access token needs a refresh, which
+// rotates the token and leaves the source's old copy spent. Independently
+// running tools must not race refreshes of one shared session. A Claude one
+// is kept as it came, magpie asking Anthropic nothing; Claude Code refreshes it the first
 // time it runs on it. Tokens are never logged or sent back.
 
 import (
@@ -31,6 +31,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +43,7 @@ import (
 // loginImport is one account read from a file.
 type loginImport struct {
 	email, idToken, accessToken, refreshToken, accountID string
+	auth                                                 json.RawMessage // native auth.json, including fields magpie does not know
 	scopes                                               []string
 	err                                                  string
 	file                                                 int // a file that held no account (ImportedAccount.File)
@@ -63,8 +66,14 @@ func jsonMillis(x map[string]any, key string) int64 {
 	case float64:
 		return int64(n)
 	case json.Number:
-		i, _ := n.Int64()
-		return i
+		if i, err := n.Int64(); err == nil {
+			return i
+		}
+		// JSON also permits an exponent or decimal spelling; these were
+		// accepted before imports kept numbers as json.Number.
+		if f, err := n.Float64(); err == nil {
+			return int64(f)
+		}
 	}
 	return 0
 }
@@ -82,15 +91,22 @@ func parseLoginImport(agent, data string) ([]loginImport, error) {
 	var out []loginImport
 	if s[0] == '[' || s[0] == '{' {
 		var v any
-		if err := json.Unmarshal([]byte(s), &v); err != nil {
+		decoder := json.NewDecoder(strings.NewReader(s))
+		decoder.UseNumber()
+		if err := decoder.Decode(&v); err != nil {
 			return nil, fmt.Errorf("not valid JSON: %v", err)
+		}
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			return nil, errors.New("not valid JSON: trailing content")
 		}
 		if x, ok := v.(map[string]any); ok && x["swapVersion"] != nil {
 			// as cswap's own import refuses them (transfer.py)
 			if x["encrypted"] == true {
 				return nil, errors.New("an encrypted claude-swap export: decrypt it first (gpg -d), then import what that gives")
 			}
-			if n, ok := x["version"].(float64); !ok || n != 1 {
+			version, ok := x["version"].(json.Number)
+			n, err := version.Float64()
+			if !ok || err != nil || n != 1 {
 				return nil, fmt.Errorf("a claude-swap export of format %v: magpie reads format 1 (claude-swap 0.29)", x["version"])
 			}
 		}
@@ -159,6 +175,7 @@ func loginEntry(agent string, x map[string]any) loginImport {
 	src := x
 	if t, ok := x["tokens"].(map[string]any); ok && agent == "codex" {
 		src = t
+		e.auth, _ = json.Marshal(x)
 	}
 	if t, ok := x["claudeAiOauth"].(map[string]any); ok && agent == "claude" {
 		src = t
@@ -174,6 +191,8 @@ func loginEntry(agent string, x map[string]any) loginImport {
 	}
 	typ := strings.ToLower(jsonStr(x, "type"))
 	switch {
+	case agent == "codex" && (jsonStr(x, "auth_mode") == "apikey" || jsonStr(x, "OPENAI_API_KEY", "api_key", "apiKey") != ""):
+		e.err = "an API key, not a sign-in; add it as a key instead"
 	case typ != "" && typ != agent:
 		e.err = fmt.Sprintf("a %s sign-in, not %s's", jsonStr(x, "type"), name)
 	case agent == "codex" && x["claudeAiOauth"] != nil, agent == "claude" && x["tokens"] != nil:
@@ -541,7 +560,11 @@ func importAccessOnly(e loginImport, name string, kept []savedLogin) ImportedAcc
 	if e.idToken == "" {
 		return fail("no id_token in it, which says whose account it is; import Codex's auth.json, or an export that keeps it")
 	}
-	l, err := codexLogin(e.idToken, e.accessToken, e.refreshToken, e.accountID)
+	raw, err := codexImportAuth(e)
+	if err != nil {
+		return fail(err.Error())
+	}
+	l, err := codexSnapshotLogin(raw)
 	if err != nil {
 		return fail(err.Error())
 	}
@@ -557,6 +580,91 @@ func importAccessOnly(e loginImport, name string, kept []savedLogin) ImportedAcc
 		return fail(err.Error())
 	}
 	return ImportedAccount{User: l.User, Status: status, Plan: l.Plan}
+}
+
+// codexImportAuth keeps a native auth.json whole, or builds that shape for
+// another tool's export. UseNumber keeps unknown JSON numbers exact, including
+// values outside float64's range, through verification and token refresh.
+func codexImportAuth(e loginImport) (map[string]any, error) {
+	var raw map[string]any
+	if len(e.auth) != 0 {
+		decoder := json.NewDecoder(strings.NewReader(string(e.auth)))
+		decoder.UseNumber()
+		if err := decoder.Decode(&raw); err != nil {
+			return nil, errors.New("not a Codex sign-in")
+		}
+	}
+	if raw == nil {
+		raw = make(map[string]any)
+	}
+	tokens, _ := raw["tokens"].(map[string]any)
+	if tokens == nil {
+		tokens = make(map[string]any)
+	}
+	for k, v := range map[string]string{"id_token": e.idToken, "access_token": e.accessToken,
+		"refresh_token": e.refreshToken, "account_id": e.accountID} {
+		tokens[k] = v
+	}
+	raw["tokens"], raw["auth_mode"], raw["OPENAI_API_KEY"] = tokens, "chatgpt", nil
+	return raw, nil
+}
+
+// codexSnapshotLogin keeps the snapshot's explicit workspace selection rather
+// than replacing it with the ID token's default. Verifying an access token is
+// not a refresh: unknown fields and last_refresh stay as the source wrote them.
+func codexSnapshotLogin(raw map[string]any) (savedLogin, error) {
+	tokens, _ := raw["tokens"].(map[string]any)
+	str := func(k string) string { s, _ := tokens[k].(string); return s }
+	l, err := codexLogin(str("id_token"), str("access_token"), str("refresh_token"), str("account_id"))
+	if err != nil {
+		return savedLogin{}, err
+	}
+	if str("account_id") == "" {
+		var canonical codexAuth
+		_ = json.Unmarshal(l.Auth, &canonical)
+		tokens["account_id"] = canonical.Tokens.AccountID
+	}
+	l.Auth, err = json.MarshalIndent(raw, "", "  ")
+	return l, err
+}
+
+// importCodexSnapshot checks the access token without consuming the renewable
+// session. Only an explicit 401 authorizes a refresh; a proxy, quota or service
+// failure must not spend a token that another tool may still be using.
+func importCodexSnapshot(ctx context.Context, e loginImport) (savedLogin, error) {
+	raw, err := codexImportAuth(e)
+	if err != nil {
+		return savedLogin{}, err
+	}
+	reason := codexRefreshForced
+	if e.accessToken != "" {
+		l, err := codexSnapshotLogin(raw)
+		if err != nil {
+			// Missing identity is a local format problem, not evidence that
+			// ChatGPT rejected the access token. Never spend the shared session.
+			return savedLogin{}, errors.New("this snapshot has no usable account identity; export a complete auth.json or sign in again in magpie")
+		}
+		var auth codexAuth
+		_ = json.Unmarshal(l.Auth, &auth)
+		var usage codexUsage
+		err = accountJSON(ctx, strings.TrimSuffix(CodexBase, "/codex")+"/wham/usage", e.accessToken,
+			map[string]string{"chatgpt-account-id": auth.Tokens.AccountID}, &usage)
+		if err == nil {
+			if usage.PlanType != "" {
+				l.Plan = usage.PlanType
+			}
+			return l, nil
+		}
+		var status *accountStatusError
+		if !errors.As(err, &status) || status.status != http.StatusUnauthorized {
+			return savedLogin{}, fmt.Errorf("ChatGPT could not verify this sign-in: %w", err)
+		}
+		reason = codexRefreshRecovery
+	}
+	if _, err := codexRefresh(ctx, raw, reason); err != nil {
+		return savedLogin{}, err
+	}
+	return codexSnapshotLogin(raw)
 }
 
 // claudeImportOlder is why a Claude sign-in in a file wasn't taken.
@@ -600,7 +708,7 @@ func importLogin(ctx context.Context, agent string, e loginImport, name string, 
 	refused := func(vendor string, err error) ImportedAccount {
 		var r refreshRefused
 		if errors.As(err, &r) {
-			return fail(vendor + " didn't take the refresh token — it has been used since (by the tool it came from, which refreshes it), expired or signed out")
+			return fail(vendor + " didn't take the refresh token — it has been used since (by the tool it came from, which refreshes it), expired or signed out; export a fresh auth.json or sign in again in magpie")
 		}
 		return fail(err.Error())
 	}
@@ -608,17 +716,10 @@ func importLogin(ctx context.Context, agent string, e loginImport, name string, 
 	var err error
 	switch agent {
 	case "codex":
-		raw := map[string]any{"tokens": map[string]any{"refresh_token": e.refreshToken}}
-		if _, err := codexRefresh(ctx, raw, codexRefreshForced); err != nil {
+		l, err = importCodexSnapshot(ctx, e)
+		if err != nil {
 			return refused("ChatGPT", err)
 		}
-		t := raw["tokens"].(map[string]any)
-		str := func(k string) string { s, _ := t[k].(string); return s }
-		id := str("id_token")
-		if id == "" {
-			id = e.idToken
-		}
-		l, err = codexLogin(id, str("access_token"), str("refresh_token"), e.accountID)
 	case "claude":
 		scopes := e.scopes
 		if len(scopes) == 0 {

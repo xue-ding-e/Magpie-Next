@@ -89,7 +89,7 @@ func freshUpdater(t *testing.T, exe bool) *updater {
 	}
 	old := updates
 	updates = u
-	t.Cleanup(func() { updates = old })
+	t.Cleanup(func() { u.loops.Wait(); updates = old })
 	if pending.Load() == nil {
 		pending.Store(&handover{})
 		t.Cleanup(func() { pending.Store(nil) })
@@ -220,6 +220,12 @@ func TestTrayRestartTakesTheNewest(t *testing.T) {
 	quick(t, busy, u)
 	waitRecheck = (*updater).recheck
 	f := newFreshFeed(t)
+	t.Cleanup(func() {
+		// This feed restores Version before freshUpdater's cleanup. Stop
+		// the restart wait too before joining all of this updater's work.
+		u.cancelWait()
+		u.loops.Wait()
+	})
 	u.check()
 	downloadsOnClick(t)
 	if j := u.json(); j.State != "ready" || j.Latest != "0.1.11" {

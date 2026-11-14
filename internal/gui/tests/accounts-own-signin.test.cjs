@@ -53,14 +53,19 @@ for (const engine of engines) {
       test(`${engine} ${lang} ${width}px: Antigravity's Accounts say the app keeps its own sign-in`, async (t) => {
         const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
         t.after(() => browser.close());
-        const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
-        page.setDefaultTimeout(5000);
         const errors = [];
-        page.on("pageerror", (e) => errors.push(e.message));
-        await page.route("**/*", serve(lang));
+        const open = async () => {
+          const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
+          page.setDefaultTimeout(5000);
+          page.setDefaultNavigationTimeout(60000);
+          page.on("pageerror", (e) => errors.push(e.message));
+          await page.route("**/*", serve(lang));
+          await page.goto("http://magpie.test/?view=providers");
+          return page;
+        };
         for (const routing of ["smart", ""]) {
           providers = [sub("antigravity", "Antigravity", "antigravity-color", "Antigravity", routing), sub("codex", "Codex", "openai", "Codex", "smart")];
-          await page.goto("http://magpie.test/?view=providers");
+          const page = await open();
           await page.locator(".row.provider", { hasText: "Antigravity" }).first().click();
           await page.locator(".editor .acc").first().waitFor();
           const text = await page.locator(".editor").innerText();
@@ -68,10 +73,10 @@ for (const engine of engines) {
           else assert.ok(text.includes(says[lang][1]), `without Routing, Antigravity's editor doesn't name the gateway:\n${text}`);
           if (signsIn[lang]) assert.ok(!text.includes(signsIn[lang]), "Antigravity's editor says the app signs in to the first");
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "the editor is wider than the window");
-          await page.goto("http://magpie.test/?view=providers");
-          await page.locator(".row.provider", { hasText: "Codex" }).first().click();
-          await page.locator(".editor .acc").first().waitFor();
-          assert.ok(!(await page.locator(".editor").innerText()).includes(says[lang][0].replace("Antigravity", "Codex")), "Codex's editor says its own sign-in stays");
+          const codex = await open();
+          await codex.locator(".row.provider", { hasText: "Codex" }).first().click();
+          await codex.locator(".editor .acc").first().waitFor();
+          assert.ok(!(await codex.locator(".editor").innerText()).includes(says[lang][0].replace("Antigravity", "Codex")), "Codex's editor says its own sign-in stays");
         }
         assert.deepEqual(errors, []);
       });

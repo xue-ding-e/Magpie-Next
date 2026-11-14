@@ -62,7 +62,7 @@ func TestSourceGitHubNeverAsksTheSite(t *testing.T) {
 	w := newFallbackWorld(t, "0.1.4000")
 	feed, file := liveFeed(t, w, "0.1.4000")
 	sourceFor(t, settings.UpdateSourceGitHub)
-	rel, err := Latest(context.Background())
+	rel, err := latestAt(context.Background(), siteFeed, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestSourceGitHubNeverAsksTheSite(t *testing.T) {
 func TestSourceGitHubDownloadsAFeedFileFromGitHub(t *testing.T) {
 	w := newFallbackWorld(t, "0.1.4000")
 	_, file := liveFeed(t, w, "0.1.4000")
-	rel, err := Latest(context.Background()) // automatic: the site's feed
+	rel, err := latestAt(context.Background(), siteFeed, "") // automatic: the site's feed
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestSourceSiteAndAutomaticUseTheSite(t *testing.T) {
 			w := newFallbackWorld(t, "0.1.4000")
 			feed, file := liveFeed(t, w, "0.1.4000")
 			sourceFor(t, src)
-			rel, err := Latest(context.Background())
+			rel, err := latestAt(context.Background(), siteFeed, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +122,7 @@ func TestSourceSiteAndAutomaticUseTheSite(t *testing.T) {
 func TestSourceSiteNeverFallsBackToGitHub(t *testing.T) {
 	w := newFallbackWorld(t, "0.1.4000")
 	sourceFor(t, settings.UpdateSourceSite)
-	if _, err := Latest(context.Background()); err == nil {
+	if _, err := latestAt(context.Background(), siteFeed, ""); err == nil {
 		t.Fatal("the site's feed was down and a release came")
 	}
 	if w.apiHits.Load() != 0 {
@@ -168,7 +168,7 @@ func TestSourceGitHubRefusesWhatIsNotSigned(t *testing.T) {
 			case "old unsigned":
 				w.sig = ""
 			}
-			if rel, err := Latest(context.Background()); err == nil {
+			if rel, err := latestAt(context.Background(), siteFeed, ""); err == nil {
 				t.Fatalf("accepted %+v", rel)
 			}
 			if w.dlHits.Load() != 0 {

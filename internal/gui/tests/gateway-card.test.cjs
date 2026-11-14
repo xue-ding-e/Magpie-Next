@@ -13,8 +13,8 @@ const { fixture } = require("./fixtures/caller-keys.cjs");
 // alone wasn't seen as a switch, so a key was removed and added again);
 // and Connect folded until it is opened.
 const WORDS = {
-  en: { share: "Share on local network", local: "This computer", lan: "Local network", more: "Key actions", off: "Disable key", on: "Enable key", readOnly: "Make read-only", rotate: "Rotate key", remove: "Remove" },
-  zh: { share: "局域网共享", local: "本机", lan: "局域网", more: "密钥操作", off: "停用密钥", on: "启用密钥", readOnly: "设为只读", rotate: "轮换密钥", remove: "移除" },
+  en: { share: "Share on local network", local: "This computer", lan: "Local network", more: "Key actions", off: "Disable key", on: "Enable key", readOnly: "Make read-only", models: "Model names", rotate: "Rotate key", remove: "Remove" },
+  zh: { share: "局域网共享", local: "本机", lan: "局域网", more: "密钥操作", off: "停用密钥", on: "启用密钥", readOnly: "设为只读", models: "模型名", rotate: "轮换密钥", remove: "移除" },
   "zh-TW": { share: "區域網共享", local: "本機", lan: "區域網", more: "金鑰操作" },
   ja: { share: "ローカルネットワークで共有", local: "このコンピュータ", lan: "ローカルネットワーク", more: "キーの操作" },
   de: { share: "Im lokalen Netzwerk freigeben", local: "Dieser Computer", lan: "Lokales Netzwerk", more: "Schlüsselaktionen" },
@@ -50,9 +50,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // the state centred on the title's line, not sat low on its baseline
         // (the owner: "没有水平对齐")
         const off = await page.locator("#gateway .name").evaluate((n) => {
-          const r = document.createRange();
-          r.selectNodeContents(n.firstChild);
-          const a = r.getBoundingClientRect(), b = n.querySelector(".state").getBoundingClientRect();
+          const a = n.querySelector(".gw-title").getBoundingClientRect(), b = n.querySelector(".state").getBoundingClientRect();
           return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2);
         });
         assert(off <= 0.25, `the state's middle is ${off}px off the title's`);
@@ -105,9 +103,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const menu = page.locator(".row-menu");
         await menu.waitFor();
         const items = (await menu.getByRole("menuitem").allTextContents()).map((s) => s.trim());
-        assert.equal(items.length, 6);
-        if (w.rotate) assert.deepEqual(items.filter((s) => !/MCP/.test(s)).filter((s, i) => i !== 2), [w.off, w.readOnly, w.rotate, w.remove]);
-        assert.deepEqual(items, await page.evaluate(() => [t("Disable key"), t("Make read-only"), t("MCP servers"), t("Keep accounts out"), t("Rotate key"), t("Remove")]));
+        assert.equal(items.length, 7);
+        if (w.rotate) assert.deepEqual([items[0], items[1], items[3], items[5], items[6]], [w.off, w.readOnly, w.models, w.rotate, w.remove]);
+        assert.deepEqual(items, await page.evaluate(() => ["Disable key", "Make read-only", "MCP servers", "Model names", "Keep accounts out", "Rotate key", "Remove"].map((label) => t(label))));
         // off from the menu, then on again: the key stays, only its switch moves
         await menu.getByRole("menuitem").first().click();
         await menu.waitFor({ state: "detached" });

@@ -191,17 +191,17 @@ func withSealScope(ctx context.Context, id, key, who string) context.Context {
 	return context.WithValue(ctx, sealScopeKey{}, sealScope{id: id, key: key, who: who})
 }
 
-// carriedSeal is the hash refusedSeals knows a carried reasoning part by:
+// carriedSeal is the type and hash refusedSeals knows a carried reasoning part by:
 // its item's encrypted_content, as seals hashes a Responses client's.
-func carriedSeal(p Part) ([sha256.Size]byte, bool) {
+func carriedSeal(p Part) (sealRef, bool) {
 	if !p.sealedBy(sealResponses) {
-		return [sha256.Size]byte{}, false
+		return sealRef{}, false
 	}
 	var it sealedItem
 	if decodeJSON(p.Sealed, &it) != nil || !sealedKinds[it.Type] || it.Enc == "" {
-		return [sha256.Size]byte{}, false
+		return sealRef{}, false
 	}
-	return sha256.Sum256([]byte(it.Enc)), true
+	return sealRef{it.Type, sha256.Sum256([]byte(it.Enc))}, true
 }
 
 // withoutRefusedCarry leaves out of req the carried reasoning the key or
@@ -241,7 +241,7 @@ func refuseCarried(key, who string, from provider.Protocol, body []byte) bool {
 	if err != nil {
 		return false
 	}
-	var ss [][sha256.Size]byte
+	var ss []sealRef
 	for _, m := range req.Messages {
 		for _, p := range m.Parts {
 			if h, ok := carriedSeal(p); ok {

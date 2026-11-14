@@ -173,10 +173,16 @@ func TestHubRootsOfACodexThread(t *testing.T) {
 	codex := t.TempDir()
 	t.Setenv("CODEX_HOME", codex)
 	const id = "019a1111-2222-7333-8444-555566667777"
+	// Turn metadata names an absolute folder on the caller's own system.
+	// A Unix-only path is relative to the current drive on Windows.
+	nativeRoot := filepath.VolumeName(codex) + string(filepath.Separator)
+	project, repository := filepath.Join(nativeRoot, "work", "proj"), filepath.Join(nativeRoot, "work", "repo")
+	projectJSON, _ := json.Marshal(project)
+	rootURI := func(path string) string { return "file:///" + strings.TrimLeft(filepath.ToSlash(path), "/") }
 	day := filepath.Join(codex, "sessions", "2026", "10", "30")
 	os.MkdirAll(day, 0o755)
 	os.WriteFile(filepath.Join(day, "rollout-2026-10-30T09-00-00-"+id+".jsonl"),
-		[]byte(`{"timestamp":"2026-10-30T09:00:00Z","type":"session_meta","payload":{"id":"`+id+`","cwd":"/work/proj"}}`+"\n"), 0o644)
+		[]byte(`{"timestamp":"2026-10-30T09:00:00Z","type":"session_meta","payload":{"id":"`+id+`","cwd":`+string(projectJSON)+`}}`+"\n"), 0o644)
 	f, got := rootsHub(t)
 	f.tools["codex"] = f.tools["claude"]
 	srv := httptest.NewServer(lanGuard(New().Handler()))
@@ -187,18 +193,19 @@ func TestHubRootsOfACodexThread(t *testing.T) {
 	ask := nextEvent(t, ev, "roots/list")
 	hubPostTo(t, srv.URL+HubMCPPath+"codex", `{"jsonrpc":"2.0","id":`+string(ask.ID)+`,"result":{"roots":[]}}`, bothAccept, "codex-mcp-client/0.165.0")
 	nextEvent(t, ev, "the call's result")
-	if c := <-got; strings.Join(c.Roots, " ") != "file:///work/proj" || c.Client != "codex-mcp-client/0.165.0" {
+	if c := <-got; strings.Join(c.Roots, " ") != rootURI(project) || c.Client != "codex-mcp-client/0.165.0" {
 		t.Fatalf("called for %+v, want the thread's folder", c)
 	}
 
 	// in a git repository Codex names it in the turn's metadata, which is
 	// read before any rollout (a thread this computer has none of here)
-	inRepo := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"magpie-image__generate_image","arguments":{},"_meta":{"threadId":"019a0000-0000-7000-8000-000000000000","x-codex-turn-metadata":{"workspaces":{"/work/repo":{"has_changes":false},"relative":{}}}}}}`
+	workspaces, _ := json.Marshal(map[string]any{repository: map[string]any{"has_changes": false}, "relative": map[string]any{}})
+	inRepo := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"magpie-image__generate_image","arguments":{},"_meta":{"threadId":"019a0000-0000-7000-8000-000000000000","x-codex-turn-metadata":{"workspaces":` + string(workspaces) + `}}}}`
 	ev = hubEvents(t, hubPostTo(t, srv.URL+HubMCPPath+"codex", inRepo, bothAccept, "codex-mcp-client/0.165.0"))
 	ask = nextEvent(t, ev, "roots/list")
 	hubPostTo(t, srv.URL+HubMCPPath+"codex", `{"jsonrpc":"2.0","id":`+string(ask.ID)+`,"result":{"roots":[]}}`, bothAccept, "codex-mcp-client/0.165.0")
 	nextEvent(t, ev, "the call's result")
-	if c := <-got; strings.Join(c.Roots, " ") != "file:///work/repo" {
+	if c := <-got; strings.Join(c.Roots, " ") != rootURI(repository) {
 		t.Fatalf("called for %+v, want the turn's workspace", c)
 	}
 

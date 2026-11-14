@@ -157,6 +157,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           for (const label of w.decide) assert.equal(await saved.locator("label", { hasText: label }).count(), 0, label);
           assert.equal(await saved.locator('input[type="url"]').count(), 1, "only the remote's address is editable");
           assert.equal(await saved.locator(".library-mcp", { hasText: w.mcp }).locator("input").isChecked(), true, "the switch as the backend reads it");
+          if (decisions) await saved.locator(".mchips-rest").click();
           assert.deepEqual(await saved.locator(".mchip > span:first-child").allTextContents(),
             decisions ? ["Chat", "custom-a · judge", "custom-b · judge"] : ["Chat"]);
           if (process.env.ARTIFACT_DIR && engine === "chromium" && lang === "en") {
@@ -194,8 +195,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.waitForFunction(() => document.activeElement?.classList.contains("endpoint"));
         const key = ed.locator("input[type=password]").first();
         // Compare both fields in one frame while the editor opens.
-        const [ey, ky] = await ed.evaluate((editor) => [
-          editor.querySelector("input.endpoint"), editor.querySelector('input[type="password"]'),
+        const [ey, ky, ny] = await ed.evaluate((editor) => [
+          editor.querySelector("input.endpoint"), editor.querySelector('input[type="password"]'), editor.querySelector("input.provider-name"),
         ].map((input) => input.getBoundingClientRect().top));
         assert(ey < ky, "the endpoint above the key");
         // a Name and an ID under the key, blank; the switch off
@@ -203,7 +204,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(await ed.locator("label", { hasText: new RegExp("^" + w.name + "$") }).count(), 1);
         assert.equal(await name.getAttribute("placeholder"), "Remote magpie");
         assert.equal(await id.getAttribute("placeholder"), "remote-magpie");
-        const ny = await name.evaluate((n) => n.getBoundingClientRect().top);
         assert(ky < ny, "the name under the key");
         const mcp = ed.locator(".library-mcp", { hasText: w.mcp }).locator("input");
         assert.equal(await mcp.isChecked(), false, "off when added");

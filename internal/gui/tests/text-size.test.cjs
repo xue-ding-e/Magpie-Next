@@ -13,6 +13,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
+const { reach } = require("./reader.cjs");
 const { chromium, webkit } = require("playwright");
 
 const assets = path.resolve(__dirname, "../assets");
@@ -149,6 +150,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // scrolled a little (a real wheel), picking 125% moves nothing
         await page.locator("#textSizeSegs").hover();
         for (let i = 0; i < 20 && !(await settingsTop(page)); i++) { await page.mouse.wheel(0, 30); await page.waitForTimeout(20); }
+        await reach(page, segs.nth(2));
         const before = await settingsTop(page);
         assert(before > 0, "the settings list must scroll");
         await segs.nth(2).click();

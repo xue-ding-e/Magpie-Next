@@ -404,6 +404,9 @@ func (s *Server) askJev(ctx context.Context, wait time.Duration, p provider.Prov
 	if model == "" {
 		model = p.Jev()
 	}
+	if err := provider.RequireAllowedModel(model); err != nil {
+		return verdict{}, err
+	}
 	// what Jev reads goes masked unless Jev is itself where the user set
 	// requests to go unmasked: a group whose every member skips redaction
 	// hands rules the body as the agent wrote it (unredactedRoute), and a
@@ -430,6 +433,10 @@ func (s *Server) askJev(ctx context.Context, wait time.Duration, p provider.Prov
 
 // maskedState masks what Jev is told of a turn, each as maskedText does.
 func maskedState(ctx context.Context, text, user, reply string) (string, string, string, error) {
+	ctx, _, err := maskingFor(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
 	out := [3]string{text, user, reply}
 	var all maskHits
 	for i, v := range out {
@@ -511,6 +518,9 @@ type decided struct {
 // another one. DecideURL and Sign errors are as they are; a transport
 // error is named with p. The request it sent is there once one was.
 func (s *Server) postDecideSent(ctx context.Context, p provider.Provider, model string, body []byte) (decided, error) {
+	if err := provider.RequireAllowedModel(model); err != nil {
+		return decided{}, err
+	}
 	// the headers the user gave the decision model
 	ctx = provider.WithModel(ctx, p.ID, model)
 	// every decision call goes through here — System One, a group rule's
@@ -545,6 +555,9 @@ func (s *Server) postDecideSent(ctx context.Context, p provider.Provider, model 
 		req.Header.Set("ai-evaluation-model-specification-version", "4")
 	}
 	if err := p.Sign(ctx, req, provider.Chat, body); err != nil {
+		return decided{}, err
+	}
+	if err := provider.RequireAllowedModel(model); err != nil {
 		return decided{}, err
 	}
 	res, err := p.Do(s.client, req)

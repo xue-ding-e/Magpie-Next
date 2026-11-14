@@ -19,6 +19,7 @@ function page(m = "window") {
   const context = vm.createContext({ Date, performance, setTimeout });
   vm.runInContext(`
     let quotas = [], quotasAt = 0, quotasKept = false, quotaHist = [], quotasAskedAt = 0, view = "usage";
+    const state = { agents: [] }, panelAccts = null;
     const mode = ${JSON.stringify(m)}; // the tray panel ("panel") also keeps each reading (#3160)
     const saved = [], localStorage = { setItem: (k, v) => saved.push([k, v]), getItem: () => null };
     const requests = [], errors = [];
@@ -31,6 +32,7 @@ function page(m = "window") {
     const el = () => ({ dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {} });
     function renderQuotas() {}
     function loadUpstream() {}
+    function panelAccounts() {}
     function status(x) { errors.push(x); }
     function statusErr(x) { status(x.message, "err"); }
     const NO_SCROLL = { preventScroll: true };
@@ -38,7 +40,7 @@ function page(m = "window") {
       if (path.includes("history")) return Promise.resolve([]);
       return new Promise((resolve, reject) => requests.push({ path, resolve, reject }));
     }
-    ${section("let quotasLoading =", "// A period of picked days is")}
+    ${section("let quotasLoading =", "// Picked days,")}
     ${section("const quotaRefreshing =", "// familyQuota:")}
     globalThis.p = {
       requests, errors,

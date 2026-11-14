@@ -153,5 +153,8 @@ function claudeAttributionRow(list) {
 // Its own context windows come in the same sheet, last (agentwindow.js).
 window.agentCompactFill = function (list, a, ids) {
   if (ids.includes("fullContextRow")) compactFill(list, a);
-  if (a.fields.length) import("./agentwindow.js").then(() => agentWindowFill(list, a), () => {});
+  if (a.fields.length) {
+    if (window.agentWindowFill) agentWindowFill(list, a);
+    else import("./agentwindow.js").then(() => agentWindowFill(list, a), () => {});
+  }
 };

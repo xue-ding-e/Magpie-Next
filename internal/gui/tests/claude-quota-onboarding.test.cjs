@@ -43,6 +43,10 @@ function serve(lang, state) {
     }
     if (url.pathname === "/api/usage/quotas") return json(state.cards);
     if (url.pathname === "/api/groups") return json({ groups: [], pools: [] });
+    if (["/api/update/using", "/api/window/titlebar"].includes(url.pathname)) {
+      assert.equal(route.request().method(), "POST");
+      return json({});
+    }
     if (url.pathname.startsWith("/api/")) {
       assert.equal(route.request().method(), "GET", `unexpected mutation: ${url.pathname}`);
       return json({});

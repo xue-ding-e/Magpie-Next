@@ -14,7 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
-	"net/url"
+	neturl "net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -136,6 +136,7 @@ func tiny(q Provider, proto Protocol, model string) (url, body string) {
 	}
 	if q.OpenCodeFree(model) && body != "" {
 		url, body = OpenCodeFreeURL(url, proto), zenFreeProbe(proto, body)
+		body = string(q.OpenCodeDeepSeekBody(proto, []byte(body)))
 	}
 	if q.IsCline() && body != "" {
 		body = clineProbe(body)
@@ -320,7 +321,7 @@ func hostOnly(err error) bool {
 }
 
 // hostPort is u's host with its port, the scheme's when none is written.
-func hostPort(u *url.URL) string {
+func hostPort(u *neturl.URL) string {
 	if u.Port() != "" {
 		return u.Host
 	}
@@ -878,6 +879,15 @@ func probeOnce(ctx context.Context, p Provider, proto Protocol, url string, body
 		r.Error = "no model to try: expose one, or refresh the model list"
 		return r
 	}
+	endpoint, err := neturl.Parse(url)
+	if err != nil {
+		r.Error = err.Error()
+		return r
+	}
+	if err := RequireAllowedModel(OutboundModel(proto, endpoint, body)); err != nil {
+		r.Error = err.Error()
+		return r
+	}
 	if p.IsPlugin() {
 		// the plugin host started and the account's loader run (a
 		// sign-in renewed) under the caller's time, as a warm host
@@ -945,6 +955,10 @@ func probeOnce(ctx context.Context, p Provider, proto Protocol, url string, body
 		req.Header.Set(WaitHeader, strconv.Itoa(int(wait/time.Second)))
 	}
 	if err := p.Sign(ctx, req, proto, body); err != nil {
+		r.Error = err.Error()
+		return r
+	}
+	if err := RequireAllowedModel(OutboundModel(proto, req.URL, body)); err != nil {
 		r.Error = err.Error()
 		return r
 	}
@@ -1243,7 +1257,7 @@ func Verification(b []byte) (link string, ok bool) {
 			link = string(m[1])
 		}
 	}
-	if u, err := url.Parse(link); err != nil || u.Scheme != "https" || u.Host == "" {
+	if u, err := neturl.Parse(link); err != nil || u.Scheme != "https" || u.Host == "" {
 		link = ""
 	}
 	return link, true
@@ -1255,7 +1269,7 @@ func learnMore(desc, link string) bool {
 	if strings.EqualFold(strings.TrimSpace(desc), "learn more") {
 		return true
 	}
-	u, err := url.Parse(link)
+	u, err := neturl.Parse(link)
 	return err == nil && u.Hostname() == "support.google.com"
 }
 

@@ -43,7 +43,10 @@ function serve(lang, web, posted, st) {
       st.panelShortcut = shortcut;
       return json(settings());
     }
-    if (url.pathname.startsWith("/api/settings/")) { posted.push(url.pathname); return json(settings()); }
+    if (url.pathname.startsWith("/api/settings/")) {
+      if (r.request().method() !== "GET") posted.push(url.pathname);
+      return json(settings());
+    }
     if (url.pathname === "/api/settings") return json(settings());
     if (url.pathname === "/api/providers") return json({ providers: [], presets: [], excluded: [], gateway: { running: true, window: true, url: "http://127.0.0.1:3999" } });
     if (url.pathname === "/api/groups") return json({ models: [], groups: [], pools: [] });

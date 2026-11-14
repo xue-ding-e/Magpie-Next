@@ -50,6 +50,11 @@ function serve(lang, posts) {
     if (url.pathname === "/api/providers") return json(providers);
     if (url.pathname === "/api/groups") return json({ groups: [] });
     if (url.pathname === "/api/plugins") return json({ plugins: [] });
+    if (url.pathname === "/api/update/using") {
+      assert.equal(route.request().method(), "POST");
+      assert.equal(typeof route.request().postDataJSON().open, "boolean");
+      return json({});
+    }
     if (url.pathname.startsWith("/api/") && route.request().method() === "POST") {
       const body = route.request().postDataJSON();
       posts.push({ path: url.pathname, body });
@@ -98,7 +103,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       return { page, errors, posts };
     };
     const rows = (page) => page.locator(".editor .accts .acc[data-account-id]");
-    const scrolled = (page) => page.evaluate(() => [window.scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => `${e.className}:${e.scrollTop}`)].join(" "));
+    const scrolled = (page) => page.evaluate(() => [window.scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => `${e.classList[0] || e.tagName}:${e.scrollTop}`)].join(" "));
     const plain = (page) => page.evaluate(() => ({
       selects: document.querySelectorAll("select").length,
       leftBorders: [...document.querySelectorAll(".editor .accts, .editor .accts *")]

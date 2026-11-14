@@ -110,7 +110,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             assert.equal(await val.getAttribute("title"), x(ALL), `${at}: the ranking's tooltip`);
             assert.ok(!(await rank.textContent()).includes(x(CALLS)), `${at}: the ranking says requests in full`);
             // the chart's tooltip over the column: the model, the rest, the total and its requests
-            await page.locator("#ledChart svg").hover();
+            const column = page.locator("#ledChart svg rect.col").first();
+            await column.waitFor();
+            const plot = await column.boundingBox();
+            if (plot.y + plot.height > 710) {
+              // The view restores a programmatic scroll after a hover. Bring
+              // the chart into view with the same wheel input as a reader.
+              await page.mouse.move(width / 2, 500);
+              await page.mouse.wheel(0, Math.ceil(plot.y + plot.height - 625));
+              await page.waitForFunction(() => document.querySelector("#ledChart rect.col")?.getBoundingClientRect().bottom < 710);
+            }
+            await column.hover();
             const tip = page.locator("#ledChart .tip");
             await tip.waitFor();
             const said = await tip.locator("em").allTextContents();

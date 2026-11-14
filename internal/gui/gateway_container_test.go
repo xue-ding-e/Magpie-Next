@@ -61,7 +61,9 @@ func TestGatewayHeldByAContainer(t *testing.T) {
 			name += ".exe"
 		}
 		bin := filepath.Join(dir, name)
-		if err := os.Link(self, bin); err != nil {
+		// Windows keeps a hard link to the running test binary locked even
+		// after the child exits, so its temporary executable must be a copy.
+		if runtime.GOOS == "windows" || os.Link(self, bin) != nil {
 			b, err := os.ReadFile(self)
 			if err != nil {
 				t.Fatal(err)

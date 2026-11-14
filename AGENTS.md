@@ -11,6 +11,22 @@ semantic change description, and review rules.
 
 Write and review changes against the [code standards](docs/code-standards.md).
 
+## Next builds and installation
+
+For upstream maintenance and Windows release delivery, follow the
+[Next release runbook](docs/upstream-tracking.md). Pin one batch, keep
+Git history linear, validate locally on the current OS, and use GitHub
+Actions for the release jobs and their platform checks.
+
+Every source build of this fork, including plain `go build`, uses this fork's
+Next repository for updates. The distribution is defined unconditionally in
+[`distribution_next.go`](internal/update/distribution_next.go), independently
+of build tags, version labels and ambient feed variables. The [Makefile](Makefile)
+and [package workflow](.github/workflows/next-windows-package.yml) retain their
+explicit tags for packaging compatibility. After replacing a binary, verify
+its source identity and own-repository updater; see the
+[GUI shell update contract](docs/subsystems/gui-shell.md).
+
 ## Community PRs
 
 Before reviewing a community PR, read [contributors](docs/contributors.md):

@@ -20,6 +20,7 @@ on:
 
 jobs:
   trigger-release:
+    if: github.repository == 'yetone/magpie'
     runs-on: ubuntu-latest
     # room for the dispatch to wait out the owner's API rate limit (65 min)
     timeout-minutes: 75
@@ -113,6 +114,7 @@ jobs:
         run: echo "Watch the build at https://github.com/yetone/magpie-releases/actions"
 
   mirror-release:
+    if: github.repository == 'yetone/magpie'
     needs: trigger-release
     runs-on: ubuntu-latest
     # magpie-releases' macOS jobs can wait an hour or more for a hosted

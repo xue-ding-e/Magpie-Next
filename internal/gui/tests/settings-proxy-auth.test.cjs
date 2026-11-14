@@ -71,9 +71,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const pass = box.getByLabel(l.pass, { exact: true });
       const saved = async (action, want) => {
         const count = posts.length;
+        const previous = await box.locator(":scope > .proxy-controls").elementHandle();
         const response = page.waitForResponse((r) => r.url().endsWith("/api/settings") && r.request().method() === "POST");
         await action();
         await response;
+        if (previous) await page.waitForFunction((old) => !old.isConnected, previous);
         await page.waitForFunction((word) => document.querySelector("#status")?.textContent.includes(word), l.saved);
         assert.equal(posts.length, count + 1, "save once for the whole proxy");
         assert.equal(posts.at(-1).proxy, want);
@@ -146,6 +148,19 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await user.fill("");
       await pass.fill("");
       await saved(() => address.press("Enter"), "http://127.0.0.1:7890");
+
+      // A pasted HTTP login uses the explicit fields too, before clearing
+      // them removes the credentials from the saved address.
+      await address.fill("http://synthetic-http:synthetic-pass@127.0.0.1:7890");
+      assert.equal(await user.isVisible(), true);
+      assert.equal(await address.inputValue(), "http://127.0.0.1:7890");
+      assert.equal(await user.inputValue(), "synthetic-http");
+      assert.equal(await pass.inputValue(), "synthetic-pass");
+      await saved(() => pass.press("Enter"), "http://synthetic-http:synthetic-pass@127.0.0.1:7890");
+      await user.fill("");
+      await pass.fill("");
+      await saved(() => pass.press("Enter"), "http://127.0.0.1:7890");
+
       await user.fill("me@corp:x");
       await pass.fill("p@ss:w/rd% #1 x");
       // the bytes internal/netproxy's TestProxyLoginWithReservedCharacters signs in with

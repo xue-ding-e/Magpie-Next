@@ -10,7 +10,7 @@ const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
 
 const assets = path.resolve(__dirname, "../assets");
-function server(lang, posts) {
+function server(lang, posts, fixedUpdateSource = false) {
   let cur = {
     theme: "light", lang, tray: "panel", currency: "usd", textSize: 100,
     proxy: "direct", proxyNow: "", proxySource: "off", pluginProxy: "", updateProxy: "",
@@ -21,7 +21,7 @@ function server(lang, posts) {
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
-    if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = ${JSON.stringify({ lang, theme: "light", web: true })};` });
+    if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = ${JSON.stringify({ lang, theme: "light", web: true, fixedUpdateSource })};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme: "light" }, fx: cur.fx });
     if (url.pathname === "/api/settings") {
@@ -100,3 +100,16 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     }
   }
 }
+
+test("Next shows its fixed source in Settings", async (t) => {
+  const browser = await chromium.launch({ channel: "chromium" });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1000, height: 760 } });
+  const posts = [];
+  await page.route("**/*", server("zh", posts, true));
+  await page.goto("http://magpie.test/?view=settings&tab=network");
+  const pick = page.locator("#updateSourcePick");
+  await page.getByRole("button", { name: labels.zh.row }).filter({ hasText: "Magpie Next" }).waitFor();
+  assert.equal(await pick.isDisabled(), true);
+  assert.deepEqual(posts, []);
+});

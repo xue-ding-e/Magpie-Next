@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -48,7 +49,9 @@ func TestAccountsExport(t *testing.T) {
 	t.Cleanup(func() { os.Stdin = oldIn })
 
 	src := filepath.Join(t.TempDir(), "a.json")
-	os.WriteFile(src, []byte(`{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"y","refresh_token":"r-a","account_id":"acct-a"}}`), 0o600)
+	// This fixture needs renewal; a usable snapshot is checked without
+	// spending its refresh token (TestAccountsAuthSnapshotExport).
+	os.WriteFile(src, []byte(`{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"","refresh_token":"r-a","account_id":"acct-a"}}`), 0o600)
 	if out, err := said(t, func() error { return accountsCmd([]string{"accounts", "import", "codex", src, "--yes"}) }); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -100,5 +103,79 @@ func TestAccountsExport(t *testing.T) {
 	}
 	if _, err := run("codex", "--format", "csv", "--to", out, "--yes"); err == nil {
 		t.Error("an unknown format was taken")
+	}
+}
+
+func TestAccountsAuthSnapshotExport(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	var verified, refreshed atomic.Int32
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			refreshed.Add(1)
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"refresh_token_reused"}`))
+			return
+		}
+		verified.Add(1)
+		if r.URL.Path != "/wham/usage" || r.Header.Get("Authorization") != "Bearer synthetic-access" || r.Header.Get("chatgpt-account-id") != "synthetic-selected-seat" {
+			t.Error("the imported token or selected workspace was changed")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte(`{"plan_type":"plus"}`))
+	}))
+	t.Cleanup(fake.Close)
+	t.Cleanup(provider.CodexTokenURLForTest(fake.URL + "/token"))
+	oldBase := provider.CodexBase
+	provider.CodexBase = fake.URL + "/codex"
+	t.Cleanup(func() { provider.CodexBase = oldBase })
+	id := importJWT(map[string]any{"email": "snapshot@example.invalid", "https://api.openai.com/auth": map[string]any{
+		"chatgpt_account_id": "synthetic-default-seat", "chatgpt_plan_type": "plus"}})
+	content, err := json.Marshal(map[string]any{"auth_mode": "chatgpt", "tokens": map[string]string{
+		"id_token": id, "access_token": "synthetic-access", "refresh_token": "synthetic-used-refresh", "account_id": "synthetic-selected-seat"},
+		"last_refresh": "2026-01-01T00:00:00Z", "future": json.RawMessage(`{"number":9007199254740993,"exponent":1e999}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "auth.json")
+	if err := os.WriteFile(src, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	says, err := said(t, func() error { return accountsCmd([]string{"accounts", "import", "codex", src, "--yes"}) })
+	if err != nil || !strings.Contains(says, "verified first") || !strings.Contains(says, "added snapshot@example.invalid") {
+		t.Fatalf("usable snapshot import failed: %v\n%s", err, says)
+	}
+	dir := t.TempDir()
+	says, err = said(t, func() error {
+		return accountsCmd([]string{"accounts", "export", "codex", "--format", "cliproxyapi", "--to", dir, "--yes"})
+	})
+	if err != nil || strings.Contains(says, "synthetic-access") || strings.Contains(says, "synthetic-used-refresh") {
+		t.Fatal("export failed or printed credentials", err)
+	}
+	files, err := os.ReadDir(dir)
+	if err != nil || len(files) != 1 {
+		t.Fatal("export did not write one account file", err)
+	}
+	exported, err := os.ReadFile(filepath.Join(dir, files[0].Name()))
+	if err != nil || !strings.Contains(string(exported), "synthetic-used-refresh") || !strings.Contains(string(exported), "synthetic-selected-seat") {
+		t.Fatal("export lost the source's token or workspace", err)
+	}
+	_, revision, err := provider.CodexAuthJSON("snapshot@example.invalid", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, _, err := provider.CodexAuthJSON("snapshot@example.invalid", revision, true)
+	if err != nil || !strings.Contains(string(kept), "9007199254740993") || !strings.Contains(string(kept), "1e999") {
+		t.Fatal("CLI import lost precise native auth.json metadata", err)
+	}
+	stillSource, _ := os.ReadFile(src)
+	if string(stillSource) != string(content) || verified.Load() != 1 || refreshed.Load() != 0 {
+		t.Fatal("the source file changed or its refresh token was spent")
 	}
 }

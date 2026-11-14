@@ -53,7 +53,7 @@ function page(q) {
   };
 }
 
-function server(lang, theme, asked) {
+function server(lang, theme, asked, liveRoute) {
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
@@ -61,6 +61,10 @@ function server(lang, theme, asked) {
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/gateway/trace") {
       await new Promise((r) => setTimeout(r, 100));
+      if (liveRoute) {
+        const routes = url.searchParams.get("after") === "0" ? [liveRoute] : [];
+        return json({ mine: true, seq: 1, routes, totals: { requests: 1, rerouted: 0, errors: 0 }, now: new Date().toISOString() });
+      }
       return json({ mine: false, seq: 0, routes: [], totals: { requests: 0, rerouted: 0, errors: 0 }, now: new Date().toISOString() });
     }
     if (url.pathname === "/api/gateway/history") return json({ days: [], routes: [], cut: false });
@@ -138,14 +142,21 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     const shots = process.env.ARTIFACT_DIR;
     if (shots) await fs.mkdir(shots, { recursive: true });
 
-    const open = async (lang, theme, asked, width = 1180, height = 640) => {
+    const open = async (test, lang, theme, asked, liveRoute) => {
       const errors = [];
-      const page = await (await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce" })).newPage();
+      const context = await browser.newContext({ viewport: { width: 1180, height: 640 }, reducedMotion: "reduce" });
+      test.after(() => context.close());
+      const page = await context.newPage();
       page.setDefaultTimeout(5000);
       page.setDefaultNavigationTimeout(60000);
       page.on("pageerror", (e) => errors.push(e.message));
-      await page.route("**/*", server(lang, theme, asked));
+      await page.route("**/*", server(lang, theme, asked, liveRoute));
       await page.goto("http://magpie.test/");
+      if (liveRoute) {
+        // A trace the reader has already seen stays available on the Usage page.
+        await reader.openPage(page, "routing");
+        await page.locator(".rt-req").filter({ hasText: liveRoute.model }).waitFor();
+      }
       await page.locator('nav [data-view="usage"], [data-view="usage"]').first().click();
       await page.locator(":is(#usageTab .opt, .nav-s):visible").nth(1).click();
       await page.locator("#ledWrap .led tbody tr").first().waitFor();
@@ -164,9 +175,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         ["agent", "Claude Code", "claude", lang === "zh" ? "全部 Agent" : "All agents"],
         ["provider", "Relay", "relay", lang === "zh" ? "全部供应商" : "All providers"],
       ]) {
-        await t.test(lang + ": changing period clears an unavailable " + key + " and reloads", async () => {
+        await t.test(lang + ": changing period clears an unavailable " + key + " and reloads", async (test) => {
           const asked = [];
-          const { page: tab, errors } = await open(lang, "light", asked);
+          const { page: tab, errors } = await open(test, lang, "light", asked);
           await tab.route("**/api/usage/requests?**", async (route) => {
             const q = new URL(route.request().url()).searchParams;
             asked.push(q);
@@ -193,12 +204,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           assert.equal(await tab.locator(key === "agent" ? "#ledAgent" : "#ledProvider").textContent(), all);
           assert.equal(await tab.locator(".led-row").count(), Math.min(100, ROWS.filter(r => r[key] !== removed).length));
           assert.deepEqual(errors, []);
-          await tab.close();
         });
       }
-      await t.test(lang + ": an unavailable caller filter is cleared", async () => {
+      await t.test(lang + ": an unavailable caller filter is cleared", async (test) => {
         const asked = [];
-        const { page: tab, errors } = await open(lang, "light", asked);
+        const { page: tab, errors } = await open(test, lang, "light", asked);
         await tab.locator("#ledKey").click();
         await tab.locator(".sess-menu .pm-item", { hasText: "Laptop" }).click();
         await lastAsked(tab, asked, q => q.get("callerKey") === "laptop");
@@ -216,11 +226,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(await tab.locator("#ledKey").textContent(), lang === "zh" ? "全部网关密钥" : "All gateway keys");
         assert(await tab.locator(".led-row").count() > 0, "stale filtered empty data must be reloaded");
         assert.deepEqual(errors, []);
-        await tab.close();
       });
-      await t.test(lang, async () => {
+      await t.test(lang, async (test) => {
         const asked = [];
-        const { page, errors } = await open(lang, "light", asked);
+        const { page, errors } = await open(test, lang, "light", asked);
         assert.deepEqual(await page.locator(":is(#usageTab .opt, .nav-s):visible").allTextContents(), w.tabs);
         assert.equal(asked.at(-1).get("period"), "today");
         assert.equal(asked.at(-1).get("offset"), "0");
@@ -339,9 +348,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.deepEqual(errors, []);
       });
 
-      await t.test(lang + ": request routing links", async () => {
+      await t.test(lang + ": request routing links", async (test) => {
         const asked = [];
-        const { page, errors } = await open(lang, "light", asked);
+        const { page, errors } = await open(test, lang, "light", asked);
         const lookups = [];
         page.on("request", req => { if (req.url().includes("/api/gateway/route?")) lookups.push(new URL(req.url())); });
         const originalPeriod = asked.at(-1).get("period");
@@ -394,12 +403,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           lang === "en" ? "Routing history for this request is no longer available." : "此请求的路由历史已不可用。");
         assert(await page.locator("#view-usage").isVisible());
         assert.deepEqual(errors, []);
-        await page.close();
       });
 
-      await t.test(lang + ": clearing the route restores prior filters", async () => {
+      await t.test(lang + ": clearing the route restores prior filters", async (test) => {
         const asked = [];
-        const { page, errors } = await open(lang, "light", asked);
+        const { page, errors } = await open(test, lang, "light", asked);
         await page.evaluate(() => {
           period = "7d"; ledAgent = "codex"; ledCallerKey = "server"; ledFailed = true; ledQuery = "sol"; ledOffset = 100;
           window.openUsageRoute({ id: 123, time: new Date().toISOString(), model: "gpt-6-sol" });
@@ -415,27 +423,22 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await lastAsked(page, asked, q=>!q.has("route") && q.get("period") === "7d" && q.get("agent") === "codex" && q.get("callerKey") === "server" && q.get("failed") === "1" && q.get("q") === "sol" && q.get("offset") === "100");
         assert.equal(await page.locator("#ledQ").inputValue(), "sol");
         assert.deepEqual(errors, []);
-        await page.close();
       });
-      await t.test(lang + ": newest live route needs no return-to-live button", async () => {
+      await t.test(lang + ": newest live route needs no return-to-live button", async (test) => {
         const asked = [];
-        const { page, errors } = await open(lang, "light", asked);
-        await page.route("**/api/gateway/trace?*", async route => {
-          await page.waitForTimeout(100);
-          await route.fulfill({json:{mine:true, seq:1, routes:[{id:123,time:ROWS[0].t,agent:"codex",model:"gpt-6-sol",provider:"relay",order:[],tries:[],done:true,status:200}],totals:{requests:1,rerouted:0,errors:0},now:new Date().toISOString()}}).catch(()=>{});
-        });
-        await page.waitForTimeout(5500);
+        const liveRoute = { id: 123, time: ROWS[0].t, agent: "codex", model: "gpt-6-sol", provider: "relay", order: [], tries: [], done: true, status: 200 };
+        const { page, errors } = await open(test, lang, "light", asked, liveRoute);
         await wheelTo(page, page.locator(".led tbody tr").first());
         const link = (await reader.openRequest(page, page.locator(".led tbody tr").first())).getByText(lang === "en" ? "View routing" : "查看路由", { exact: true });
         await link.click();
-        await page.locator("#view-routing").waitFor({state:"visible"});
-        assert.equal(await page.locator(".rt-log-head").getByText(lang === "en" ? "Back to live" : "回到实时", {exact:true}).count(), 0);
+        await page.locator("#view-routing").waitFor({ state: "visible" });
+        await page.locator(".rt-req[aria-pressed=true]").filter({ hasText: liveRoute.model }).waitFor();
+        assert.equal(await page.locator(".rt-log-head").getByText(lang === "en" ? "Back to live" : "回到实时", { exact: true }).count(), 0);
         assert.deepEqual(errors, []);
-        await page.close();
       });
 
-      await t.test(lang + ": dark, and narrow", async () => {
-        const { page, errors } = await open(lang, "dark", []);
+      await t.test(lang + ": dark, and narrow", async (test) => {
+        const { page, errors } = await open(test, lang, "dark", []);
         await page.waitForTimeout(200);
         if (shots) await page.screenshot({ path: path.join(shots, `${engine}-usage-ledger-${lang}-dark.png`) });
         // the window at its narrowest (MinWidth in app.go)

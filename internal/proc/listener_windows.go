@@ -2,36 +2,78 @@ package proc
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"strconv"
 	"strings"
+	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
-// listeningOn asks Get-NetTCPConnection, which names each listener's owner.
-// When nothing listens the cmdlet fails with ObjectNotFound, and with
-// -ErrorAction SilentlyContinue PowerShell still exits 1 for it, so a port
-// nobody holds read as an error and a take-over waited for the older
-// magpie's port to be let go until it said "stuck" (#2231). That one
-// failure is no listener, as lsof and /proc say it; any other failure, or
-// a PowerShell cut short, is still an error.
+var getExtendedTCPTable = windows.NewLazySystemDLL("iphlpapi.dll").NewProc("GetExtendedTcpTable")
+
+// Read the listener tables directly. Get-NetTCPConnection -State Listen
+// can omit a listener whose state the CIM provider does not expose.
 func listeningOn(ctx context.Context, port int) ([]int, error) {
-	out, err := CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command",
-		`try { Get-NetTCPConnection -State Listen -LocalPort `+strconv.Itoa(port)+` -ErrorAction Stop | ForEach-Object { $_.OwningProcess } } `+
-			`catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { exit 0 }; [Console]::Error.WriteLine($_); exit 1 }`).Output()
-	if err != nil {
-		return nil, err
-	}
 	var ps []int
 	seen := map[int]bool{}
-	for _, l := range strings.Fields(string(out)) {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && !seen[n] {
-			seen[n] = true
-			ps = append(ps, n)
+	// MIB_TCPROW_OWNER_PID and MIB_TCP6ROW_OWNER_PID use DWORD
+	// fields, except for the IPv6 addresses. The port is in network order.
+	for _, table := range []struct{ family, width, localPort int }{
+		{windows.AF_INET, 24, 8}, {windows.AF_INET6, 56, 20},
+	} {
+		data, err := tcpListeners(ctx, table.family)
+		if err != nil {
+			return nil, err
+		}
+		if len(data) < 4 {
+			return nil, errors.New("invalid Windows TCP listener table")
+		}
+		count := binary.LittleEndian.Uint32(data)
+		if uint64(count)*uint64(table.width) > uint64(len(data)-4) {
+			return nil, errors.New("truncated Windows TCP listener table")
+		}
+		for row := range int(count) {
+			start := 4 + row*table.width
+			if int(binary.BigEndian.Uint16(data[start+table.localPort:])) != port {
+				continue
+			}
+			pid := int(binary.LittleEndian.Uint32(data[start+table.width-4:]))
+			if pid > 0 && !seen[pid] {
+				seen[pid] = true
+				ps = append(ps, pid)
+			}
 		}
 	}
 	return ps, nil
+}
+
+func tcpListeners(ctx context.Context, family int) ([]byte, error) {
+	const ownerPIDListener = 3
+	var data []byte
+	var size uint32
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		result, _, _ := getExtendedTCPTable.Call(
+			uintptr(unsafe.Pointer(unsafe.SliceData(data))), uintptr(unsafe.Pointer(&size)),
+			0, uintptr(family), ownerPIDListener, 0,
+		)
+		switch err := syscall.Errno(result); err {
+		case 0:
+			if uint64(size) > uint64(len(data)) {
+				return nil, errors.New("invalid Windows TCP listener table size")
+			}
+			return data[:size], ctx.Err()
+		case windows.ERROR_INSUFFICIENT_BUFFER:
+			data = make([]byte, size)
+		default:
+			return nil, err
+		}
+	}
 }
 
 func executable(pid int) (string, error) {

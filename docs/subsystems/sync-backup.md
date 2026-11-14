@@ -32,9 +32,18 @@ clone a working tree or synchronize arbitrary files.
   the remote bundle, first keeping the local setup for Undo.
 - [`backup.go`](../../internal/gui/backup.go), the Settings form in
   [`app.js`](../../internal/gui/assets/app.js) and
-  [`webdav_cli.go`](../../webdav_cli.go) reach the same sync operations.
+  [`webdav_cli.go`](../../internal/cli/webdav_cli.go) reach the same sync operations.
 
 ## What stays on each computer
+
+Next's two local literal lists are also local-only. They are stored together in
+`local-sensitive-dictionary.json` by
+[`localdictionary`](../../internal/localdictionary/store.go), outside Settings and
+`backup.Bundle`. Neither Mask these literals nor Never mask enters an ordinary
+backup, setup export or sync payload. Restore and Undo do not replace this file.
+This exclusion does not change the original Masked words and Never mask settings,
+which retain upstream's existing backup contract. The local dictionary's UI and
+revision checks are described in [GUI app shell](gui-shell.md#next-additions-over-the-upstream-shell).
 
 The settings part carries the user's preferences, but not what is only about
 one computer. [`Settings.KeepOwn`](../../internal/settings/settings.go) puts

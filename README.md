@@ -294,6 +294,7 @@ Find them under Plugins › Discover › Gateway middleware. See [Gateway middle
 | **[Import links](https://usemagpie.ai/docs/import)** | "Add to magpie" buttons for provider websites |
 | **[Remote magpie](https://usemagpie.ai/docs/remote)** | Use one magpie's providers and groups from your other computers |
 | **[Docker](https://usemagpie.ai/docs/docker)** | Run magpie on a server or a NAS |
+| **[Next upstream and Windows releases](docs/upstream-tracking.md)** | Synchronize upstream, validate on your OS, and publish through GitHub Actions |
 
 ## Privacy
 

@@ -240,6 +240,30 @@ func codexEfforts(ms []catalog.Model, model string) []Option {
 	return append([]Option{d}, static(e...)...)
 }
 
+func codexGatewayEffortOptions(models []catalog.Model, model string) []Option {
+	out := []Option{{Value: ""}}
+	for _, o := range codexEfforts(models, model) {
+		if o.Value != "" {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// codexGatewayEffortField is the live override in either Codex wiring.
+// It is separate from the startup default: an existing conversation can
+// still send its previous level. Its default clears the override.
+func codexGatewayEffortField(models func() []catalog.Model) Field {
+	return Field{
+		Key: "gateway_effort", Label: "gateway effort", Quiet: true, Live: true,
+		Get: func() string { return provider.AgentEffort("codex") },
+		Set: func(v string) error { return provider.SetAgentEffort("codex", v) },
+		Options: func(cur map[string]string) []Option {
+			return codexGatewayEffortOptions(models(), cur["model"])
+		},
+	}
+}
+
 // catalogParses is whether b is a model list magpie writes for Codex, the
 // shape Keep reads of the file there.
 func catalogParses(b []byte) bool {
@@ -2577,6 +2601,7 @@ func codexIn(at place) *Agent {
 					}
 				},
 			},
+			codexGatewayEffortField(models),
 		},
 	}, path, catalogPath)
 	// any hold magpie has on config.toml counts: Codex routed through the

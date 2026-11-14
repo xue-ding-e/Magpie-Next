@@ -34,7 +34,7 @@ function serve(lang, asked, answers) {
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings });
     if (url.pathname.startsWith("/api/settings/")) {
-      asked.push(["write", url.pathname]);
+      if (route.request().method() !== "GET") asked.push(["write", url.pathname]);
       return json(settings);
     }
     if (url.pathname === "/api/settings") return json(settings);

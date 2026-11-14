@@ -14,7 +14,7 @@ import (
 // the call, and must live on after it returns.
 func TestOpenFolderDoesNotWaitForTheFileManager(t *testing.T) {
 	bin, dir, pidf := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "pid")
-	script := "#!/bin/sh\necho $$ > " + pidf + "\necho \"$1\" > " + pidf + ".arg\nexec sleep 60\n"
+	script := "#!/bin/sh\necho \"$1\" > " + pidf + ".arg\necho $$ > " + pidf + "\nexec sleep 60\n"
 	if err := os.WriteFile(filepath.Join(bin, "xdg-open"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

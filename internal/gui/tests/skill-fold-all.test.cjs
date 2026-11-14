@@ -25,7 +25,7 @@ function server(lang, state, posts) {
     const req = route.request();
     const url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
-    if (req.method() === "POST") posts.push(url.pathname);
+    if (req.method() === "POST" && url.pathname !== "/api/update/using") posts.push(url.pathname);
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:true};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme: "light" } });

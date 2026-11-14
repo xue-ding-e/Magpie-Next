@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // magpie healthcheck, a container's HEALTHCHECK, passes only while a
@@ -97,6 +98,20 @@ func fakeServing(t *testing.T, pid int) string {
 		fmt.Fprintf(w, `{"name":"magpie","version":"v9.9.9","pid":%d,"serves":"web"}`, pid)
 	}))
 	t.Cleanup(m.Close)
+	// Settings must name this fixture's own unused port. The developer may
+	// have a live gateway at the normal port, which no test should probe or
+	// ask to restart when its synthetic listening note is deliberately stale.
+	closed, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := closed.Addr().(*net.TCPAddr).Port
+	if err := closed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.Save(settings.Settings{Port: port}); err != nil {
+		t.Fatal(err)
+	}
 	return strings.TrimPrefix(m.URL, "http://")
 }
 

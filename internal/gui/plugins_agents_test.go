@@ -102,8 +102,9 @@ export function connect({ gateway, model }) { return { base: gateway.v1, key: ga
 	if got == nil || got.Name != "Kimi" {
 		t.Fatalf("got %+v, want Kimi", got)
 	}
-	if !got.Missing || got.Notice != "Open Kimi first." || got.Looks != "~/.config/magpie-kimi" {
-		t.Errorf("not on this computer: %+v, want missing, its notice and ~/.config/magpie-kimi", got)
+	wantLooks := filepath.Join("~", ".config", "magpie-kimi")
+	if !got.Missing || got.Notice != "Open Kimi first." || got.Looks != wantLooks {
+		t.Errorf("not on this computer: %+v, want missing, its notice and %s", got, wantLooks)
 	}
 
 	if err := os.MkdirAll(filepath.Join(home, ".config", "magpie-kimi"), 0o755); err != nil {

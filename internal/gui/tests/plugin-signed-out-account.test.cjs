@@ -41,6 +41,7 @@ function serve(lang, login, usage, posts) {
     if (url.pathname === "/api/groups") return json({ groups: [], pools: [] });
     if (url.pathname === "/api/login/usage") return json(usage);
     if (route.request().method() === "POST") {
+      if (["/api/window/titlebar", "/api/update/using"].includes(url.pathname)) return json({});
       const body = route.request().postDataJSON();
       posts.push({ path: url.pathname, body });
       if (url.pathname === "/api/plugin-signin/prompt") return json({ prompt: null, inputs: {} });

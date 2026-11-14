@@ -386,6 +386,11 @@ func For(u *url.URL) (*url.URL, error) {
 	default:
 		return Parse(s)
 	}
+	// An automatic bypass stays direct even when Windows or macOS also
+	// names a system proxy. Explicit settings and per-request choices win.
+	if noProxy(u.Hostname(), envOf("NO_PROXY", "no_proxy")) {
+		return nil, nil
+	}
 	if p, err := fromEnv(u); p != nil || err != nil {
 		return p, err
 	}

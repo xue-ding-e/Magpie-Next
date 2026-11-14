@@ -127,6 +127,9 @@ func chatGPTSearchers(r *http.Request, model string) ([]provider.Provider, strin
 // did, nothing is written, and the search is magpie's (alphaSearchHere),
 // with why returned.
 func (s *Server) alphaSearchOn(w http.ResponseWriter, r *http.Request, body []byte, model string, ons []provider.Provider) (bool, string) {
+	if err := provider.RequireAllowedModel(model); err != nil {
+		return false, err.Error()
+	}
 	start := time.Now()
 	// as written only when every account it may be asked on is set to go
 	// unmasked (provider.SkipsRedaction, isee1_1 on Discord); magpie's own
@@ -169,6 +172,9 @@ func (s *Server) alphaSearchAsked(w http.ResponseWriter, r *http.Request, body [
 		if why, revoked := provider.RevokedSignIn(on.Account, req); revoked {
 			errs = append(errs, who+why)
 			continue
+		}
+		if err := provider.RequireAllowedModel(model); err != nil {
+			return false, err.Error()
 		}
 		res, err := s.client.Do(req)
 		if err != nil {

@@ -188,6 +188,30 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.deepEqual(errors, []);
     });
 
+    test(`${engine} ${lang}: pasted proxy login is split, masked and saved for its account`, async (t) => {
+      const { page, errors, posts } = await open(t, "Codex", ".editor .acct-proxy");
+      const mine = line(page, "me@example.com");
+      const address = addr(page, "me@example.com");
+      const fields = mine.locator(".proxy-login .proxy-credential");
+      await address.fill("synthetic-user:synthetic-pass@127.0.0.1:7894");
+      assert.equal(await address.inputValue(), "127.0.0.1:7894");
+      assert.equal(await fields.nth(0).inputValue(), "synthetic-user");
+      assert.equal(await fields.nth(1).inputValue(), "synthetic-pass");
+      assert.equal(await fields.nth(1).getAttribute("type"), "password");
+      const password = "synthetic@:/%汉字";
+      await fields.nth(1).fill(password);
+      let saved = await save(page, posts);
+      assert.equal(saved.body.accountProxies["me@example.com"],
+        "synthetic-user:" + encodeURIComponent(password) + "@127.0.0.1:7894");
+      await page.locator(".row.provider", { hasText: "Codex" }).first().click();
+      await line(page, "me@example.com").waitFor();
+      await addr(page, "me@example.com").fill("http://synthetic:%FF@127.0.0.1:7895");
+      saved = await save(page, posts);
+      assert.equal(saved.body.accountProxies["me@example.com"], "http://synthetic:%FF@127.0.0.1:7895",
+        "an unedited credential must retain its encoded bytes");
+      assert.deepEqual(errors, []);
+    });
+
     test(`${engine} ${lang}: a subscription with one account has no per-account lines`, async (t) => {
       const { page, errors, posts } = await open(t, "Claude");
       assert.equal(await page.locator(".editor .acct-proxies").count(), 0);

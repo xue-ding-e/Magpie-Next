@@ -158,6 +158,8 @@ var Vars = []string{
 	// Google Cloud's credentials file and gcloud's folder, which Vertex AI's
 	// tokens are minted from (and Gemini CLI's own, on Vertex AI)
 	"GOOGLE_APPLICATION_CREDENTIALS", "CLOUDSDK_CONFIG",
+	// Gateway refusal diagnostics append to this file outside the test home.
+	"MAGPIE_SEAL_DIAG",
 }
 
 // NotPaths are the Vars that name no folder or file under the working

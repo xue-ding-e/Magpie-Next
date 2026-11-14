@@ -157,7 +157,15 @@ function renderContextCap(s) {
     writingPrefs(api("settings/context-cap", { at })).then((ns) => { prefs = state.settings = ns; renderSettings(); })
       .catch((e) => { status(t(e.message), "err"); renderSettings(); });
   };
-  field.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") field.blur(); if (e.key === "Escape") { field.value = s.contextCap ? contextsText({ "*": s.contextCap }) : ""; field.blur(); } };
+  field.onkeydown = (e) => {
+    e.stopPropagation();
+    if (e.key !== "Enter" && e.key !== "Escape") return;
+    e.preventDefault();
+    field.onchange = null;
+    field.blur();
+    if (e.key === "Enter") save();
+    else renderContextCap(s);
+  };
   field.onchange = save;
   // which windows it holds: only models with none of the user's own, or
   // every model (the shorter of the two is told; settings.ContextCapAll)

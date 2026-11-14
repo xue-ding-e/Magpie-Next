@@ -53,7 +53,7 @@ const measure = (page) => page.evaluate(() => {
 
 for (const [engine, browserType] of [["chromium", chromium], ["webkit", webkit]]) {
   test(engine + ": a provider editor's Advanced starts where its fields do", async (t) => {
-    const browser = await browserType.launch();
+    const browser = await browserType.launch(engine === "chromium" ? { channel: "chromium" } : {});
     t.after(() => browser.close());
     for (const [web, width] of [[false, 1000], [false, 560], [true, 390]]) for (const lang of ["en", "zh", "zh-TW", "ja", "de"]) {
       const at = `${lang} ${web ? "web " : ""}${width}`;
