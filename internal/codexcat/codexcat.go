@@ -270,6 +270,11 @@ type model struct {
 	// the model's whole window, which Codex shows (95% of it) as the
 	// context the conversation has
 	Context *int `json:"context_window,omitempty"`
+	// the share of the window Codex counts as the conversation's room, as
+	// every entry of its own catalog says (95): an entry without it left
+	// a newer Codex with no limit to compact against, so a long
+	// conversation ran into the vendor's "too long" (codealc on X)
+	EffectivePct int `json:"effective_context_window_percent"`
 	// where Codex compacts the conversation when that is before the
 	// window: the threshold set on the model or its provider, else
 	// Long conversations' (settings.Working). Codex compacts at the
@@ -383,7 +388,7 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 			Shell: "unified_exec", Visibility: "list", InAPI: true, Priority: after + i + 1,
 			ApplyPatch: "freeform", Tools: []string{}, Modalities: []string{"text"},
 			Tiers: []tier{}, SearchTool: true, Parallel: true,
-			AutoReview: autoReview,
+			AutoReview: autoReview, EffectivePct: effectivePct,
 		}
 		if e.AutoReview == settings.CodexAutoReviewSession {
 			e.AutoReview = m.ID
@@ -466,7 +471,20 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 			// detail" (qiu_eth)
 			e.DetailOriginal = m.Images && strings.HasPrefix(m.ID, "deepseek/")
 		}
-		for _, ef := range m.Efforts {
+		levels := m.Efforts
+		if ultraHere(m) {
+			// Codex's Ultra on a model of another vendor's (pingqipai3
+			// on X): Codex sends the model its own top level for it, max
+			// or the highest it lists below (ModelInfo::
+			// resolve_reasoning_effort), so the model is asked nothing it
+			// doesn't take, and in V2 its lead hands parts of the task to
+			// agents of its own unasked (multi_agents.rs: Proactive at
+			// Ultra, ExplicitRequestOnly otherwise). A magpie-served lead
+			// writes their tasks as text, as Copilot's Ultra does (#656)
+			levels = append(slices.Clone(levels), "ultra")
+			e.MultiAgent = "v2"
+		}
+		for _, ef := range levels {
 			e.Efforts = append(e.Efforts, level{Effort: ef})
 		}
 		e.AgentsEffort = agentsEffort(own, m)
@@ -478,6 +496,27 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 		entries = append(entries, &e)
 	}
 	return entries
+}
+
+// ultraHere reports whether magpie's entry for m offers Codex's Ultra
+// beside its levels: a model that reasons, of a vendor other than OpenAI.
+// An OpenAI model has Ultra where OpenAI's own catalog gives it
+// (provider.OffersUltra), never added here: GPT-6 Luna stops at max there.
+// Nor a model whose lead seals its subagents' tasks, which V2 Ultra needs
+// to read (a ChatGPT account's, a group one is in, a relay of the ChatGPT
+// backend: Fast, Seals, #141).
+func ultraHere(m catalog.Model) bool {
+	if len(m.Efforts) == 0 || slices.Contains(m.Efforts, "ultra") || m.Fast || m.Seals || strings.HasPrefix(m.ID, "codex/") {
+		return false
+	}
+	return !openAIModel(m.ID)
+}
+
+// openAIModel reports whether id (provider/model, a relay's dated or
+// renamed one) names an OpenAI model: a GPT, an o-series one, a Codex one.
+func openAIModel(id string) bool {
+	slug := strings.ToLower(id[strings.LastIndex(id, "/")+1:])
+	return gptModel.MatchString(slug) || strings.Contains(slug, "gpt-") || strings.Contains(slug, "codex")
 }
 
 // owned are the keys of an entry magpie writes, or leaves out on purpose:
@@ -1032,6 +1071,10 @@ func Remember(entries []any) {
 // ChatGPT sign-in: its entry as Codex has it (images, context window, tools,
 // instructions), under magpie's id. The start-up notice and the upgrade
 // prompt are left out; they name slugs the catalog does not have.
+// effectivePct is the effective_context_window_percent of Codex's own
+// entries.
+const effectivePct = 95
+
 func ownEntry(raw map[string]any, id, name string, priority int) map[string]any {
 	e := make(map[string]any, len(raw))
 	for k, v := range raw {
@@ -1039,6 +1082,9 @@ func ownEntry(raw map[string]any, id, name string, priority int) map[string]any 
 	}
 	delete(e, "availability_nux")
 	delete(e, "upgrade")
+	if _, ok := e["effective_context_window_percent"]; !ok {
+		e["effective_context_window_percent"] = effectivePct
+	}
 	e["slug"], e["display_name"], e["priority"], e["visibility"] = id, name, priority, "list"
 	if s, _ := e["base_instructions"].(string); s == "" {
 		// an entry with model_messages alone carries its instructions
@@ -1262,8 +1308,9 @@ func UsedTag(used []string) string {
 // catalogFormat changes when the entries made of the same models change
 // shape, so a Codex holding the list magpie gave before asks again: v2 put
 // the window in context_window and the threshold in
-// auto_compact_token_limit (10-30).
-const catalogFormat = "v2"
+// auto_compact_token_limit (10-30); v3 offered Ultra on another vendor's
+// models that reason (ultraHere).
+const catalogFormat = "v3"
 
 // tagMark is where a tag starts in an ETag magpie made.
 const tagMark = "+magpie-"

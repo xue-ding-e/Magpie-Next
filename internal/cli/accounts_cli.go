@@ -31,7 +31,7 @@ func accountsCmd(args []string) error {
 	if len(args) > 1 && args[1] == "discovery" {
 		return accountsDiscoveryCmd(args[2:])
 	}
-	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|zed|factory|mimo|<plugin>] [--json] | magpie accounts add <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> | magpie accounts add copilot [--host <name>.ghe.com] | magpie accounts import <codex|claude|antigravity|factory> <file>... [--yes] | magpie accounts import codex <file>... --access-only [--yes] | magpie accounts access-only codex <email> [on|off] | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> <email> | magpie accounts switch <claude|codex> next | magpie accounts switch|forget copilot <login>[@<name>.ghe.com] [--host <name>.ghe.com] | magpie accounts project <gemini|antigravity> <email> <gcp-project-id> | magpie accounts alias <agent|<plugin>> <email> [<name>|--clear] | magpie accounts switch-only <codex|claude> [on|off]"
+	const usage = "usage: magpie accounts [claude|codex|grok|copilot|gemini|antigravity|zed|factory|mimo|<plugin>] [--json] | magpie accounts add <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> | magpie accounts add copilot [--host <name>.ghe.com] | magpie accounts import <codex|claude|antigravity|factory|<plugin>> <file>... [--yes] | magpie accounts import codex <file>... --access-only [--yes] | magpie accounts access-only codex <email> [on|off] | magpie accounts refresh [--json] | magpie accounts checkin [--json] | magpie accounts switch|forget <claude|codex|gemini|antigravity|zed|factory|mimo|<plugin>> <email> | magpie accounts switch <claude|codex> next | magpie accounts switch|forget copilot <login>[@<name>.ghe.com] [--host <name>.ghe.com] | magpie accounts project <gemini|antigravity> <email> <gcp-project-id> | magpie accounts alias <agent|<plugin>> <email> [<name>|--clear] | magpie accounts switch-only <codex|claude> [on|off]"
 	agentID := func(s string) (string, error) {
 		switch strings.ToLower(s) {
 		case "claude", "cc":
@@ -562,7 +562,7 @@ func addAccount(agentID string) error {
 }
 
 // importUsage is how `magpie accounts import` is run.
-const importUsage = "usage: magpie accounts import <codex|claude|antigravity|factory> <file>... [--yes] | magpie accounts import codex <file>... --access-only [--yes]"
+const importUsage = "usage: magpie accounts import <codex|claude|antigravity|factory|<plugin>> <file>... [--yes] | magpie accounts import codex <file>... --access-only [--yes]"
 
 // importAccounts: `magpie accounts import <agent> <file>... [--yes]` brings
 // in accounts from other tools' files, as the window's "Import accounts from
@@ -601,7 +601,13 @@ func importAccounts(args []string) error {
 	case "factory", "droid":
 		return fmt.Errorf("Factory runs on its plugin now: add the key with magpie accounts add factory")
 	default:
-		return fmt.Errorf("%q: accounts can be imported for codex, claude, antigravity and factory\n%s", rest[0], importUsage)
+		// a plugin's subscription whose plugin reads such files itself
+		// (auth.import): WorkBuddy's sign-in file (marchen_cc on X)
+		if provider.PluginImportable(rest[0]) {
+			id = rest[0]
+			break
+		}
+		return fmt.Errorf("%q: accounts can be imported for codex, claude, antigravity, factory and plugins that take a file\n%s", rest[0], importUsage)
 	}
 	if accessOnly && id != "codex" {
 		return fmt.Errorf("only ChatGPT accounts can be kept access token only\n%s", importUsage)
@@ -631,8 +637,8 @@ func importAccounts(args []string) error {
 			"When its access token runs out (about ten days after that sign-in was last renewed), magpie stops using the account until it is imported again.",
 			"The files are only read, never changed."}
 	case id == "codex":
-		say = []string{"Access tokens are verified first. Only a missing or unauthorized access token needs a refresh.",
-			"Refreshing a sign-in can invalidate the source tool's copy. Two tools must not refresh the same session independently; sign in separately for continued use in both.",
+		say = []string{"Each account's sign-in is refreshed with ChatGPT before it is added, as signing in does.",
+			"That spends the file's sign-in: the tool it came from (Codex CLI on another computer, codexbar, Cockpit Tools, CLIProxyAPI) is signed out of that account and has to sign in again. From then on the account is magpie's.",
 			"The files are only read, never changed. An account magpie holds already is left as it is."}
 	case id == "claude":
 		say = []string{provider.ClaudeRisk,
@@ -640,6 +646,10 @@ func importAccounts(args []string) error {
 			"The files are only read, never changed."}
 	case id == "antigravity":
 		say = []string{provider.AntigravityRisk, "Each account's sign-in is refreshed with Google before it is added."}
+	default:
+		if pp, ok := provider.PluginOf(id); ok && pp.ImportFrom != "" {
+			say = []string{pp.ImportFrom}
+		}
 	}
 	for _, s := range say {
 		fmt.Println(bold.Render("!"), s)
@@ -667,6 +677,8 @@ func importAccounts(args []string) error {
 		res, err = provider.ImportLogins(ctx, id, files)
 	case "antigravity":
 		res, err = provider.ImportGoogleAccounts(ctx, id, files)
+	default:
+		res, err = provider.ImportPluginFiles(ctx, id, files)
 	}
 	if err != nil {
 		if len(paths) == 1 {

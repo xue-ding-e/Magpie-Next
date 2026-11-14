@@ -42,46 +42,11 @@ func maskingFor(ctx context.Context) (context.Context, gwmw.Masker, error) {
 			if _, ok := m.(gwmw.ContextTeller); !ok {
 				return ctx, nil, gwmw.ErrUnmasked
 			}
-			return scopedRequestMasker(masking.WithForced(ctx), m, nil)
+			return masking.WithForced(ctx), m, nil
 		}
 	}
 	m, err := gwmw.Masking(redactionWanted())
-	return scopedRequestMasker(ctx, m, err)
-}
-
-type coreMaskerScopeKey struct{}
-
-// Only the built-in core masker is scoped here. Third-party implementations
-// retain their own lifecycle and the original authenticated caller's decision.
-func scopedRequestMasker(ctx context.Context, m gwmw.Masker, err error) (context.Context, gwmw.Masker, error) {
-	if err != nil || m == nil {
-		return ctx, m, err
-	}
-	coreMasker := false
-	switch m.(type) {
-	case masking.Masker, *masking.Masker:
-		coreMasker = true
-	}
-	if coreMasker {
-		if held, ok := ctx.Value(coreMaskerScopeKey{}).(gwmw.Masker); ok {
-			return ctx, held, nil
-		}
-	}
-	scoped, err := gwmw.Safely(func() gwmw.Masker {
-		switch core := m.(type) {
-		case masking.Masker:
-			return core.NewRequest(ctx)
-		case *masking.Masker:
-			return core.NewRequest(ctx)
-		}
-		return m
-	})
-	if coreMasker && err == nil {
-		// Compound prompts reuse this returned context for every field. A
-		// fresh compound call starts a fresh generation and request budget.
-		ctx = context.WithValue(ctx, coreMaskerScopeKey{}, scoped)
-	}
-	return ctx, scoped, err
+	return ctx, m, err
 }
 
 // redacted masks a request's secrets, as the settings say, before it goes

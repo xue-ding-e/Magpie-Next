@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/access"
-	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/codexcat"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/lastgood"
@@ -150,13 +149,28 @@ func codexProfileIn(at place) *Agent {
 		return nil
 	}
 	return atomic(&Agent{
-		ID: "codex", Name: "Codex", Icon: "codex-color", Bin: "codex", Dir: dir, Path: path,
+		ID: "codex", Name: "Codex", Icon: "codex-color", Bin: "codex", Dir: dir, Path: path, signIn: "auth.json",
 		UA:     []string{"codex", "acp-extension-codex"},
 		Unwire: drop,
 		Routed: wired,
 		Sync: func() error {
 			if !wired() {
+				// the profile names magpie and its list, but not a model
+				// magpie serves now (the provider of the model it was set
+				// to was deleted): the list is still magpie's, and Codex
+				// would keep offering the models it had (JNDliuliuM on X)
+				if get("model_provider") == magpieID && get("model_catalog_json") == catalogRef {
+					if cur, err := edit.Read(catalogPath); err == nil {
+						if b := ownList(); string(b) != string(cur) {
+							return writeOwnList(catalogPath, b)
+						}
+					}
+				}
 				return nil
+			}
+			// a model the user has since unchecked in its provider's list
+			if to := pickedInstead("codex", get("model")); to != "" {
+				return put(to)
 			}
 			t, _ := edit.GetTOMLTable(path, table)
 			if t["base_url"] != at.v1() || t["experimental_bearer_token"] != codexKeptToken(path, table, at.gwKey()) {
@@ -217,7 +231,6 @@ func codexProfileIn(at place) *Agent {
 				Options: func(cur map[string]string) []Option { return codexEfforts(magpieModels("codex"), cur["model"]) },
 			},
 			codexScopeField(at, wired),
-			codexGatewayEffortField(func() []catalog.Model { return magpieModels("codex") }),
 		},
 	}, path, catalogPath)
 }

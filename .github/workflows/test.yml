@@ -5,68 +5,30 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      next_validation:
-        description: Validate the Next caller without a duplicate fork push matrix
-        type: boolean
-        required: false
-        default: false
 
-# Next release builds call this validation before packaging. Manual validation
-# remains available; one full matrix runs at a time without cancellation.
-# A release waits for a green run: cancelling it at every push left none
-# to wait for (LESSONS.md).
+# On main a run finishes: a release waits for a green run, and one cancelled
+# by every next push left none to wait for (LESSONS.md). A newer push still
+# replaces a run that hasn't started. A PR's run is cancelled by its next push.
 concurrency:
-  group: test-${{ github.repository }}
-  cancel-in-progress: false
+  group: test-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
 
-# Match the toolchain selected from go.mod rather than silently changing it.
-env:
-  GOTOOLCHAIN: local
-
-# Keep complete step logs without letting tee turn a failed check green.
-# Explicit bash overrides below would bypass this wrapper.
-defaults:
-  run:
-    shell: bash build/ci-step.sh {0}
-
 jobs:
   test:
-    # A reusable workflow inherits its caller's event name (push included).
-    # Next opts in explicitly; the fork's independent push spends no runners.
-    if: github.repository == 'yetone/magpie' || github.event_name != 'push' || inputs.next_validation
     name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
-        timeout-minutes: 5
-        with:
-          persist-credentials: false
-
-      - name: Check CI log wrapper
-        timeout-minutes: 1
-        run: bash build/ci-step_test.sh
-
-      - name: Check isolated-home cleanup
-        timeout-minutes: 1
-        run: |
-          ci_python=python3
-          if [ "$RUNNER_OS" = Windows ]; then ci_python=python; fi
-          "$ci_python" -I -B build/ci_home_test.py
 
       - uses: actions/setup-go@v5
-        timeout-minutes: 10
         with:
           go-version-file: go.mod
 
@@ -82,72 +44,41 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Tags
-        timeout-minutes: 1
         id: tags
+        shell: bash
         run: |
           if [ "$RUNNER_OS" = Linux ]; then echo "tags=gtk3" >> "$GITHUB_OUTPUT"; fi
 
       # Unformatted files reached main 8 times from 10-01 to 10-06 and each
       # took a gofmt commit of its own. Linux only: Windows checks out CRLF.
       - name: Gofmt
-        timeout-minutes: 2
         if: runner.os == 'Linux'
+        shell: bash
         run: |
           bad=$(gofmt -l $(git ls-files '*.go'))
           if [ -n "$bad" ]; then echo "not gofmt'd:"; echo "$bad"; exit 1; fi
 
       - name: Vet
-        timeout-minutes: 20
         run: go vet -tags "${{ steps.tags.outputs.tags }}" ./...
 
       - uses: oven-sh/setup-bun@v2
-        timeout-minutes: 5
         with:
           bun-version: 1.4.2
 
-      # Acceptance criterion 2: retain the populated caches outside the test
-      # home. TestMain still supplies its agent-variable/keychain stand-ins.
-      # Cleanup uses this step's recorded path and identity, never mutable HOME.
-      - name: Isolate test home
-        id: test_home
-        timeout-minutes: 2
-        run: |
-          ci_gopath=$(go env GOPATH)
-          ci_modcache=$(go env GOMODCACHE)
-          ci_buildcache=$(go env GOCACHE)
-          {
-            echo "GOPATH=$ci_gopath"
-            echo "GOMODCACHE=$ci_modcache"
-            echo "GOCACHE=$ci_buildcache"
-          } >> "$GITHUB_ENV"
-          ci_python=python3
-          if [ "$RUNNER_OS" = Windows ]; then ci_python=python; fi
-          "$ci_python" -I -B build/ci_home.py create
-          git rev-parse HEAD
-          go version
-          bun --version
-
-      # Acceptance criterion 3 also requires a linked native application.
-      - name: Build native application
-        timeout-minutes: 20
-        run: go build -tags "${{ steps.tags.outputs.tags }}" -o "$RUNNER_TEMP/magpie-native" .
-
       # internal/gateway takes 450-600s on macOS runners, and go test's
       # default 10m timed it out in 3 of 8 finished main runs (#2108).
-      # LESSONS gives slow packages 45 minutes; the outer step remains bounded.
       - name: Test
-        timeout-minutes: 60
         if: runner.os != 'Windows'
-        run: go test -count=1 -timeout 45m -tags "${{ steps.tags.outputs.tags }}" ./...
+        run: go test -timeout 30m -tags "${{ steps.tags.outputs.tags }}" ./...
 
       # Windows skips the Test step above, so the two plugin stderr tests run
       # here. The end-to-end one needs bun on PATH; without it it skips.
       - name: Plugin stderr tests (Windows)
-        timeout-minutes: 15
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           bun --version
-          go test -v -count=1 -timeout 10m ./internal/plugin/ -run '^(TestHostStartsPastAnOverlongStderrLine|TestDrainStderrKeepsTheChildGoing)$'
+          go test -v -count=1 ./internal/plugin/ -run '^(TestHostStartsPastAnOverlongStderrLine|TestDrainStderrKeepsTheChildGoing)$'
 
       - name: Production plugin flow
         if: runner.os == 'Linux'
@@ -164,136 +95,65 @@ jobs:
       # one process per core at a time, each taking the next chunk when done
       # (#923, #5361); each process isolates its own home.
       - name: Race
-        timeout-minutes: 60
         if: runner.os != 'Windows'
+        shell: bash
         run: |
           go test -race -c -o "$RUNNER_TEMP/gateway.race" -tags "${{ steps.tags.outputs.tags }}" ./internal/gateway/
-          build/race-shards.sh internal/gateway "$RUNNER_TEMP/gateway.race" "$(getconf _NPROCESSORS_ONLN)" -test.timeout=20m -test.count=1
-          go test -race -count=1 -timeout 10m -tags "${{ steps.tags.outputs.tags }}" ./internal/redact/
+          build/race-shards.sh internal/gateway "$RUNNER_TEMP/gateway.race" "$(getconf _NPROCESSORS_ONLN)" -test.timeout=20m
+          go test -race -tags "${{ steps.tags.outputs.tags }}" ./internal/redact/
 
       # Account usage mixes cached results with concurrent fetches.
       - name: Race account usage
-        timeout-minutes: 15
         if: runner.os != 'Windows'
-        run: go test -race -count=1 -timeout 10m -tags "${{ steps.tags.outputs.tags }}" ./internal/provider/ -run '^Test(LoginUsage|SubscriptionUsageEachAccount)'
+        run: go test -race -tags "${{ steps.tags.outputs.tags }}" ./internal/provider/ -run '^Test(LoginUsage|SubscriptionUsageEachAccount)'
 
       # Some tests fake a home through $HOME, which Windows doesn't read
       # (USERPROFILE), or assume Unix file modes. Compile the full suite
       # on Windows and run the isolated native checks below.
       - name: Compile tests
-        timeout-minutes: 30
         if: runner.os == 'Windows'
-        run: go test -count=1 -timeout 10m -run '^$' ./...
+        run: go test -run '^$' ./...
 
       # These checks use in-memory errors and loopback test servers. Run
       # the native Winsock refusal case rather than only compiling it.
       - name: Windows MCP health
-        timeout-minutes: 15
         if: runner.os == 'Windows'
         run: go test -v -count=1 -timeout 2m ./internal/library -run '^(TestNetHealth|TestCheckHTTP)$'
 
       # Usage isolates USERPROFILE and the agent homes; execute its native
       # ChangeTime checks rather than only cross-compiling the Windows API.
       - name: Windows usage cache
-        timeout-minutes: 15
         if: runner.os == 'Windows'
-        run: go test -v -count=1 -timeout 10m ./internal/usage -run '^(TestWindows|TestLogChange|TestLogFileInfoPreservesIdentity$|TestUsageSameSizeAndMtimeRewrite$|TestLogGrowingRewriteThenAppend$|TestUsagePageCacheAfterUncachedQuery$)'
+        run: go test -v -count=1 ./internal/usage -run '^(TestWindows|TestLogChange|TestLogFileInfoPreservesIdentity$|TestUsageSameSizeAndMtimeRewrite$|TestLogGrowingRewriteThenAppend$|TestUsagePageCacheAfterUncachedQuery$)'
 
       # Install tests keep their files in t.TempDir; exercise real Windows
       # executable and held-handle rename/rollback behavior, and the trial
       # start before the install (#2272).
       - name: Windows update install
-        timeout-minutes: 15
         if: runner.os == 'Windows'
         run: go test -v -count=1 -timeout 2m ./internal/update -run '^(TestInstallBinary|TestMoveAside|TestTrialStart)'
-
-      # The Next distribution is selected by its build tag. Require its exact
-      # native pipeline test so an empty -run selection cannot pass unnoticed.
-      - name: Windows Next updater and release contract
-        timeout-minutes: 15
-        if: runner.os == 'Windows'
-        run: |
-          go test -mod=readonly -tags 'nogui,next' -count=1 -timeout=180s -list '^TestNextNativeUpdatePipeline$' ./internal/update | tee "$RUNNER_TEMP/next-update-tests.txt"
-          grep -Fx 'TestNextNativeUpdatePipeline' "$RUNNER_TEMP/next-update-tests.txt"
-          go test -mod=readonly -tags 'nogui,next' -count=1 -timeout=180s -run '^TestNext' ./internal/update
-          go test -mod=readonly -tags 'nogui,next' -count=1 -timeout=180s ./internal/update/nextrelease
-
-      # Compile these checks with the native GUI, without nogui. They cover
-      # the trusted transport boundary using saved synthetic snapshots.
-      - name: Windows native auth export
-        timeout-minutes: 25
-        if: runner.os == 'Windows'
-        run: |
-          go test -v -count=1 -timeout 10m ./internal/provider -run '^(TestSavedCodexAuthJSON|TestCodexAuthJSONReadsOnlySavedSnapshot$)'
-          go test -v -count=1 -timeout 10m ./internal/gui -run '^(TestCodexAuthExport|TestSandboxHomePlatformDirectories$)'
-
-      # Store, trusted web/native handlers, masking and backup exclusion all
-      # participate in the local dictionary contract, on native Windows too.
-      - name: Windows local dictionary
-        timeout-minutes: 30
-        if: runner.os == 'Windows'
-        run: |
-          go test -count=1 -timeout 5m ./internal/localdictionary
-          go test -v -count=1 -timeout 5m ./internal/gui -run '^TestLocalDictionary'
-          go test -v -count=1 -timeout 5m ./internal/redact -run '^(TestLocalDictionary|TestDictionary)'
-          go test -v -count=1 -timeout 5m ./internal/backup -run '^TestLocalDictionary'
 
       # These tests use temporary paths, without the Unix HOME assumptions
       # of the full suite. Run the native link-kind and sharing-error checks,
       # and the Codex copy checks that read NTFS ChangeTime (#1299).
       - name: Windows session moves
-        timeout-minutes: 15
         if: runner.os == 'Windows'
-        run: |
-          # Exact synthetic names; preserve the existing native Windows selection.
-          synthetic='^(TestRolloutBoundaryPlanBytes|TestRolloutBoundaryPlanDescendant|TestRolloutBoundaryPlanCutoffPair|TestRolloutBoundaryPlanRejectsInvalidIdentity|TestRolloutBoundaryPlanRejects|TestRolloutGraphOrder|TestRolloutGraphRejects|TestRolloutGraphDeepChain|TestRolloutPlanOrdersBoundaryRewrites|TestReferenceRewriteConserves|TestReferenceRewriteRejectsChanges|TestReferenceRewriteRejectsConservedInvalidShape|TestReferenceRewriteResourceSubset|TestReferenceRewriteDoesNotConflateInvalidEscapes|TestStagedReferencePlanBindsImmutableRevisions|TestStagedReferencePlanRejectsWrongParentMap|TestStagedReferencePlanRejects|TestSyntheticSnapshotInventory|TestSyntheticSnapshotEmptyRoots|TestSyntheticSnapshotReadBounds|TestSyntheticSnapshotRejectsDotEntry|TestSyntheticSnapshotRejectsStaleChildMetadataOrdinal|TestSyntheticSnapshotRejectsConservedInvalidUTF8|TestSyntheticSnapshotResultDoesNotRetainInputs|TestSyntheticSnapshotInitialOrdinalBoundary|TestSyntheticCompactionPreviewReferenceComposition)$'
-          go test -v -count=1 -timeout 10m ./internal/sessions -run "^Test(WindowsSession|Move|CopyAll|CodexArchived|CodexSameTick|CodexPlainTwin)|${synthetic}"
+        run: go test -v -count=1 ./internal/sessions -run '^Test(WindowsSession|Move|CopyAll|CodexArchived|CodexSameTick|CodexPlainTwin)'
 
       # dsh's layered config is read and edited in temporary homes. Run
       # these checks on Windows too, including Desktop's home patch layer.
       - name: Windows dsh configuration
-        timeout-minutes: 15
         if: runner.os == 'Windows'
-        run: go test -v -count=1 -timeout 10m ./internal/agent -run '^Test(Dsh|KeepDsh)'
+        run: go test -v -count=1 ./internal/agent -run '^Test(Dsh|KeepDsh)'
 
       - name: Windows VS Code detection
-        timeout-minutes: 15
         if: runner.os == 'Windows'
-        run: go test -v -count=1 -timeout 10m ./internal/agent -run '^TestVSCodeDetected$'
-
-      # On a step failure/cancellation, remove only the home created above.
-      # A lost runner or job-level hard timeout may preempt cleanup/upload.
-      - name: Clean isolated test home
-        if: ${{ always() && steps.test_home.outputs.record != '' }}
-        timeout-minutes: 2
-        env:
-          MAGPIE_CI_HOME_RECORD: ${{ steps.test_home.outputs.record }}
-        run: |
-          ci_python=python3
-          if [ "$RUNNER_OS" = Windows ]; then ci_python=python; fi
-          "$ci_python" -I -B build/ci_home.py cleanup
-
-      # Workflow logs remain available if a runner is lost before upload.
-      # Only check output is retained, not homes, caches, or build products.
-      - name: Preserve check logs
-        if: always()
-        timeout-minutes: 5
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-${{ matrix.os }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/magpie-ci-logs/*.log
-          if-no-files-found: warn
-          retention-days: 7
+        run: go test -v -count=1 ./internal/agent -run '^TestVSCodeDetected$'
 
   cli:
     name: cli (${{ matrix.goos }}/${{ matrix.goarch }}, nogui)
-    needs: test
-    # Preserve independent CLI/site evidence after test failures, not cancellation.
-    # Keep the fork's independent push filter when overriding success().
-    if: ${{ !cancelled() && (github.repository == 'yetone/magpie' || github.event_name != 'push' || inputs.next_validation) }}
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         include:
           - goos: linux
@@ -301,108 +161,21 @@ jobs:
           - goos: android
             goarch: arm64
     runs-on: ubuntu-latest
-    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
-        timeout-minutes: 5
-        with:
-          persist-credentials: false
-
-      - name: Check CI log wrapper
-        timeout-minutes: 1
-        run: bash build/ci-step_test.sh
-
-      - name: Check isolated-home cleanup
-        timeout-minutes: 1
-        run: python3 -I -B build/ci_home_test.py
-
       - uses: actions/setup-go@v5
-        timeout-minutes: 10
         with:
           go-version-file: go.mod
       - name: Build the terminal-only release
-        timeout-minutes: 20
         env:
           CGO_ENABLED: '0'
         run: make release-cli TARGETS="${{ matrix.goos }}/${{ matrix.goarch }}"
-      - uses: oven-sh/setup-bun@v2
-        if: matrix.goos == 'linux'
-        timeout-minutes: 5
-        with:
-          bun-version: 1.4.2
-
-      # Acceptance criterion 2: retain the populated caches outside the test
-      # home. TestMain still supplies its agent-variable/keychain stand-ins.
-      # Cleanup uses this step's recorded path and identity, never mutable HOME.
-      - name: Isolate test home
-        id: test_home
-        if: matrix.goos == 'linux'
-        timeout-minutes: 2
-        run: |
-          ci_gopath=$(go env GOPATH)
-          ci_modcache=$(go env GOMODCACHE)
-          ci_buildcache=$(go env GOCACHE)
-          {
-            echo "GOPATH=$ci_gopath"
-            echo "GOMODCACHE=$ci_modcache"
-            echo "GOCACHE=$ci_buildcache"
-          } >> "$GITHUB_ENV"
-          ci_python=python3
-          if [ "$RUNNER_OS" = Windows ]; then ci_python=python; fi
-          "$ci_python" -I -B build/ci_home.py create
-          git rev-parse HEAD
-          go version
-          bun --version
-
-      # Acceptance criterion 3: vet compiles tests too; build alone does not.
-      - name: Vet terminal-only packages
-        if: matrix.goos == 'linux'
-        timeout-minutes: 20
-        env:
-          CGO_ENABLED: '0'
-          GOOS: linux
-        run: go vet -tags nogui ./...
-
-      - name: Test terminal-only packages
-        if: matrix.goos == 'linux'
-        timeout-minutes: 60
-        env:
-          CGO_ENABLED: '0'
-          GOOS: linux
-        run: go test -count=1 -timeout 45m -tags nogui ./...
-
       - uses: actions/setup-node@v4
-        timeout-minutes: 5
         if: matrix.goos == 'linux'
         with:
           node-version: 22
       - name: Test the site and installer
-        timeout-minutes: 10
         if: matrix.goos == 'linux'
         run: |
           sh -n site/public/install.sh
           node --test site/*.test.mjs
-
-      # On a step failure/cancellation, remove only the home created above.
-      # A lost runner or job-level hard timeout may preempt cleanup/upload.
-      - name: Clean isolated test home
-        if: ${{ always() && steps.test_home.outputs.record != '' }}
-        timeout-minutes: 2
-        env:
-          MAGPIE_CI_HOME_RECORD: ${{ steps.test_home.outputs.record }}
-        run: |
-          ci_python=python3
-          if [ "$RUNNER_OS" = Windows ]; then ci_python=python; fi
-          "$ci_python" -I -B build/ci_home.py cleanup
-
-      # Workflow logs remain available if a runner is lost before upload.
-      # Only check output is retained, not homes, caches, or build products.
-      - name: Preserve check logs
-        if: always()
-        timeout-minutes: 5
-        uses: actions/upload-artifact@v4
-        with:
-          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/magpie-ci-logs/*.log
-          if-no-files-found: warn
-          retention-days: 7

@@ -37,8 +37,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"golang.org/x/net/idna"
 )
 
 // Store is the CA kept in Dir: ca.pem, ca-key.pem and clients.json, the
@@ -357,7 +355,7 @@ var saves atomic.Int64
 
 // ServerCert is a server certificate the CA signs for names and ips, with
 // its key: made in memory each time the gateway starts serving, never
-// written. Internationalized DNS names are encoded as ASCII for X.509.
+// written.
 func (s Store) ServerCert(names []string, ips []net.IP) (tls.Certificate, error) {
 	ca, caKey, err := s.CA()
 	if err != nil {
@@ -372,22 +370,6 @@ func (s Store) ServerCert(names []string, ips []net.IP) (tls.Certificate, error)
 	if len(names) > 0 {
 		cn = names[0]
 	}
-	var dnsNames []string
-	for _, name := range names {
-		ascii := name
-		// Match HTTP clients' IDNA lookup for Unicode names, keeping existing
-		// ASCII names (including wildcards) as the caller gave them.
-		if strings.ContainsFunc(name, func(r rune) bool { return r > 127 }) {
-			ascii, err = idna.Lookup.ToASCII(strings.TrimPrefix(name, "*."))
-			if err != nil {
-				return tls.Certificate{}, fmt.Errorf("server certificate DNS name %q: %w", name, err)
-			}
-			if strings.HasPrefix(name, "*.") {
-				ascii = "*." + ascii
-			}
-		}
-		dnsNames = append(dnsNames, ascii)
-	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial(),
 		Subject:      pkix.Name{CommonName: cn, Organization: []string{"magpie"}},
@@ -395,7 +377,7 @@ func (s Store) ServerCert(names []string, ips []net.IP) (tls.Certificate, error)
 		NotAfter:     now.Add(serverLife),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     dnsNames,
+		DNSNames:     names,
 		IPAddresses:  ips,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca, &key.PublicKey, caKey)

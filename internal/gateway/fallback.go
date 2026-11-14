@@ -112,7 +112,9 @@ func (c candidate) unmasked() bool { return provider.UnmaskedBy(c.redact, c.p) }
 // capHold is how an account is held at its usage cap: the cap of the
 // fullest window at or past its own cap, that window's share used, and when the last such window
 // renews (zero when one doesn't say). noCredits: it is a Codex account
-// held at 100% as it is set not to spend its credits (cap is 100 then).
+// held at 100% as it is set not to spend its credits (cap is 100 then),
+// or with extra a Claude account as it is set not to spend extra usage
+// (provider.ClaudeExtraUsage) or its extra usage is at its cap.
 type capHold struct {
 	cap  int
 	used float64
@@ -122,6 +124,7 @@ type capHold struct {
 	unit          string
 	back          time.Time
 	noCredits     bool
+	extra         bool
 	// unread: held by a careful provider as its usage can't be told, why
 	// (carefulDoubt), cap then the account's own
 	unread string
@@ -991,7 +994,8 @@ func ownRouting(p provider.Provider, g provider.Group) bool {
 
 // capHeld is how the account acct of p is held at its usage cap for
 // model at now — a window at or past its own cap, else the account's — or
-// at 100% as a Codex account set not to spend its credits; nil when
+// at 100% as a Codex account set not to spend its credits or a Claude
+// account not to spend extra usage; nil when
 // nothing holds it or every window is below its share. Its windows
 // are those last read (allowances), as smart routing weighs them.
 func capHeld(p, acct provider.Provider, model string, now time.Time) *capHold {
@@ -1021,7 +1025,7 @@ func capHeld(p, acct provider.Provider, model string, now time.Time) *capHold {
 		}
 		return nil
 	}
-	return &capHold{cap: h.Cap, used: h.Used, back: h.Back, noCredits: h.Credits, amount: h.Amount, count: h.Count, unit: h.Unit}
+	return &capHold{cap: h.Cap, used: h.Used, back: h.Back, noCredits: h.Credits, extra: h.Credits && a.Agent == "claude", amount: h.Amount, count: h.Count, unit: h.Unit}
 }
 
 // cappedError says why a request for model went nowhere when every account
@@ -1049,15 +1053,15 @@ func cappedError(model string, ws []Weighed, now time.Time) (string, time.Time) 
 		return msg + "; and " + strings.Join(spends, "; ") + " (to use it, " + spendAdvice + ")", soonest
 	}
 	if unread(ws) {
-		return fmt.Sprintf("usage cap reached: every account that serves %q is held at the usage cap set on it in magpie, or held as its usage can't be told right now — %s. magpie reads it again at the next request and uses it once it is under its cap; %s, or turn off Check usage near the cap (Providers → the provider's accounts, or magpie provider pool <id> --careful off)", model, strings.Join(held, "; "), heldAdvice(capped, noCredits)), soonest
+		return fmt.Sprintf("usage cap reached: every account that serves %q is held at the usage cap set on it in magpie, or held as its usage can't be told right now — %s. magpie reads it again at the next request and uses it once it is under its cap; %s, or turn off Check usage near the cap (Providers → the provider's accounts, or magpie provider pool <id> --careful off)", model, strings.Join(held, "; "), heldAdvice(ws)), soonest
 	}
 	switch {
 	case !noCredits:
-		return fmt.Sprintf("usage cap reached: every account that serves %q is held at the usage cap set on it in magpie — %s. magpie uses it again once that window renews; %s", model, strings.Join(held, "; "), heldAdvice(capped, noCredits)), soonest
+		return fmt.Sprintf("usage cap reached: every account that serves %q is held at the usage cap set on it in magpie — %s. magpie uses it again once that window renews; %s", model, strings.Join(held, "; "), heldAdvice(ws)), soonest
 	case !capped:
-		return fmt.Sprintf("usage limit reached: every account that serves %q has used up its allowance and is set in magpie not to spend its credits — %s. magpie uses it again once that window renews; %s", model, strings.Join(held, "; "), heldAdvice(capped, noCredits)), soonest
+		return fmt.Sprintf("usage limit reached: every account that serves %q has used up its allowance and is set in magpie not to spend %s — %s. magpie uses it again once that window renews; %s", model, notSpent(ws), strings.Join(held, "; "), heldAdvice(ws)), soonest
 	}
-	return fmt.Sprintf("usage limit reached: every account that serves %q is held by magpie — %s. magpie uses it again once that window renews; %s", model, strings.Join(held, "; "), heldAdvice(capped, noCredits)), soonest
+	return fmt.Sprintf("usage limit reached: every account that serves %q is held by magpie — %s. magpie uses it again once that window renews; %s", model, strings.Join(held, "; "), heldAdvice(ws)), soonest
 }
 
 // checkpointCappedError is cappedError for a request whose native
@@ -1066,8 +1070,7 @@ func cappedError(model string, ws []Weighed, now time.Time) (string, time.Time) 
 // not because they are held too (#2517).
 func checkpointCappedError(model string, cp checkpointWriter, ws []Weighed, now time.Time) (string, time.Time) {
 	held, soonest := heldReasons(ws, now)
-	capped, noCredits := heldBy(ws)
-	return fmt.Sprintf("usage limit reached on the one account this conversation can go to — %s. The conversation was compacted natively by %s, and only that key or account can read the compaction it sealed, so magpie doesn't send it to another account that serves %q, which would refuse it; the routing mode and how conversations stay don't change that. magpie uses it again once that window renews; %s, or start a new conversation", strings.Join(held, "; "), cp.Who, model, heldAdvice(capped, noCredits)), soonest
+	return fmt.Sprintf("usage limit reached on the one account this conversation can go to — %s. The conversation was compacted natively by %s, and only that key or account can read the compaction it sealed, so magpie doesn't send it to another account that serves %q, which would refuse it; the routing mode and how conversations stay don't change that. magpie uses it again once that window renews; %s, or start a new conversation", strings.Join(held, "; "), cp.Who, model, heldAdvice(ws)), soonest
 }
 
 // heldReasons is what holds each account of ws held at a share, and the
@@ -1088,6 +1091,9 @@ func heldReasons(ws []Weighed, now time.Time) ([]string, time.Time) {
 		}
 		if w.NoCredits {
 			s = fmt.Sprintf("%s (%s) has used up a usage window and is set not to spend its credits", w.Name, w.Who)
+			if w.ExtraUsage {
+				s = fmt.Sprintf("%s (%s) has used up a usage window and is set not to spend extra usage", w.Name, w.Who)
+			}
 		}
 		if w.Unread != "" {
 			s = fmt.Sprintf("%s (%s) is held, as %s and its provider is set to check usage near the cap", w.Name, w.Who, w.Unread)
@@ -1147,15 +1153,48 @@ func spendPeriod(period string, since *time.Time, now time.Time) string {
 	return "for today"
 }
 
-// heldAdvice is how to go on now past what heldBy says holds.
-func heldAdvice(capped, noCredits bool) string {
-	switch {
-	case !noCredits:
+// heldAdvice is how to go on now past what heldBy says holds, by what
+// ws holds back from being spent: a Codex account's credits, a Claude
+// account's extra usage, or both.
+func heldAdvice(ws []Weighed) string {
+	capped, noCredits := heldBy(ws)
+	if !noCredits {
 		return "raise or lift the cap in magpie (Providers → the account's cap, or magpie provider account-cap)"
-	case !capped:
-		return "to go on now, if an account holds credits, let it spend them (Usage → the account's Use credits, or magpie quota credits <account> on)"
 	}
-	return "to go on now, raise or lift a cap (Providers → the account's cap, or magpie provider account-cap) or, if an account holds credits, let it spend them (Usage → the account's Use credits, or magpie quota credits <account> on)"
+	credits, extra := heldSpends(ws)
+	var let []string
+	if credits {
+		let = append(let, "if an account holds credits, let it spend them (Usage → the account's Use credits, or magpie quota credits <account> on)")
+	}
+	if extra {
+		let = append(let, "let a Claude account spend extra usage (Providers → Claude → Advanced → Spend extra usage on, or magpie settings set claudeNoExtraUsage off) or lift the cap on its Usage credits")
+	}
+	if !capped {
+		return "to go on now, " + strings.Join(let, ", or ")
+	}
+	return "to go on now, raise or lift a cap (Providers → the account's cap, or magpie provider account-cap) or " + strings.Join(let, ", or ")
+}
+
+// heldSpends says what the accounts of ws held at 100% are held from
+// spending: a Codex account's credits, a Claude account's extra usage.
+func heldSpends(ws []Weighed) (credits, extra bool) {
+	for _, w := range ws {
+		if w.Capped > 0 && w.NoCredits {
+			credits, extra = credits || !w.ExtraUsage, extra || w.ExtraUsage
+		}
+	}
+	return credits, extra
+}
+
+// notSpent names what heldSpends says ws's accounts don't spend.
+func notSpent(ws []Weighed) string {
+	switch credits, extra := heldSpends(ws); {
+	case extra && credits:
+		return "its credits or extra usage"
+	case extra:
+		return "extra usage"
+	}
+	return "its credits"
 }
 
 // heldBy says what holds the accounts of ws held at a share: a usage cap
@@ -1176,9 +1215,9 @@ func checkpointCappedRecord(ws []Weighed) string {
 	case !noCredits:
 		return "native compaction's account at its usage cap"
 	case !capped:
-		return "native compaction's account held: set not to spend its credits"
+		return "native compaction's account held: set not to spend " + notSpent(ws)
 	}
-	return "native compaction's account held: at its usage cap or set not to spend its credits"
+	return "native compaction's account held: at its usage cap or set not to spend " + notSpent(ws)
 }
 
 // cappedRecord is the call's record of the same refusal as cappedError,
@@ -1194,9 +1233,9 @@ func cappedRecord(ws []Weighed) string {
 	case !noCredits:
 		return "every account at its usage cap"
 	case !capped:
-		return "every account held: set not to spend its credits"
+		return "every account held: set not to spend " + notSpent(ws)
 	}
-	return "every account held: at its usage cap or set not to spend its credits"
+	return "every account held: at its usage cap or set not to spend " + notSpent(ws)
 }
 
 // unread says whether one of ws is held as its usage can't be told
@@ -1245,7 +1284,7 @@ func barredOf(cs []candidate, q provider.Provider, fallback bool, from provider.
 		w := weighed(c, q, weighing{}, fallback, from)
 		w.Unlisted, w.Via = true, via
 		if h := c.capped; h != nil {
-			w.Capped, w.Used, w.NoCredits, w.Unread = h.cap, h.used, h.noCredits, h.unread
+			w.Capped, w.Used, w.NoCredits, w.ExtraUsage, w.Unread = h.cap, h.used, h.noCredits, h.extra, h.unread
 			w.CapAmount, w.CapCount, w.CapUnit = h.amount, h.count, h.unit
 			if sp := h.spend; sp != nil {
 				w.SpendCap, w.Spent, w.SpendPeriod = sp.usd, sp.spent, sp.period
@@ -1625,7 +1664,7 @@ func restOf(id string) (Rest, bool) {
 
 // quotaWords are how vendors say "out of quota" or "slow down" when their
 // status code doesn't: some answer 400 or 403 with it.
-var quotaWords = lazyre.New(`(?i)quota|insufficient|balance|credit|billing|out of budget|budget (exceeded|exhausted)|exceeded|rate.?limit|usage.?limit|limit.?reached|hit your .*limit|limit.{0,24}resets|too many requests|overloaded|余额|额度|欠费|限流|频率|频繁|速率|套餐|用量|上限`)
+var quotaWords = lazyre.New(`(?i)quota|insufficient|balance|credit|billing|out of budget|budget (exceeded|exhausted)|exceeded|rate.?limit|usage.?limit|limit.?reached|(?:hit|reached) your .*limit|limit.{0,24}resets|too many requests|overloaded|余额|额度|欠费|限流|频率|频繁|速率|套餐|用量|上限`)
 
 // quotaSaid is whether an error's words, with no status to go by, say
 // out of quota or slow down: quotaWords, unless they say the conversation
@@ -1697,7 +1736,7 @@ func codeAssistModelMissing(p provider.Provider, status int, body []byte) bool {
 	if p.Account.Agent != "antigravity" && p.Account.Agent != "gemini" {
 		return false
 	}
-	return bytes.Contains(body, []byte("NOT_FOUND")) || bytes.Contains(bytes.ToLower(body), []byte("not found"))
+	return bodyHas(body, "NOT_FOUND") || bodyHas(bytes.ToLower(body), "not found")
 }
 
 // retiredWords are how a vendor says the model is retired, though its
@@ -1745,7 +1784,13 @@ var zenModelGone = lazyre.New(`(^|[\s:"])Model [^"\s]+ is not supported("|\s*$)`
 // client at all — WorkBuddy's "Illegal API invocation from an unapproved
 // channel" to a chat opening with another agent's own system prompt — a
 // refusal of the provider, not of the request, another member may serve.
-var refusedWords = lazyre.New(`(?i)unapproved channel|illegal api invocation`)
+// The AutoClaw plugin's 406 says it in its own words: "AutoClaw refuses
+// chats whose system prompt carries another agent's identity line …, so an
+// unknown one needs another provider in this group". Read as anything
+// else, the group stopped at AutoClaw, and its six other members, which
+// take the same prompt, were never asked (plugins#1094: ZCode's subagent
+// line).
+var refusedWords = lazyre.New(`(?i)unapproved channel|illegal api invocation|system prompt carries another agent's identity line`)
 
 // promptRefused says a vendor answered with that refusal: the agent's
 // prompt, not the account, is at fault.
@@ -1760,7 +1805,9 @@ func promptRefused(status int, body []byte) bool {
 // JSON schema: OpenCode Go's 400 "JSON schema exceeds the maximum nesting
 // depth of 10 levels" on muse-spark-1.3-contributor for Claude Code's MCP
 // tools (#1870), which another member's model may take as they are; and a
-// custom tool turned away (customToolRefusal, DeepSeek's "Unsupported
+// Huawei CodeArts's HTTP 200 "The request param is invalid" over a
+// parameter it can't take, InferHub.001001005.400 (a `stop` array, #6342),
+// which the plugin now sends as a string; and a custom tool turned away (customToolRefusal, DeepSeek's "Unsupported
 // custom tool: 'exec'", #2656) where no translation took it in. A
 // request missing what every API requires ("field required") or too long
 // for the model isn't one. Google's refusal of a function declaration's
@@ -1775,7 +1822,7 @@ func promptRefused(status int, body []byte) bool {
 // the only field set." (#5374, worksyang) — a description beside an
 // anyOf, which Google's Schema takes alone, the reporter's same tools
 // another member took.
-var shapeWords = lazyre.New(`(?i)failed to deserialize|unknown (item |content |input )?(type|variant|field|parameter)|unknown_parameter|unrecognized (request argument|field|parameter)|extra (inputs|fields) are not permitted|additional properties are not allowed|schema exceeds the maximum (nesting )?depth|schema[^"]{0,60}\bnesting depth\b|function_declarations\[\d+\]\.parameters\b|schema specified other fields alongside any_?of`)
+var shapeWords = lazyre.New(`(?i)failed to deserialize|unknown (item |content |input )?(type|variant|field|parameter)|unknown_parameter|unrecognized (request argument|field|parameter)|extra (inputs|fields) are not permitted|additional properties are not allowed|schema exceeds the maximum (nesting )?depth|schema[^"]{0,60}\bnesting depth\b|function_declarations\[\d+\]\.parameters\b|schema specified other fields alongside any_?of|InferHub\.001001005\.400`)
 
 // unsaidWords are Command Code's Provider API turning a request away with
 // nothing but a trace id: {"message":"invalid request error trace_id:
@@ -2015,6 +2062,11 @@ func retryable(status int, body []byte) bool {
 		// 6,467 points and the empty one was never rested (#4095,
 		// mycf_711)
 		return true
+	case status >= 400 && status < 500 && refusedWords.Match(body):
+		// the vendor turning the agent's prompt away, at whatever 4xx it
+		// picks: the AutoClaw plugin's 406 (plugins#1094) as much as
+		// WorkBuddy's 400. Another member may take the same prompt
+		return true
 	case status == 400, status == 422:
 		return quotaWords.Match(body) || unservedWords.Match(body) || refusedWords.Match(body) || shapeWords.Match(body) || unsaidWords.Match(body) || regionWords.Match(body) || zhipuImageRefusal.Match(body) || wrongEndpoint(status, body) ||
 			// a relay's own word that the provider behind it turned the
@@ -2183,7 +2235,7 @@ var transportWords = lazyre.New(`(?i)dial (tcp|udp)|connectex|wsarecv|wsasend|i/
 // broke off or said nothing.
 func transportFailed(body []byte) bool {
 	return transportWords.Match(body) || bytes.Contains(body, []byte(errEndedShort.Error())) ||
-		bytes.Contains(body, []byte(didNotStream)) || magpieSaid(string(body))
+		bodyHas(body, didNotStream) || magpieSaid(string(body))
 }
 
 // noteHeld keeps n as the most prompt tokens the provider's model has
@@ -2292,12 +2344,20 @@ func passing(status int, header http.Header, body []byte, again int) (time.Durat
 	case wait > longestPause:
 		return 0, false
 	case busyStatus(status):
-		if bytes.Contains(body, []byte(didNotStream)) || bytes.Contains(body, []byte(cutVoidWords)) {
+		if bodyHas(body, didNotStream) || bodyHas(body, cutVoidWords) {
 			// a void cut at its length fails the same every ask: the
 			// budget went to reasoning, and mostly would again — the same
 			// one asked again would burn it twice over before the error
 			// (#2972). A group's next member still is.
 			return 0, false
+		}
+		if bodyHas(body, emptyReply) {
+			// a model that answered nothing was asked again in place
+			// already (emptyRetries); asking the whole request again as
+			// often as a vendor's outage multiplied the two, nine asks of a
+			// minute each for one turn (fwxkogaia on X: 170 to 230s
+			// before the 502). Once more, for a try that was not.
+			return wait, again < 1
 		}
 		return wait, again < lastRetries
 	case status == 429:
@@ -2974,7 +3034,7 @@ func (h *holdWriter) see(b []byte) {
 		buf = append([]byte{'\n'}, b...) // the stream starts a line
 	}
 	for _, m := range streamEnds {
-		if bytes.Contains(buf, m) {
+		if bodyHasBytes(buf, m) {
 			h.ended = true
 			return
 		}
@@ -3431,9 +3491,9 @@ func (h *holdWriter) refusalAfter(b []byte) {
 // too — the cost of missing one, a call the agent would run beside the
 // next member's, is the greater.
 func mayCall(b []byte) bool {
-	return bytes.Contains(b, []byte(`"tool_calls"`)) ||
-		bytes.Contains(b, []byte(`"tool_use"`)) ||
-		bytes.Contains(b, []byte(`"function_call"`))
+	return bodyHas(b, `"tool_calls"`) ||
+		bodyHas(b, `"tool_use"`) ||
+		bodyHas(b, `"function_call"`)
 }
 
 // mayRefuse is whether an event may be the safety filter's refusal, by the
@@ -3441,7 +3501,7 @@ func mayCall(b []byte) bool {
 // a reply that has begun goes through this.
 func mayRefuse(ev []byte) bool {
 	for _, w := range refusalSays {
-		if bytes.Contains(ev, w) {
+		if bodyHasBytes(ev, w) {
 			return true
 		}
 	}
@@ -3808,7 +3868,7 @@ func (h *holdWriter) started() bool {
 // for a reply wanted whole (wantWhole), no answer (#2274). A filter's
 // reason is a refusal, read before this (streamEvent).
 func endedIncomplete(ev []byte) (string, bool) {
-	if !bytes.Contains(ev, []byte("incomplete")) {
+	if !bodyHas(ev, "incomplete") {
 		return "", false
 	}
 	var data []byte
@@ -4188,7 +4248,7 @@ func streamEvent(ev []byte) (kind, status int, msg string) {
 					thinks = true // its reasoning, said to nobody yet
 					continue
 				}
-				if json.Unmarshal(p, &part) != nil || part.Text != "" || !bytes.Contains(p, []byte(`"text"`)) {
+				if json.Unmarshal(p, &part) != nil || part.Text != "" || !bodyHas(p, `"text"`) {
 					return eventContent, 0, "" // text, or a call
 				}
 			}
@@ -4214,7 +4274,7 @@ func streamEvent(ev []byte) (kind, status int, msg string) {
 		// safety buffering, moderation, a verification it recommends.
 		// Taken for content, it let the stream through, and the
 		// response.failed bio_policy after it went to Codex (#248)
-		if bytes.Contains(data, []byte(`"safety_buffering"`)) {
+		if bodyHas(data, `"safety_buffering"`) {
 			return eventBuffering, 0, ""
 		}
 		return eventLead, 0, ""

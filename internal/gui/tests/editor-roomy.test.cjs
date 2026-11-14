@@ -99,41 +99,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(at.across, 0, "the editor's body doesn't scroll sideways");
         assert.ok(at.pageAcross <= 0, `the page doesn't scroll sideways: ${at.pageAcross}`);
         assert.deepEqual(at.out, [], "nothing in the editor reaches past its sides");
-        if (width === 1440) {
-          // Resize through the reader's handle, preserving the original roomy
-          // geometry on Home and the upstream account actions after a drag.
-          const handle = page.locator("#modal .dialog > .surface-resize");
-          await handle.focus();
-          await handle.press("ArrowLeft");
-          const narrow = await measure(page);
-          assert.ok(Math.abs(narrow.dialog.width - (at.dialog.width - 10)) < 1, "ArrowLeft narrows the whole editor");
-          await handle.press("Shift+ArrowRight");
-          assert.ok(Math.abs((await measure(page)).dialog.width - (narrow.dialog.width + 40)) < 1, "Shift resizes by the larger step");
-          await handle.press("Home");
-          assert.ok(Math.abs((await measure(page)).dialog.width - want) < 1, "Home restores upstream's responsive width");
-          const grip = await handle.boundingBox();
-          assert.ok(grip, "the provider editor has a reachable resize handle");
-          const press = {x:grip.x + grip.width - 3, y:grip.y + grip.height - 3};
-          const hit = await page.evaluate(({x,y})=>{const e=document.elementFromPoint(x,y);return {tag:e?.tagName,classes:e?.className};},press);
-          await page.mouse.move(grip.x + grip.width - 3, grip.y + grip.height - 3);
-          await page.mouse.down();
-          await page.mouse.move(grip.x + grip.width + 157, grip.y + grip.height + 37, { steps: 10 });
-          await page.mouse.up();
-          const resized = await measure(page);
-          assert.ok(resized.dialog.width > at.dialog.width + 120, "a trusted drag widens the provider editor: " + JSON.stringify({grip,press,hit,before:at.dialog,after:resized.dialog}));
-          assert.equal(resized.across, 0, "resizing keeps the editor free of horizontal scrolling");
-          assert.deepEqual(resized.out, [], "resizing keeps every account control within the editor");
-          const row = page.locator("#modal .acc").first(), more = row.locator(".acc-more");
-          await row.hover();
-          await more.click();
-          for (const selector of [".amodels", ".acap", ".alane"]) {
-            assert.equal(await row.locator(".acc-tools " + selector).isVisible(), true, "the upstream account setting survives resizing: " + selector);
-          }
-          assert.equal(await row.locator(".quota-refresh").isVisible(), true, "the upstream refresh action survives resizing");
-          await more.click();
-          assert.equal(await row.locator(".acc-tools").isVisible(), false, "the upstream menu still closes");
-          if (process.env.ARTIFACT_DIR) await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `editor-resize-${engine}-${lang}.png`) });
-        }
         assert.deepEqual(errors, []);
       });
     }

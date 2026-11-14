@@ -28,9 +28,6 @@ type Note struct {
 // NotesFeed is where the notes of past releases are listed: beside the
 // update feed, on magpie's site. MAGPIE_NOTES_FEED points it elsewhere.
 func NotesFeed() string {
-	if nextDistribution {
-		return nextFeed
-	}
 	if f := os.Getenv("MAGPIE_NOTES_FEED"); f != "" {
 		return f
 	}
@@ -40,9 +37,6 @@ func NotesFeed() string {
 // ReleasePage is version's page on GitHub, where its notes are when the
 // site can't give them (#661).
 func ReleasePage(version string) string {
-	if nextDistribution {
-		return Site
-	}
 	return "https://github.com/yetone/magpie-releases/releases/tag/v" + strings.TrimPrefix(strings.TrimSpace(version), "v")
 }
 
@@ -58,13 +52,6 @@ func NotesBetween(ctx context.Context, after, upto, lang string) ([]Note, error)
 // all before MostNotes keeps the newest, so a list cut short can say so
 // (sujingshen on X: 156 releases behind read "40 releases").
 func NotesBetweenTotal(ctx context.Context, after, upto, lang string) ([]Note, int, error) {
-	if nextDistribution {
-		notes, err := nextNotes(ctx, after, upto, lang)
-		if err != nil {
-			return nil, 0, err
-		}
-		return capNotes(notes), len(notes), nil
-	}
 	q := url.Values{"upto": {upto}}
 	if after != "" {
 		q.Set("after", after)
@@ -86,13 +73,6 @@ var BackCounts = []int{10, 20, 50, 100}
 // it, newest first, in lang. The site is asked for those alone (limit); one
 // from before it took a limit sends them all, and Back keeps n+1.
 func NotesBack(ctx context.Context, upto string, n int, lang string) ([]Note, error) {
-	if nextDistribution {
-		notes, err := nextNotes(ctx, "", upto, lang)
-		if err != nil {
-			return nil, err
-		}
-		return Back(notes, upto, n), nil
-	}
 	notes, err := askNotes(ctx, url.Values{"upto": {upto}, "limit": {strconv.Itoa(n + 1)}}, lang)
 	if err != nil {
 		return nil, err

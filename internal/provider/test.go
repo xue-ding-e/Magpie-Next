@@ -14,7 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
-	neturl "net/url"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -136,7 +136,6 @@ func tiny(q Provider, proto Protocol, model string) (url, body string) {
 	}
 	if q.OpenCodeFree(model) && body != "" {
 		url, body = OpenCodeFreeURL(url, proto), zenFreeProbe(proto, body)
-		body = string(q.OpenCodeDeepSeekBody(proto, []byte(body)))
 	}
 	if q.IsCline() && body != "" {
 		body = clineProbe(body)
@@ -264,7 +263,7 @@ func tinyBody(q Provider, proto Protocol, model string) (url, body string) {
 			// Factory's generate route. droid sends no stream field.
 			return q.Base(Gemini) + "/generate", fmt.Sprintf(`{"model":%q,"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`, model)
 		}
-		return q.Gemini + GeminiPath(model, false), `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":16}}`
+		return q.Base(Gemini) + GeminiPath(model, false), `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":16}}`
 	}
 	return "", ""
 }
@@ -321,7 +320,7 @@ func hostOnly(err error) bool {
 }
 
 // hostPort is u's host with its port, the scheme's when none is written.
-func hostPort(u *neturl.URL) string {
+func hostPort(u *url.URL) string {
 	if u.Port() != "" {
 		return u.Host
 	}
@@ -426,9 +425,24 @@ func (p Provider) testOne(ctx context.Context, model string) Result {
 	// (AccountsFor; #4992, scutken: a newapi pool's grok-4.7, served by
 	// its third account alone, was asked of the first and failed 503 "no
 	// available channel" while real requests were answered)
-	acct, ok := p.accountFor(model)
-	if !ok {
-		return Result{Model: model, Error: "every account that's on is set not to serve this model"}
+	var acct Provider
+	if ref := testOnRef(ctx); ref != "" && p.Account != nil {
+		// the account the user picked to test (TestOn)
+		var found bool
+		if acct, found = p.accountNamed(ref); !found {
+			return Result{Model: model, Error: fmt.Sprintf("no account %q that's on", ref)}
+		}
+	} else if ref != "" {
+		var found bool
+		if p, found = p.keyNamed(ref); !found {
+			return Result{Model: model, Error: "no such key that's on"}
+		}
+		acct = p
+	} else {
+		var ok bool
+		if acct, ok = p.accountFor(model); !ok {
+			return Result{Model: model, Error: "every account that's on is set not to serve this model"}
+		}
 	}
 	ctx, p = p.loggedAs(ctx, acct), acct
 	if p.isClaudeAccount() {
@@ -790,6 +804,14 @@ func (p Provider) ownRequests(ctx context.Context, kind string) context.Context 
 // write the status alone, so a failed test's row said nothing of why
 // (ysm119 on Discord: "no answer", and no error to find anywhere).
 func probe(ctx context.Context, p Provider, proto Protocol, url string, body []byte, model string, wait time.Duration) Result {
+	r := probeRetried(ctx, p, proto, url, body, model, wait)
+	if r.Account == "" {
+		r.Account = p.testedAccount()
+	}
+	return r
+}
+
+func probeRetried(ctx context.Context, p Provider, proto Protocol, url string, body []byte, model string, wait time.Duration) Result {
 	r := probeAt(ctx, p, proto, url, body, model, wait)
 	if r.Status != http.StatusNotFound {
 		return r
@@ -854,15 +876,6 @@ func probeOnce(ctx context.Context, p Provider, proto Protocol, url string, body
 	r = Result{Protocol: proto, Model: model}
 	if model == "" {
 		r.Error = "no model to try: expose one, or refresh the model list"
-		return r
-	}
-	endpoint, err := neturl.Parse(url)
-	if err != nil {
-		r.Error = err.Error()
-		return r
-	}
-	if err := RequireAllowedModel(OutboundModel(proto, endpoint, body)); err != nil {
-		r.Error = err.Error()
 		return r
 	}
 	if p.IsPlugin() {
@@ -932,10 +945,6 @@ func probeOnce(ctx context.Context, p Provider, proto Protocol, url string, body
 		req.Header.Set(WaitHeader, strconv.Itoa(int(wait/time.Second)))
 	}
 	if err := p.Sign(ctx, req, proto, body); err != nil {
-		r.Error = err.Error()
-		return r
-	}
-	if err := RequireAllowedModel(OutboundModel(proto, req.URL, body)); err != nil {
 		r.Error = err.Error()
 		return r
 	}
@@ -1234,7 +1243,7 @@ func Verification(b []byte) (link string, ok bool) {
 			link = string(m[1])
 		}
 	}
-	if u, err := neturl.Parse(link); err != nil || u.Scheme != "https" || u.Host == "" {
+	if u, err := url.Parse(link); err != nil || u.Scheme != "https" || u.Host == "" {
 		link = ""
 	}
 	return link, true
@@ -1246,7 +1255,7 @@ func learnMore(desc, link string) bool {
 	if strings.EqualFold(strings.TrimSpace(desc), "learn more") {
 		return true
 	}
-	u, err := neturl.Parse(link)
+	u, err := url.Parse(link)
 	return err == nil && u.Hostname() == "support.google.com"
 }
 
@@ -1329,9 +1338,12 @@ func apiError(b []byte, fallback string) string {
 		}
 		var e struct {
 			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    any    `json:"code"`
+			Param   string `json:"param"`
 		}
 		if json.Unmarshal(v.Error, &e) == nil && e.Message != "" {
-			return e.Message
+			return withErrorFields(e.Message, e.Type, e.Code, e.Param)
 		}
 		var s string
 		if json.Unmarshal(v.Error, &s) == nil && s != "" {
@@ -1400,6 +1412,30 @@ func PageTitle(b []byte) string {
 
 // tagRe is a markup tag, taken out of a title that holds one.
 var tagRe = lazyre.New(`<[^>]*>`)
+
+// withErrorFields is a vendor's message with the error's own type, code
+// and param after it when the message is only an HTTP status's text
+// ("Bad Request"), which says nothing of what the vendor refused; any
+// other message says it already.
+func withErrorFields(msg, typ string, code any, param string) string {
+	if !statusLine(strings.TrimSpace(msg)) {
+		return msg
+	}
+	var f []string
+	c := ""
+	if code != nil {
+		c = fmt.Sprint(code)
+	}
+	for _, x := range []string{typ, c, param} {
+		if x != "" && !slices.Contains(f, x) {
+			f = append(f, x)
+		}
+	}
+	if len(f) == 0 {
+		return msg
+	}
+	return msg + " (" + strings.Join(f, ", ") + ")"
+}
 
 // statusLine says a fallback is an HTTP error's status ("403 Forbidden",
 // or its text alone, "Forbidden"), what an error body was answered with,

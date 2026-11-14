@@ -8,12 +8,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync/atomic"
 	"syscall"
 	"testing"
 
-	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/update"
 )
@@ -25,16 +23,6 @@ import (
 // a check asked for tries it once more.
 func TestUpdateThatWontStart(t *testing.T) {
 	body := []byte("new magpie")
-	if runtime.GOOS == "windows" {
-		// InstallBinary now validates the PE image before the relaunch hook.
-		// Windows only maps this signed system image suspended, then ends it;
-		// none of cmd's code runs. The hook below still models the later block.
-		var err error
-		body, err = os.ReadFile(filepath.Join(appdir.Getenv("SystemRoot"), "System32", "cmd.exe"))
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
 	sum := sha256.Sum256(body)
 	var downloads atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

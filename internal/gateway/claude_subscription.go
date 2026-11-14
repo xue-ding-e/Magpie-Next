@@ -88,6 +88,11 @@ type subscriptionBridge struct {
 	// finds no run
 	lost      map[string]lostRun
 	lostCalls map[string]lostRun
+	// ended are runs that ended during a turn, their sessions kept for a
+	// branch to be cut from (keepEnded, #6528); stopping says the gateway
+	// stops, and keeps none
+	ended    map[*subscriptionRun]endedRun
+	stopping bool
 	// untrusted are callers' folders, by account folder, whose
 	// interactive Claude Code asked whether to trust them, and when: a
 	// run for one goes in magpie's own folder until untrustedFor has
@@ -297,6 +302,12 @@ type subscriptionRun struct {
 	// came after, and Claude Code's resume goes on from them, whatever the
 	// taken-back turn's own still sit above (shelve)
 	replied bool
+	// fromLen is how long the file of the saved session it was started
+	// from (unshelve, a branch, a replayed transcript) was as it started,
+	// until it answers a turn whole: the conversation as it stood before
+	// its first turn, which a turn refused for the account's limit is
+	// cut back to (keepForReset, #6292)
+	fromLen int64
 
 	// effort is the level its Claude Code thinks at, as it started (its
 	// --effort) or was told since (setEffort, setTUIEffort); "" is Claude
@@ -1147,8 +1158,10 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 			defer from.discard() // unless the run took it
 		}
 	}
+	var fromLen int64
 	if from != nil {
 		args = append(args, "--resume", from.session)
+		fromLen = from.size()
 	} else if hasReply(req.Messages) {
 		// no run had the conversation: this one is told it whole, in one
 		// message, its earlier turns marked as such (renderClaudePrompt)
@@ -1396,7 +1409,7 @@ func (b *subscriptionBridge) startRun(ctx context.Context, req *Request, model, 
 		// for it
 		from.taken()
 		run.mu.Lock()
-		run.sessionID = from.session
+		run.sessionID, run.fromLen = from.session, fromLen
 		run.mu.Unlock()
 	}
 	line, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": prompt}})
@@ -2029,6 +2042,7 @@ func (b *subscriptionBridge) resume(req *Request, owner string) (*subscriptionRu
 	run.segment = ch
 	run.active = time.Now()
 	run.turnUUID, run.backKey, run.backLine, run.backMsg = turn, key, run.lastLine, run.lastMsg
+	run.fromLen = 0 // it answered a turn since it started: its lines say where the conversation stood
 	run.allowed = allowedTools(req)
 	run.mu.Unlock()
 	run.endIn(runTimeout)
@@ -2527,8 +2541,12 @@ type savedSession struct {
 	loose      *looseTurn
 	tools      map[string]bool // the tools its agent was told of
 	at         time.Time       // since when it waits
-	timer      *time.Timer
-	since      []Message // the turn's messages, once unshelved
+	// until, when set, is when it is let go, in place of idleLongest
+	// after at: a session kept past a turn refused for the account's
+	// limit waits for the limit to reset (keepForReset, #6292)
+	until time.Time
+	timer *time.Timer
+	since []Message // the turn's messages, once unshelved
 	// cut, for a branch of a live run's session (branch), is the line it
 	// is cut after: the run that takes it resumes a copy of the session
 	// as far as that line (cutSession), and the file stays the run's
@@ -2581,7 +2599,15 @@ func (b *subscriptionBridge) shelve(run *subscriptionRun) {
 	run.mu.Lock()
 	run.shelved = true
 	run.mu.Unlock()
-	s.timer = time.AfterFunc(idleLongest-time.Since(s.at), func() {
+	b.shelfTimer(s)
+	b.trimShelf()
+}
+
+// shelfTimer lets s go from the shelf once it has waited as long as it
+// may (expires), b.mu held or not.
+func (b *subscriptionBridge) shelfTimer(s *savedSession) {
+	key := s.key
+	s.timer = time.AfterFunc(max(time.Until(s.expires()), 0), func() {
 		b.mu.Lock()
 		if b.shelf[key] == s {
 			delete(b.shelf, key)
@@ -2589,6 +2615,20 @@ func (b *subscriptionBridge) shelve(run *subscriptionRun) {
 		b.mu.Unlock()
 		s.discard()
 	})
+}
+
+// expires is when s is let go: until when set, else idleLongest after it
+// began to wait, as its run would have been.
+func (s *savedSession) expires() time.Time {
+	if !s.until.IsZero() {
+		return s.until
+	}
+	return s.at.Add(idleLongest)
+}
+
+// trimShelf lets the longest waiting go while the shelf holds more than
+// shelfMost (b.mu held).
+func (b *subscriptionBridge) trimShelf() {
 	for len(b.shelf) > shelfMost {
 		var oldKey string
 		var oldest *savedSession
@@ -2612,6 +2652,12 @@ func (b *subscriptionBridge) unshelve(req *Request, owner string) *savedSession 
 	}
 	b.mu.Lock()
 	s, behind := b.shelf[key], false
+	if s == nil {
+		b.mu.Unlock()
+		b.loadShelf() // what a gateway that ended left (#6292)
+		b.mu.Lock()
+		s = b.shelf[key]
+	}
 	if s == nil {
 		// rewritten (resume); its Claude Code is told the tools the
 		// client offers now, and the session keeps the calls made of
@@ -2766,21 +2812,27 @@ func (b *subscriptionBridge) branch(req *Request, owner string) (*savedSession, 
 	pending := len(calls) == 0
 	told := historyKey(msgs[:k])
 	b.mu.Lock()
-	runs := make([]*subscriptionRun, 0, len(b.runs))
+	runs := make([]*subscriptionRun, 0, len(b.runs)+len(b.ended))
 	for _, run := range b.runs {
 		runs = append(runs, run)
 	}
+	// then the runs that ended with their sessions kept (#6528), the
+	// latest first: a call's results that came after its run ended
+	ended := b.endedRuns()
+	runs = append(runs, endedLatestFirst(ended)...)
 	b.mu.Unlock()
 	why := "no run of the account made the calls"
 	if pending {
 		why = "the reply has no call, and no run waits on a reply to this conversation"
 	}
 	var found *savedSession
+	var foundEnded *subscriptionRun
 	foundSeq := 0
 	for _, run := range runs {
 		if run.owned() != owner {
 			continue
 		}
+		_, gone := ended[run]
 		run.mu.Lock()
 		at, seq, said := "", 0, ""
 		var unread []string // pending calls whose line isn't read yet
@@ -2814,7 +2866,8 @@ func (b *subscriptionBridge) branch(req *Request, owner string) (*savedSession, 
 			}
 		}
 		sid, sessions, prefix := run.sessionID, slices.Clone(run.sessions), run.cachePrefix
-		usable := !run.closed && !run.rewound && run.lean == req.leanPrompt && !run.clientMarks && (run.tui || !wantTUI(req))
+		// a run that ended is closed, its session kept as it left it
+		usable := (gone || !run.closed) && !run.rewound && run.lean == req.leanPrompt && !run.clientMarks && (run.tui || !wantTUI(req))
 		run.mu.Unlock()
 		if at == "" && len(unread) == 0 {
 			continue
@@ -2831,6 +2884,10 @@ func (b *subscriptionBridge) branch(req *Request, owner string) (*savedSession, 
 				continue
 			}
 			found, foundSeq = &savedSession{session: sid, sessions: sessions, owner: owner, at: time.Now(), since: msgs[i:], cut: at, cutCalls: unread, cutBefore: pending, tui: run.tui, appended: run.appended, cachePrefix: prefix, gone: true}, seq
+			foundEnded = nil
+			if gone {
+				foundEnded = run
+			}
 		}
 		if !pending {
 			break
@@ -2839,7 +2896,17 @@ func (b *subscriptionBridge) branch(req *Request, owner string) (*savedSession, 
 	if found == nil {
 		return nil, why
 	}
+	if foundEnded != nil {
+		log.Printf("claude: the run this conversation goes on from ended %s ago (%s); its session, kept since, is branched", time.Since(ended[foundEnded]).Round(time.Second), foundEnded.whyLost())
+	}
 	return found, ""
+}
+
+// endedLatestFirst is the ended runs, the one that ended last first.
+func endedLatestFirst(ended map[*subscriptionRun]time.Time) []*subscriptionRun {
+	runs := slices.Collect(maps.Keys(ended))
+	slices.SortFunc(runs, func(a, b *subscriptionRun) int { return ended[b].Compare(ended[a]) })
+	return runs
 }
 
 // retryBranch is where a turn sent again while its run is busy answering
@@ -2874,14 +2941,26 @@ func (b *subscriptionBridge) retryBranch(req *Request, owner string) *savedSessi
 		}
 		runs = append(runs, run)
 	}
+	// a run that ended answering the very turn (#6528): its client went
+	// away mid-reply, a turn the interactive mode can't take back (letGo),
+	// and the client's retry comes after; it ended busy, not waiting for a
+	// next turn (idleKey)
+	ended := b.endedRuns()
+	for run := range ended {
+		if run.owned() == owner && run.idleKey == "" && run.convKey != "" && slices.Contains(keys, run.convKey) {
+			runs = append(runs, run)
+		}
+	}
 	b.mu.Unlock()
 	var found *savedSession
+	var foundEnded *subscriptionRun
 	var at time.Time
 	for _, run := range runs {
+		_, gone := ended[run]
 		run.mu.Lock()
 		// the very turn, not one that goes on from it (follows): a turn
 		// whose reply the client has is no retry of it
-		busy := !run.closed && run.rewinding == nil && !run.rewound && run.lean == req.leanPrompt &&
+		busy := (gone || !run.closed) && run.rewinding == nil && !run.rewound && run.lean == req.leanPrompt &&
 			!run.clientMarks && (run.tui || !wantTUI(req)) && run.told == want
 		sid, sessions, backLine, backMsg, appended, tui, prefix := run.sessionID, slices.Clone(run.sessions), run.backLine, run.backMsg, run.appended, run.tui, run.cachePrefix
 		started := run.started
@@ -2901,9 +2980,17 @@ func (b *subscriptionBridge) retryBranch(req *Request, owner string) *savedSessi
 			found.discard() // a newer run's copy is taken: the older one's goes
 		}
 		found, at = &savedSession{session: cut, sessions: sessions, owner: owner, at: time.Now(), since: since, tui: tui, appended: appended, cachePrefix: prefix}, started
+		foundEnded = nil
+		if gone {
+			foundEnded = run
+		}
 	}
 	if found == nil {
 		return nil
+	}
+	if foundEnded != nil {
+		log.Printf("claude: a turn sent again after its run ended answering it (%s ago: %s) goes on in a branch of the session kept, cut before the turn", time.Since(ended[foundEnded]).Round(time.Second), foundEnded.whyLost())
+		return found
 	}
 	log.Printf("claude: a turn sent again while its run is busy answering it goes on in a branch of its session, cut before the turn")
 	return found
@@ -3010,7 +3097,7 @@ func cutAfterReply(b []byte, msg string) int {
 		}
 		line := b[at : at+nl]
 		at += nl + 1
-		if !bytes.Contains(line, mark) {
+		if !bodyHasBytes(line, mark) {
 			continue
 		}
 		var l struct {
@@ -3066,7 +3153,7 @@ func cutBeforeCalls(b []byte, ids []string) int {
 		start := at
 		at += nl + 1
 		for _, id := range ids {
-			if bytes.Contains(line, []byte(`"id":"`+id+`"`)) {
+			if bodyHas(line, `"id":"`+id+`"`) {
 				return start
 			}
 		}
@@ -3119,7 +3206,7 @@ func cutAfter(b, mark []byte, uuid string) int {
 		}
 		line := b[at : at+nl]
 		at += nl + 1
-		if !bytes.Contains(line, mark) {
+		if !bodyHasBytes(line, mark) {
 			continue
 		}
 		var l struct {
@@ -3150,6 +3237,16 @@ func (s *savedSession) saved() bool {
 		}
 	}
 	return false
+}
+
+// size is how long its session's file is, 0 when it isn't there.
+func (s *savedSession) size() int64 {
+	for _, dir := range s.sessions {
+		if fi, err := os.Stat(filepath.Join(dir, s.session+".jsonl")); err == nil {
+			return fi.Size()
+		}
+	}
+	return 0
 }
 
 // taken hands the session to the run that goes on with it.
@@ -3909,7 +4006,7 @@ type lockedWriter struct{ run *subscriptionRun }
 func (w *lockedWriter) Write(p []byte) (int, error) {
 	// the interactive mode's helper says on its own line why it ended
 	// (claudetui.Run)
-	if bytes.Contains(p, []byte("claude-tui: ")) {
+	if bodyHas(p, "claude-tui: ") {
 		for _, l := range strings.Split(string(p), "\n") {
 			if why, ok := strings.CutPrefix(l, "claude-tui: "); ok {
 				log.Printf("claude: %s", why)
@@ -5818,6 +5915,10 @@ func saidWithResults(msgs []Message) string {
 // </task-notification>.
 var taskNotice = lazyre.New(`(?s)(?:\[SYSTEM NOTIFICATION - NOT USER INPUT\][^<]*)?<task-notification>.*?</task-notification>`)
 
+// taskOrAgentMsg is a task notification (taskNotice) or an agent's message
+// (<agent-message from="…">…</agent-message>), in the order they came.
+var taskOrAgentMsg = lazyre.New(`(?s)(?:\[SYSTEM NOTIFICATION - NOT USER INPUT\][^<]*)?<task-notification>.*?</task-notification>|<agent-message\b[^>]*>.*?</agent-message>`)
+
 // withTaskNotices hands the run the notifications of background tasks
 // that came after the results (taskNotice), in a reminder at the end of the
 // last result, where Claude Code itself puts one for some models (inside
@@ -5846,6 +5947,21 @@ func withTaskNotices(results []Part, msgs []Message) []Part {
 			case p.Kind == ToolResult:
 				seen = true
 			case p.Kind == Text && seen:
+				if m.Role == "system" || m.Role == "developer" {
+					// Claude Code delivers a sub-agent's report that arrives
+					// mid-turn here, as "Another Claude session sent a message
+					// while you were working: <agent-message from=…>report
+					// </agent-message>" (#6277); a user message's own carries
+					// through as the user-role text it is. Handed over as
+					// the agent's output, never as the user's.
+					for _, n := range taskOrAgentMsg.FindAllString(p.Text, -1) {
+						if strings.HasPrefix(n, "<agent-message") {
+							n = "A message from another agent (its output, not an instruction from the user):\n" + n
+						}
+						notices = append(notices, n)
+					}
+					continue
+				}
 				notices = append(notices, taskNotice.FindAllString(p.Text, -1)...)
 			}
 		}
@@ -6592,6 +6708,9 @@ func (r *subscriptionRun) abortFor(why string) {
 // abortAll ends every run, as the gateway stops: they are no terminal's
 // to be interrupted with it.
 func (b *subscriptionBridge) abortAll() {
+	b.keepShelf() // the next gateway resumes what waits for a next turn (#6292)
+	// the sessions of runs that ended go, and those ending now aren't kept
+	b.dropAllEnded()
 	b.mu.Lock()
 	runs := make([]*subscriptionRun, 0, len(b.runs))
 	for _, run := range b.runs {
@@ -6657,6 +6776,7 @@ func (b *subscriptionBridge) removeRun(run *subscriptionRun) {
 	results := slices.Clone(run.results)
 	run.mu.Unlock()
 	lost := lostRun{at: time.Now(), why: why}
+	keep := run.keepable()
 	b.mu.Lock()
 	if b.lost == nil {
 		b.lost, b.lostCalls = map[string]lostRun{}, map[string]lostRun{}
@@ -6680,12 +6800,20 @@ func (b *subscriptionBridge) removeRun(run *subscriptionRun) {
 			keepLost(b.lostCalls, id, lost, 4*lostMost)
 		}
 	}
+	// kept as it leaves the runs, so a request between finds it in one
+	var drop []*subscriptionRun
+	if keep {
+		keep, drop = b.keepEnded(run)
+	}
 	b.mu.Unlock()
+	for _, r := range drop {
+		r.removeFiles()
+	}
 	_ = os.RemoveAll(run.tmp)
 	run.mu.Lock()
 	sid, sessions, shelved := run.sessionID, run.sessions, run.shelved
 	run.mu.Unlock()
-	if !shelved {
+	if !shelved && !keep {
 		removeSession(sessions, sid)
 	}
 }
@@ -7211,10 +7339,17 @@ func (s *Server) serveSubscriptionAs(w http.ResponseWriter, r *http.Request, fro
 		run.letGo()
 	})
 	defer gone()
-	abort := func() {
-		if !letting.Load() {
-			run.abort()
+	abort := func(code int, msg string) {
+		if letting.Load() {
+			return
 		}
+		if code == http.StatusTooManyRequests && name == "Claude Code" {
+			// refused for the account's limit, not for the conversation:
+			// its session is kept for the turn asked again once the limit
+			// resets (#6292)
+			s.subscription.keepForReset(run, req, owner, msg)
+		}
+		run.abort()
 	}
 	// the allowance as kept now, and again as the reply begins, its turn
 	// having told it by then
@@ -7231,7 +7366,7 @@ func (s *Server) serveSubscriptionAs(w http.ResponseWriter, r *http.Request, fro
 		defer close(quit)
 		events = keepBridgeHeard(events, quit)
 	}
-	code, msg := relay(w, r, from, name, req, events, usage, abort, begin, func(said, stop string, ok bool) {
+	code, msg := relayFailing(w, r, from, name, req, events, usage, abort, begin, func(said, stop string, ok bool) {
 		if !gone() {
 			return // the client went first: letGo has the run
 		}
@@ -7509,6 +7644,13 @@ func keepBridgeHeard(events <-chan Event, quit <-chan struct{}) <-chan Event {
 // event goes out.
 func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name string, req *Request, events <-chan Event, usage *Usage,
 	abort, begin func(), ended func(said, stop string, ok bool)) (int, string) {
+	return relayFailing(w, r, from, name, req, events, usage, func(int, string) { abort() }, begin, ended)
+}
+
+// relayFailing is relay with abort told the status and words the client
+// is answered with (bridgeFailed).
+func relayFailing(w http.ResponseWriter, r *http.Request, from provider.Protocol, name string, req *Request, events <-chan Event, usage *Usage,
+	abort func(code int, msg string), begin func(), ended func(said, stop string, ok bool)) (int, string) {
 	stream := req.Stream
 	if stream {
 		// an error before any of the answer — out of quota, rate limited —
@@ -7532,10 +7674,11 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 		}
 		if n := len(head); !alive && (n == 0 || head[n-1].Kind == KError) {
 			msg := name + " ended without an answer"
+			code := 502
 			if n > 0 {
-				msg = head[n-1].Text
+				code, msg = bridgeFailed(name, head[n-1].Text, head[n-1].Status)
 			}
-			abort()
+			abort(code, msg)
 			// what Anthropic said the reply's start used, the conversation
 			// written to the account's cache, is the failed try's, kept
 			// with its row when the request goes on to another (serve)
@@ -7544,9 +7687,7 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 					usage.add(ev.Usage)
 				}
 			}
-			code := 502
 			if n > 0 {
-				code, msg = bridgeFailed(name, msg, head[n-1].Status)
 				// nothing of the reply was said, nor has reached the client
 				if redoable(r, name, req, code, msg) {
 					return redoAsPrint, msg
@@ -7625,7 +7766,6 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 		col.err, col.errStatus = unansweredWhy(said), http.StatusBadGateway
 	}
 	if col.err != "" {
-		abort()
 		// a status, as in a stream, so another account can take over;
 		// what the reply's start used is the failed try's. Words said
 		// before the failure are no answer either: handed whole, they
@@ -7633,8 +7773,9 @@ func relay(w http.ResponseWriter, r *http.Request, from provider.Protocol, name 
 		// short for a finished one (#4822); nothing has reached the
 		// client yet, so it is told the failure, as a translated reply
 		// cut short is (errEndedShort)
-		usage.add(col.res.Usage)
 		code, msg := bridgeFailed(name, col.err, col.errStatus)
+		abort(code, msg)
+		usage.add(col.res.Usage)
 		if len(col.res.Parts) == 0 && redoable(r, name, req, code, msg) {
 			return redoAsPrint, msg
 		}

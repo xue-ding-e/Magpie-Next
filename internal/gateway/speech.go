@@ -54,10 +54,6 @@ var spoken = []string{"input", "instructions"}
 // audio, so nothing is put back: a masked value is read aloud as its
 // placeholder.
 func (sp *speechRequest) mask(ctx context.Context, w http.ResponseWriter) (http.ResponseWriter, func(), maskHits, string, error) {
-	ctx, _, err := maskingFor(ctx)
-	if err != nil {
-		return w, func() {}, maskHits{}, "", err
-	}
 	var all maskHits
 	var sent []string
 	for _, k := range spoken {
@@ -148,7 +144,7 @@ func speechUsage(tail []byte) (int, int) {
 	for i := len(lines) - 1; i >= 0; i-- {
 		l := bytes.TrimSpace(lines[i])
 		l = bytes.TrimSpace(bytes.TrimPrefix(l, []byte("data:")))
-		if !bytes.Contains(l, []byte(`"usage"`)) {
+		if !bodyHas(l, `"usage"`) {
 			continue
 		}
 		var a struct {

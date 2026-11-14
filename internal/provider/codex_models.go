@@ -761,10 +761,6 @@ func buildCodexListTag(kind string) string {
 	for _, pat := range DisabledModels() {
 		ms = append(ms, catalog.Model{ID: "!" + pat})
 	}
-	// The exact outbound policy narrows native and hidden choices too.
-	for _, model := range slices.Sorted(slices.Values(settings.Load().AllowedModels)) {
-		ms = append(ms, catalog.Model{ID: "~allowed:" + model})
-	}
 	// and the order the user put them in, the account's own among them
 	for _, id := range ModelOrder("codex") {
 		ms = append(ms, catalog.Model{ID: "^" + id})
@@ -1057,7 +1053,7 @@ func CodexTiers(m *catalog.Model, e Entry, members func(id string) []Member) {
 	}
 	// so is a model of its own that has one, which no tier above names
 	// (an Anthropic key's Opus, an OpenAI key's GPT, a Cursor account's)
-	if len(m.Tiers) == 0 && CanFast(e.Provider, e.Model) {
+	if len(m.Tiers) == 0 && CanFast(*e.Provider, e.Model) {
 		m.Tiers = []string{codexFastTier}
 	}
 }
@@ -1069,7 +1065,7 @@ func CodexTiers(m *catalog.Model, e Entry, members func(id string) []Member) {
 // none.
 func CodexSeals(m *catalog.Model, e Entry, members func(id string) []Member) {
 	if e.Group == "" {
-		m.Seals = maySeal(e.Provider)
+		m.Seals = maySeal(*e.Provider)
 		return
 	}
 	for _, mb := range members(e.ID) {

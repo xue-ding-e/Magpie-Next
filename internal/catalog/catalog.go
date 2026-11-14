@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -660,6 +661,7 @@ func loadGen() (map[string]mdProvider, int) {
 				}
 				var m map[string]mdProvider
 				if json.Unmarshal(b, &m) == nil && len(m) > 0 {
+					shareCatalog(m)
 					mdev = m
 					votes, reasons := map[string]int{}, map[string]int{}
 					named := map[string]map[string]int{}
@@ -828,12 +830,23 @@ func Reset() {
 	loaded = false
 	built = nil
 	gen++
+	resets.Add(1)
 	mdev, images, windows, outputs, efforts, thinks, names, listed, canonical, labs, normal = nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil
 	loadMu.Unlock()
 	if Forget != nil {
 		Forget()
 	}
 }
+
+// resets counts Reset's calls: a catalog read again because it may have
+// changed, not one let go of while idle.
+var resets atomic.Int64
+
+// Resets is how many times the catalog was forgotten for one that may
+// differ (Reset). What was asked of the catalog before may be answered
+// otherwise after, though the file's key (CacheKey) is the same: Sync
+// writes the file first and resets after.
+func Resets() int64 { return resets.Load() }
 
 // Sync downloads the models.dev catalog into CachePath. It serializes with
 // itself so a background refresh and a manual one cannot interleave writes.
@@ -879,15 +892,21 @@ func syncLock(ctx context.Context, onlyIfMissing bool) error {
 		return fmt.Errorf("models.dev: unexpected payload")
 	}
 	// written whole through a rename: a reader never sees it half
-	// written, and a failed write keeps the last good copy
-	if err := writeWhole(CachePath(), b, time.Time{}); err != nil {
+	// written, and a failed write keeps the last good copy. The same
+	// bytes again are only dated now: a Claude account's list asks for a
+	// fetch every 45 minutes (Asked), and each one forgot the parsed
+	// catalog and rewrote every agent's list for nothing changed.
+	changed, err := keepFetched(CachePath(), b)
+	if err != nil {
 		return err
 	}
 	// the lab catalog beside it is best effort: without it the provider
 	// catalog answers alone, and one kept before is kept
-	_ = syncLabs(ctx)
-	Reset()
-	Touched() // names, reasoning levels and context windows may be others
+	labsChanged, _ := syncLabs(ctx)
+	if changed || labsChanged {
+		Reset()
+		Touched() // names, reasoning levels and context windows may be others
+	}
 	return nil
 }
 
@@ -979,6 +998,9 @@ type priceIndex struct {
 	// canon and canonDashed are the price the vendor's own entries under a
 	// canonical id (bare, and dashed) give, nil where they disagree
 	canon, canonDashed map[string]*Price
+	// canonSnap is canonDashed with the canonical's snapshot date taken
+	// off (deepseek-v4.1-flash-1017 is deepseek-v4.1-flash)
+	canonSnap map[string]*Price
 }
 
 var priceIndexes struct {
@@ -998,13 +1020,13 @@ func priceIndexOf(all map[string]mdProvider, at int, pid string) *priceIndex {
 	if x, ok := priceIndexes.by[pid]; ok {
 		return x
 	}
-	x := &priceIndex{bare: map[string]string{}, dashed: map[string]string{}, canon: map[string]*Price{}, canonDashed: map[string]*Price{}}
+	x := &priceIndex{bare: map[string]string{}, dashed: map[string]string{}, canon: map[string]*Price{}, canonDashed: map[string]*Price{}, canonSnap: map[string]*Price{}}
 	first := func(by map[string]string, k, key string) {
 		if was, ok := by[k]; !ok || key < was {
 			by[k] = key
 		}
 	}
-	seen := map[*map[string]*Price]map[string]bool{&x.canon: {}, &x.canonDashed: {}}
+	seen := map[*map[string]*Price]map[string]bool{&x.canon: {}, &x.canonDashed: {}, &x.canonSnap: {}}
 	agree := func(by *map[string]*Price, k string, p *Price) {
 		if !seen[by][k] {
 			seen[by][k] = true
@@ -1027,6 +1049,9 @@ func priceIndexOf(all map[string]mdProvider, at int, pid string) *priceIndex {
 		c := bareID(m.Canonical)
 		agree(&x.canon, c, m.Cost)
 		agree(&x.canonDashed, dashed(c), m.Cost)
+		if sn := snapshotOf(dashed(c)); sn != dashed(c) {
+			agree(&x.canonSnap, sn, m.Cost)
+		}
 	}
 	priceIndexes.by[pid] = x
 	return x
@@ -1047,6 +1072,10 @@ func canonicallyPriced(all map[string]mdProvider, at int, providers []string, b 
 	for _, by := range []func(*priceIndex) (*Price, bool){
 		func(x *priceIndex) (*Price, bool) { p, ok := x.canon[b]; return p, ok },
 		func(x *priceIndex) (*Price, bool) { p, ok := x.canonDashed[dashed(b)]; return p, ok },
+		// and as the snapshot it is: models.dev says DeepSeek's deepseek-flash
+		// is deepseek/deepseek-v4.1-flash-1017, and the relays serve it as
+		// deepseek-v4.1-flash (Open Design's, Winnie7572 on X)
+		func(x *priceIndex) (*Price, bool) { p, ok := x.canonSnap[dashed(b)]; return p, ok },
 	} {
 		for _, pid := range providers {
 			if p, ok := by(priceIndexOf(all, at, pid)); ok && p != nil {
@@ -1168,6 +1197,14 @@ func makerPriced(all map[string]mdProvider, at int, prefer []string, id string) 
 	return Price{}, false
 }
 
+// mmddSnapshot is the date a vendor ends a snapshot's id with: -0813,
+// -1017 (month and day), -20261017 or -2026-10-17.
+var mmddSnapshot = lazyre.New(`-(?:(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])|20[0-9]{2}(?:-?)(?:0[1-9]|1[0-2])(?:-?)(?:0[1-9]|[12][0-9]|3[01]))$`)
+
+// snapshotOf is an id without the date of its snapshot, as the model it is
+// a snapshot of: deepseek-v4.1-flash-1017 is deepseek-v4.1-flash.
+func snapshotOf(id string) string { return mmddSnapshot.ReplaceAllString(id, "") }
+
 // dashed is an id with its dots as dashes: the spelling two ids are compared
 // in when one vendor writes a model's version 4.6 and another 4-6.
 func dashed(id string) string { return strings.ReplaceAll(id, ".", "-") }
@@ -1199,14 +1236,21 @@ func APIOf(providerID, modelID string) string {
 // A vendor's own /models answer, once fetched, is layered over it by the
 // provider package (see provider.Provider.Available).
 func Provider(id string) []Model {
+	return slices.Clone(ProviderShared(id))
+}
+
+// ProviderShared is Provider without the copy, for a caller that only
+// reads it: every provider's model list is built from it on each look at
+// the catalog, and the copies were a third of what building them took.
+func ProviderShared(id string) []Model {
 	loadMu.Lock()
 	out, ok := built[id]
 	at := gen
 	loadMu.Unlock()
 	if ok {
-		return slices.Clone(out)
+		return out
 	}
-	out = provider(load(), id)
+	out = slices.Clip(provider(load(), id))
 	loadMu.Lock()
 	if at == gen {
 		if built == nil {
@@ -1215,7 +1259,7 @@ func Provider(id string) []Model {
 		built[id] = out
 	}
 	loadMu.Unlock()
-	return slices.Clone(out)
+	return out
 }
 
 func provider(all map[string]mdProvider, id string) []Model {
@@ -1233,6 +1277,7 @@ func provider(all map[string]mdProvider, id string) []Model {
 			InputModalities: m.Modalities.Input, OutputModalities: m.Modalities.Output}
 		mm.Efforts = p.levels(m, id)
 		mm.Reasoning = m.Thinks || len(mm.Efforts) > 0
+		mistralSeesImages(&mm)
 		out = append(out, mm)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -1242,6 +1287,22 @@ func provider(all map[string]mdProvider, id string) []Model {
 		return out[i].ID < out[j].ID
 	})
 	return out
+}
+
+// mistralSeesImages is Mistral's own word over models.dev's for its
+// DeepSeek V4.1 Flash (deepseek-v4-1-flash-1017): models.dev lists it
+// text-only, Mistral's models page says "text and image inputs" (regain4125
+// on X: images off by default). Only that model on Mistral's own entry;
+// the same model at another vendor keeps that vendor's row.
+func mistralSeesImages(m *Model) {
+	if m.Provider != "mistral" || !strings.HasPrefix(m.ID, "deepseek-v4-1-flash") {
+		return
+	}
+	yes := true
+	m.Images, m.ImageInput = true, &yes
+	if m.InputModalities != nil && !slices.Contains(m.InputModalities, "image") {
+		m.InputModalities = append(slices.Clone(m.InputModalities), "image")
+	}
 }
 
 // ProviderName is a models.dev provider's display name ("GitHub Copilot"
@@ -1752,6 +1813,62 @@ func unmarked(b string) (string, int) {
 	return b[:i], int(n * float64(unit))
 }
 
+// NameWindow is the context window a model's name says it has, for a local
+// or custom model nothing else says a window of (maohy915 on X: a
+// "Qwen-3.8-27b-128k" he made himself): a last part of the id that is a
+// number and a unit alone, set apart by "-", "_" or " " from what comes
+// before it (or the last of an Ollama tag, "qwen:27b-128k"). k is 4 to 2048 thousand, m is 1, 2, 4, 5, 8 or 10 million, read
+// as the same 1,000 and 1,000,000 a "[200k]" mark is (a name that rounds up
+// never promises more than the model takes). Anything else is no window: a
+// model's size (27b, pythia-14m, smollm-135m), its version, a date
+// (gpt-4o-2024), a quant (q4_k_m), a lone "128k" with nothing before it.
+// It is the last resort: the user's own, the server's and models.dev's
+// windows are read before it.
+func NameWindow(id string) int {
+	id = strings.ToLower(strings.TrimSpace(id))
+	if i := strings.LastIndexByte(id, '/'); i >= 0 {
+		id = id[i+1:]
+	}
+	// Ollama's "name:tag": the window is in the tag's last part
+	// ("qwen:27b-128k"), or in the name's when the tag is latest or only a
+	// size ("qwen3-128k:latest", "qwen3-128k:8b")
+	if name, tag, ok := strings.Cut(id, ":"); ok {
+		if n := nameWindow(tag); n > 0 {
+			return n
+		}
+		if tag == "latest" || strings.HasSuffix(tag, "b") && strings.Trim(tag[:len(tag)-1], "0123456789.") == "" {
+			return nameWindow(name)
+		}
+		return 0
+	}
+	return nameWindow(id)
+}
+
+// nameWindow is NameWindow of an id with no tag.
+func nameWindow(id string) int {
+	i := strings.LastIndexAny(id, "-_ ")
+	if i <= 0 || i+1 >= len(id) {
+		return 0
+	}
+	tail := id[i+1:]
+	unit := tail[len(tail)-1]
+	if unit != 'k' && unit != 'm' {
+		return 0
+	}
+	num := tail[:len(tail)-1]
+	if num == "" || len(num) > 4 || num[0] == '0' || strings.Trim(num, "0123456789") != "" {
+		return 0
+	}
+	n, _ := strconv.Atoi(num)
+	switch {
+	case unit == 'k' && n >= 4 && n <= 2048:
+		return n * 1_000
+	case unit == 'm' && (n == 1 || n == 2 || n == 4 || n == 5 || n == 8 || n == 10):
+		return n * 1_000_000
+	}
+	return 0
+}
+
 // ListedBy is the reasoning levels the first of providers (models.dev
 // ids) listing a model of this id gives it — none, for one listed with a
 // thinking switch alone or nothing at all — and whether any of them says.
@@ -2094,6 +2211,9 @@ func draws(m mdModel) bool {
 // -fast) draw only, on its images API (lileo0668 on Discord).
 func DrawsID(id string) bool {
 	id = strings.ToLower(id)
+	if FilmsID(id) || namesVideo(id) {
+		return false
+	}
 	for _, w := range []string{"image", "imagen", "imagine", "dall-e", "flux", "seedream", "cogview", "stable-diffusion", "sdxl", "wanx", "kolors", "hidream", "banana", "sensenova-u1"} {
 		if strings.Contains(id, w) {
 			return true
@@ -2108,7 +2228,10 @@ func DrawsID(id string) bool {
 // generators (Hy-Image-3.5-preview) draw on its images API too (#4913).
 func ImagesAPI(id string) bool {
 	id = strings.ToLower(id)
-	for _, w := range []string{"gpt-image", "chatgpt-image", "dall-e", "imagen", "imagine", "qwen-image", "wanx", "wan2", "seedream", "cogview", "flux", "stable-diffusion", "sdxl", "kolors", "hidream", "sensenova-u1", "hy-image"} {
+	if FilmsID(id) || namesVideo(id) {
+		return false
+	}
+	for _, w := range []string{"gpt-image", "chatgpt-image", "dall-e", "imagen", "imagine", "qwen-image", "wanx", "wan2", "seedream", "cogview", "flux", "stable-diffusion", "sdxl", "kolors", "hidream", "sensenova-u1", "hy-image", "h3-image"} {
 		if strings.Contains(id, w) {
 			return true
 		}
@@ -2127,6 +2250,20 @@ func ImagesAPI(id string) bool {
 // (video_minimax.go), and a model the user says makes videos (#1399).
 func FilmsID(id string) bool {
 	return strings.Contains(strings.ToLower(id), "sora")
+}
+
+// namesVideo is whether a model's id has the word video, t2v or i2v in
+// it: no image model, whatever else the id says. grok-imagine-video says
+// "imagine", which DrawsID and ImagesAPI read as an image model, so a Grok
+// channel's video models were listed under its Image models, where nothing
+// could mark them Video (iceloon on X); wanx2.1-t2v and wan2.5-i2v were
+// read the same way. It makes no video model of them (#1399: a relay may
+// not serve its videos API): they stay among the models to talk to, where
+// the user marks them Video, unless the list says their kind
+// (xaiFilms for xAI's own). A word, not a substring: cogvideox stays.
+func namesVideo(id string) bool {
+	words := strings.FieldsFunc(strings.ToLower(id), func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') })
+	return slices.ContainsFunc(words, func(w string) bool { return w == "video" || w == "t2v" || w == "i2v" })
 }
 
 // PointsToImagesAPI is whether a vendor's refusal of a chat request names
@@ -2185,6 +2322,14 @@ func WrongEndpoint(status int, body []byte) bool {
 		// /v1/responses（OpenAI Responses API）。")
 		"不支持 /v1/chat/completions 接口",
 		"改用 /v1/responses",
+		// a relay's refusal of a model on the API it was asked on, in
+		// WandAPI's word for that API, "入口协议" (the entry protocol):
+		// "模型 gpt-6.1-sol 不支持当前入口协议" and, for gpt-6.1-terra,
+		// "当前没有能承接该入口协议的货源，…" (equinox0253 on X, both 404
+		// to Claude Code's /v1/messages). However it is worded, a refusal
+		// that names the entry protocol is about the API, which a 404 for
+		// a wrong base URL or a missing model ("模型 X 不存在") never names.
+		"入口协议",
 	} {
 		if strings.Contains(msg, phrase) {
 			return true

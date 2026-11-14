@@ -90,7 +90,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const tick = box.locator("label.import-access-only");
       assert.equal(await tick.locator("span").textContent(), await T("Access token only"));
       const spent = box.locator(".tt > .s").nth(1);
-      assert.match(await spent.textContent(), lang === "en" ? /invalidate the source tool's copy.*sign in separately/ : /凭据副本失效.*分别登录/);
+      assert.match(await spent.textContent(), lang === "en" ? /signed out of that account/ : /退出该账号/);
       await tick.locator("input").check();
       assert.equal(await spent.textContent(), await T(strings[5]));
       await box.locator("textarea").fill(file);

@@ -114,6 +114,19 @@ type codexWarmer struct {
 	// own, by name in lower case, "" for none: theirs in place of the ones
 	// warmNow is given (#957).
 	ownAt func() map[string]string
+	// held, when set, says an account is held at 100% of a used-up window
+	// rather than spending past it — a Codex account set not to spend its
+	// credits, a Claude account not to spend extra usage — by its reading
+	// q at now: it is sent nothing while used up (usedUp), as the vendor
+	// would bill the request past the plan (spentPast).
+	held func(user string, q SubscriptionQuota, now time.Time) bool
+}
+
+// spentPast says whether a request to q's account now would be billed
+// past its plan, which the user set it not to be (held): a window that
+// stops it is used up.
+func (c codexWarmer) spentPast(user string, q SubscriptionQuota, now time.Time) bool {
+	return c.held != nil && usedUp(q, now) && c.held(user, q, now)
 }
 
 // atOf is the times of day user's 5-hour window starts at: its own, else
@@ -224,6 +237,12 @@ func (c codexWarmer) warmNow(ctx context.Context, which string, dayAts []string)
 		if waitDay {
 			// the weekly windows wait for the day's start too, kept as they were
 			due = slices.DeleteFunc(due, func(name string) bool { return long[name] })
+		}
+		if len(due) > 0 && c.spentPast(user, q, now) {
+			// held, as a request would go on the credits or extra usage
+			// the user set it not to spend: the windows wait, due still
+			// (kept as they were, or the day's start not marked done)
+			due = nil
 		}
 		if len(due) > 0 {
 			r := CodexWarm{User: user, Windows: due}
@@ -443,7 +462,7 @@ func warmCodexLogin(ctx context.Context, user string) error {
 }
 
 // warmModel is the model a warm-up asks, and at what effort: the account's
-// cheapest allowed model (warmPick), at low.
+// cheapest (warmPick), at low.
 func warmModel(user string) (model, effort string, err error) {
 	ms, _, ok := catalog.Live(accountModels("codex", user))
 	if !ok {
@@ -455,19 +474,6 @@ func warmModel(user string) (model, effort string, err error) {
 	if len(ms) == 0 {
 		return "", "", errors.New("no Codex model is known yet")
 	}
-	var allowed []catalog.Model
-	var blocked error
-	for _, m := range ms {
-		if err := RequireAllowedModel(m.ID); err != nil {
-			blocked = err
-			continue
-		}
-		allowed = append(allowed, m)
-	}
-	if len(allowed) == 0 {
-		return "", "", fmt.Errorf("no known Codex model is allowed for warm-up: %w", blocked)
-	}
-	ms = allowed
 	m := warmPick(ms, func(id string) (catalog.Price, bool) { return catalog.PricedBy([]string{"openai"}, id) })
 	switch {
 	case slices.Contains(m.Efforts, "low"):
@@ -510,9 +516,6 @@ func warmPick(ms []catalog.Model, price func(id string) (catalog.Price, bool)) c
 // requests go (codexBody: Codex's instructions, not stored), and reads the
 // reply to its end.
 func warmCodex(ctx context.Context, sign func(context.Context, *http.Request, []byte) error, model, effort string) error {
-	if err := RequireAllowedModel(model); err != nil {
-		return err
-	}
 	in := map[string]any{"model": model, "input": "hi"}
 	if effort != "" {
 		in["reasoning"] = map[string]any{"effort": effort}
@@ -525,9 +528,6 @@ func warmCodex(ctx context.Context, sign func(context.Context, *http.Request, []
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if err := sign(ctx, req, body); err != nil {
-		return err
-	}
-	if err := RequireAllowedModel(model); err != nil {
 		return err
 	}
 	CodexCompressed(req, body) // as Codex sends a turn
@@ -606,7 +606,8 @@ func SetCodexWarmAt(user, at string) error {
 // codexWarmEvery after that, until ctx ends.
 func KeepCodexWindowsWarm(ctx context.Context) {
 	w := codexWarmer{path: codexWarmPath(), now: time.Now, usage: codexWarmUsage, send: warmCodexLogin,
-		warmed: func(user string) { StaleAllowance("codex", user) }, ownAt: codexWarmAtOf}
+		warmed: func(user string) { StaleAllowance("codex", user) }, ownAt: codexWarmAtOf,
+		held: func(user string, _ SubscriptionQuota, _ time.Time) bool { return !CodexCredits(user) }}
 	keepWarm(ctx, "codex", w, func() (string, []string) { s := settings.Load(); return s.CodexWarmup, s.CodexWarmAts })
 }
 

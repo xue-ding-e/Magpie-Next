@@ -36,10 +36,6 @@ func (p Provider) testClaude(ctx context.Context, model string) Result {
 		r.Error = "no model to try: expose one, or refresh the model list"
 		return r
 	}
-	if err := RequireAllowedClaudeModel(model); err != nil {
-		r.Error = err.Error()
-		return r
-	}
 	if claudeCLIProbe == nil {
 		r.Error = "Claude Code isn't available to run the test"
 		return r
@@ -48,12 +44,6 @@ func (p Provider) testClaude(ctx context.Context, model string) Result {
 	defer cancel()
 	dir, _, err := p.Account.Token(ctx)
 	if err != nil {
-		r.Error = err.Error()
-		return r
-	}
-	// Resolving a saved sign-in can wait on the keychain. Check a policy
-	// changed meanwhile before the CLI is started.
-	if err := RequireAllowedClaudeModel(model); err != nil {
 		r.Error = err.Error()
 		return r
 	}
@@ -69,9 +59,7 @@ func (p Provider) testClaude(ctx context.Context, model string) Result {
 	}
 	probelog.NoteResult(probelog.WithModel(ctx, model), "claude -p", start, status, msg)
 	if err != nil {
-		if !errors.Is(err, ErrModelPolicy) {
-			NoteClaudeSignInFailure(p.Account.User, version, err.Error())
-		}
+		NoteClaudeSignInFailure(p.Account.User, version, err.Error())
 		r.Error = err.Error()
 		return r
 	}

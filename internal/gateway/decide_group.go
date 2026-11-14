@@ -240,30 +240,25 @@ func (s *Server) serveDecideTries(w http.ResponseWriter, r *http.Request, body [
 		status, b, header := d.status, d.answer, d.header
 		call.Provider = c.p.ID
 		if err != nil {
-			status = http.StatusBadGateway
-			local := errors.Is(err, provider.ErrModelPolicy)
-			if local {
-				status = http.StatusForbidden
-			}
 			fail, rest := failOther, (*Rest)(nil)
 			var tooMany *errRPM
-			if !local && r.Context().Err() == nil && !errors.As(err, &tooMany) {
+			if r.Context().Err() == nil && !errors.As(err, &tooMany) {
 				// unreachable: it rests, as a chat's would
 				fail, rest = s.decideFailed(c, http.StatusBadGateway, nil, []byte(err.Error()))
 			}
 			if !last && r.Context().Err() == nil {
-				tried(status, err.Error(), fail, rest, Usage{})
+				tried(http.StatusBadGateway, err.Error(), fail, rest, Usage{})
 				skipped = append(skipped, c.label()+": "+err.Error())
 				continue
 			}
 			last = true
-			tried(status, err.Error(), fail, rest, Usage{})
+			tried(http.StatusBadGateway, err.Error(), fail, rest, Usage{})
 			msg := err.Error()
 			if len(skipped) > 0 {
 				msg += " (tried first: " + strings.Join(skipped, "; ") + ")"
 			}
-			call.Status, call.Error = status, msg
-			writeError(w, provider.Chat, status, msg)
+			call.Status, call.Error = http.StatusBadGateway, msg
+			writeError(w, provider.Chat, http.StatusBadGateway, msg)
 			return
 		}
 		var use struct {
@@ -390,8 +385,6 @@ func (s *Server) askDecideTries(wait time.Duration, cs []candidate, intents []st
 		var refused decideRefused
 		var answer answerError
 		switch {
-		case errors.Is(err, provider.ErrModelPolicy):
-			// Another model can be allowed. This key stays healthy for it.
 		case wait < full && ctx.Err() != nil && !errors.As(err, &refused) && !errors.As(err, &answer):
 			// cut off by the request's wait running out, not its own
 			return verdict{}, cutShort(c.p.Name+"/"+c.model, wait, full)

@@ -869,7 +869,10 @@ lifetime with `runTTLFor`:
   `caller.claudeHere`), it is this computer's, read as `claudeRunTTL`
   reads it. For a request another magpie passed on, it is what that
   magpie named in `X-Magpie-Claude-Cache-TTL` (`ClaudeCacheTTLHeader`):
-  `5m`, `1h`, or `default` for no pick. `passOnCaller` sends it on every
+  `5m`, `1h`, or `default` for no pick. Claude Desktop (`claude-desktop`)
+  with no such header is `default` too: its gateway key makes Claude Code
+  mark 5 minutes with no ttl, which says no pick (`TestClaudeDesktopRunKeepsAnHour`).
+  `passOnCaller` sends it on every
   request to a Remote magpie whose caller is Claude Code here, or that
   came with it. `callerFrom` takes it from a `magpie/` request alone, and
   `withCaller` takes it off what comes in, so no vendor is sent it.
@@ -1443,11 +1446,17 @@ An ask that finds no room (`take`):
    as a run pushed past `idleMost` is, so its conversation's next turn
    resumes it (`--resume`) and is told only the new messages.
 2. otherwise lets go of the run parked longest on tool results, once it has
-   waited `parkLongest`. Busy runs, and runs waiting on tool calls made
-   recently, are never let go.
+   waited `roomParkLongest` (1 minute, shorter than `claudeRoomWait`). A
+   lead conversation waits on its parallel subagents' Task calls for as
+   long as they work, and each subagent needs a Claude Code of its own:
+   kept until `parkLongest` (5 minutes), the lead held a place while a
+   subagent waited 2 minutes and got the 503 (Wing8Aqua on X, a 768 MiB
+   `memory.high` that holds 4). The lead's results then go to a new run
+   told the whole conversation. Busy runs, and runs waiting on tool calls
+   made within the minute, are never let go.
 3. otherwise waits for one to end: woken when a process exits or a run
    goes idle (`nudge`), and it looks again every `roomLook` (5s) for a
-   parked run that has come to wait `parkLongest`.
+   parked run that has come to wait `roomParkLongest`.
 
 A run being ended counts as `leaving`, so several waiting asks don't each
 let one go for the same room. After `claudeRoomWait` (2 minutes), or once
@@ -1621,7 +1630,9 @@ there as the user's own sessions do; a sweep can't tell them apart.
 
 - Its session: `<config>/projects/<work project>/<session>.jsonl`, for
   `--resume` (`claudeSessions`). It is removed when the run ends unless
-  shelved, and when a saved session is discarded (`removeSession`).
+  shelved or kept for a branch ([A run that ended during a
+  turn](#a-run-that-ended-during-a-turn-6528)), and when a saved session
+  is discarded (`removeSession`).
   `sweepSessions` removes those a stopped gateway left in magpie's own
   work folder's project, once older than `idleLongest`; a caller's folder
   is never swept (`clientWorkDir`).
@@ -1704,6 +1715,59 @@ the one the run answered. Then, and when the cut or the resume fails, the
 run is told the whole conversation as before.
 `TestClaudeCutSessionCopiesAsFarAsTheLine` and
 `TestClaudeForkBranchesOffTheLeadsSession` holds it.
+
+### A run that ended during a turn (#6528)
+
+A run can end in a turn the client still goes on with. It waited on the
+client's AskUserQuestion past `runTimeout` ("it waited as long as it
+may"), or its client went away mid-reply in a turn that can't be taken
+back (`letGo`: the interactive mode, or calls in the client's hands).
+Before, its session went with it (`removeRun`), and what came after found
+no run and was told whole to a new Claude Code. recih saw an answer given
+two minutes after the timeout write 118K tokens to the cache, and a
+tunnel drop's two retried sub-agents and their delayed AgentSummary write
+305K.
+
+Now `removeRun` keeps such a run's session for a branch to be cut from
+(`keepEnded`, [`claude_ended.go`](../../internal/gateway/claude_ended.go)),
+in the same `b.mu` section that takes it out of `runs`, so no request
+between finds it in neither. The run object is kept as it ended: its
+session id and folders, the call lines (`lines`, each with the
+conversation its reply answered), `told`, `convKey`, `backLine` and
+`backMsg`, and its mode, owner and prompt flags. Kept: a session on disk
+with a call line or a turn start to cut at (`keepable`). Not kept: a run
+on the shelf (its file is the shelf's), one whose turn was taken back
+(`rewound`), one with the client's own cache marks, one whose account was
+handed over to Claude Code, and every run as the gateway stops
+(`abortAll` sets `stopping` and removes the kept ones; they are not
+written to `claude-shelf.json`, and `sweepSessions` takes what a crash
+left). Each is kept `endedLongest` (`idleLongest`, the cache's hour), and
+`endedMost` (16) at most, the oldest let go first; letting one go removes
+its files.
+
+`branch` and `retryBranch` look at the kept runs after the live ones, the
+one that ended last first, with the same rules except that a kept run is
+closed. Tool results that come after (the late answer, or a retry of a
+continuation) are cut after the call's line and told the results; a
+delayed AgentSummary on the history before them is cut before the calls
+(`cutBefore`); a turn sent again after its run ended answering it (a
+retry after a dropped connection) is cut before the turn
+(`backLine`/`backMsg`) and told the turn. A kept session is never taken
+or written: each branch cuts a copy of its own, so the AgentSummary after
+a recovery still branches. The log says the run ended, when, and why
+("the run this conversation goes on from ended 2m0s ago (it waited as long
+as it may); its session, kept since, is branched").
+
+Claude Code 2.1.316 writes a reply's text and `tool_use` lines when the
+reply has streamed, before the tool runs, in both modes; killed (SIGTERM)
+while an MCP call is held, it adds only `cost-state` lines, no result and
+no interrupt marker (tried on 11-13 with a mock Anthropic and an MCP tool
+that never answers). So the kept file has the call line, and a cut after
+it leaves the reply's call open for the results the branch is told. No
+tool is run again: the branch is told the client's results.
+`TestClaudeAnswerAfterTheRunEndedBranchesOffItsKeptSession`,
+`TestClaudeEndedRunsSessionsAreBounded`,
+`TestClaudeTurnSentAgainAfterItsRunEndedBranchesOffItsSession`.
 
 ## The user's words beside tool results (#872, #1878)
 
@@ -1892,8 +1956,59 @@ waits for the bridge's turns, and for none of the gateway's other requests
 the new one serves once it has the socket; a `claude-mcp` token the new one
 doesn't know is forwarded to the old one's callback socket
 (`ForwardCallbacks`, `forwardCallback`), which serves it until it quits
-(`ServeCallbacks`). A run idle between turns ends with the old process,
-and the next turn starts a run in the new one, as after any restart.
+(`ServeCallbacks`). A run idle between turns ends with the old process, but
+its session does not (#6292, recih on X): as the gateway ends
+(`abortAll`), `keepShelf` shelves every idle run and writes the shelf to
+`claude-shelf.json` beside the settings (temp and rename;
+[`claude_persist.go`](../../internal/gateway/claude_persist.go)). Each entry
+has the conversation's fingerprint (`turnKey`, which holds the account, the
+model and the settings), Claude Code's session id, its project folders (the
+config folder, so HOME, and the work folder), the account, the tools it was
+told of, and the cache marks. The next gateway's `unshelve`, when its shelf
+has nothing for a turn, reads the file once it changed (`loadShelf`, which
+takes the file away, so a session that went on in a run is never resumed
+from a record of where it stood) and the turn starts Claude Code with
+`--resume`, told the turn alone. A file that doesn't parse whole, another
+version, an entry whose session file is gone, whose folder isn't a Claude
+Code project folder, or that waited longer than `idleLongest` is unknown,
+and the turn is told whole to a new run, as after a crash (no file is
+written then). A conversation a client rewrote (`looseTurn`) is not kept,
+and a run in a turn or parked on tool results at the stop is not either.
+`TestClaudeIdleRunSurvivesARestart`, `TestClaudeShelfFileUnreadableFallsBackToReplay`.
+
+### A turn refused for the account's limit
+
+A turn Anthropic refuses for the account's limit before any of its reply
+(429, "You've hit your limit · resets 9pm") ends its run, as any turn with
+no answer does (`relay`'s abort). Before, the session went with it, and the
+turn asked again after the reset, hours later, was told whole to a new
+Claude Code (#6292, recih: 354,900 tokens written to the cache). Now
+`relayFailing` tells the abort the status and words the client gets
+(`bridgeFailed`), and on a 429 `keepForReset`
+([`claude_persist.go`](../../internal/gateway/claude_persist.go)) shelves a
+copy of the run's session cut before the refused turn, so neither its user
+line nor Claude Code's synthetic error line is in it, under the turn's key
+(`nextTurn`). The cut is at `backLine`/`backMsg` for an idle run resumed for
+the turn, or at `fromLen`, the length of the saved session's file a run was
+started from (unshelve, a branch, a replay), while it has answered no turn:
+a turn asked again while the account is still limited is shelved again,
+cut at the same place. A run started for the turn (nothing before it in its
+session), a conversation taken back and not gone on with, or one with the
+client's own cache marks keeps nothing.
+
+The entry waits until `until` (`expires`), not `idleLongest`: the reset the
+refusal names (`resetsAt`), else the latest reset of the account's windows
+that are used up (`KeptClaudeLimits`, from Claude Code's
+`rate_limit_event`), else 5 hours (`quotaShelfUnsaid`), plus
+`quotaShelfMargin` (1h), never less than `idleLongest` and never more than
+`quotaShelfLongest` (`longestQuota`). `until` is written to
+`claude-shelf.json`, so the entry survives a restart while the account
+waits; an entry whose `until` is further than `quotaShelfLongest` past its
+`at` is unknown. The shelf still holds `shelfMost` at most, the longest
+waiting let go first (`trimShelf`).
+`TestClaudeTurnRefusedForTheLimitKeepsItsSessionTillTheReset` (both modes:
+two refusals, a restart, then the turn resumes the cut session told the
+turn alone), `TestQuotaShelfFor`.
 
 ## Verification
 
@@ -1914,6 +2029,7 @@ go test -tags nogui ./internal/gateway/ -run '^TestClaudeRunsNamesEachProcess$' 
 go test -tags nogui ./internal/settings/ -run '^TestClaudeRunsMostIsMachineLocal$' -count=1
 go test -tags nogui ./internal/gateway/ -run 'ClaudeSubscriptionRunsTheDownloaded|ClaudeSubscriptionWithoutClaudeCode|ClaudeRewritten|LostMedia|ImagesTakenOut|RunLetGoWhenTheClientRewrote|ClaudeSessionTempFiles|ClaudeLetGo|ClaudeSessionFiles|ClaudeOldSessions|ClaudeSubscriptionReplySaysTheAllowance|ClaudeAllowanceHeaders|ClaudeForksAnsweringTheLeadsCalls|ClaudeTurnGivenUpOn|ClaudeToolResultsGivenUpOn|ClaudePromptMarksEarlierTurns|ClaudeHistoryCachedAcrossNewRuns|ClaudeUnloadableSession|ClaudeEndedRunSaysWhy|ClaudeIdle|ClaudeSideQuestion|ClaudeInteractiveSideQuestion|ClaudeCutSession|ClaudeForkBranches|ClaudeToolChoiceNone|ClaudeAside|ClaudeNoRunSaysWhy|ClaudeToolResultsNoRunSaysWhy|ClaudePromptToldUserText|ClaudePromptKeepsInstructions|ClaudeToolResultsGoOnWithTheUsersWords|ClaudeToolResultsKeepInstructions|ToolResultKeepsUserTextSentMidTurn|ClaudeTextToolCalls|ClaudeTextCallsHoldsOnlyTheLine|ClaudePromptSaysPastCallsAreARecord' -count=1
 go test -tags nogui ./internal/gateway/ -run 'TestClaudeTaskNotification|TestWithTaskNotices|TestClaudeTurnToldTheTaskNotification' -count=1
+go test -tags nogui ./internal/gateway/ -run 'TestClaudeAnswerAfterTheRunEnded|TestClaudeEndedRuns|TestClaudeTurnSentAgain|TestClaudeBranchFor' -count=1
 ```
 
 `claude_rewritten_test.go` has a case for each relaxation and one for each

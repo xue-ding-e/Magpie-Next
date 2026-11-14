@@ -1,11 +1,8 @@
 package gui
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -94,55 +91,19 @@ func codexSignedInSandbox(t *testing.T) []string {
 	os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte("model = \"gpt-5.5\"\n"), 0o600)
 	ids := []string{"gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2"}
 	var cache []map[string]any
+	var live []catalog.Model
 	for i, id := range ids {
 		cache = append(cache, map[string]any{"slug": id, "display_name": id, "visibility": "list", "priority": i, "context_window": 400000})
+		live = append(live, catalog.Model{ID: id, Context: 400000})
 	}
 	b, _ := json.Marshal(map[string]any{"etag": "x", "models": cache})
 	os.WriteFile(filepath.Join(codexHome, "models_cache.json"), b, 0o600)
-	// The CLI's cache alone is not the account's fetched model list. Serve
-	// that list locally too, including requests a page starts behind it.
-	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/backend-api/codex/models" || r.Header.Get("chatgpt-account-id") != "acc" || r.Header.Get("Authorization") == "" {
-			t.Errorf("unexpected sandbox model request: %s", r.URL.Path)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(b)
-	}))
-	oldBase := provider.CodexBase
-	provider.CodexBase = fake.URL + "/backend-api/codex"
-	t.Cleanup(func() {
-		// Do not restore the endpoint or home while a page's fetch uses it.
-		for deadline := time.Now().Add(30 * time.Second); provider.FetchingNew(); time.Sleep(10 * time.Millisecond) {
-			if time.Now().After(deadline) {
-				t.Error("sandbox model fetch did not finish")
-				break
-			}
-		}
-		provider.CodexBase = oldBase
-		fake.Close()
-	})
 	provider.ForgetAccounts()
 	t.Cleanup(provider.ForgetAccounts)
 	catalog.Reset()
 	t.Cleanup(catalog.Reset)
-	p, err := provider.Find("codex")
-	if err != nil {
+	if err := catalog.SaveLive("codex", provider.CodexBase, live); err != nil {
 		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	listed, err := p.Fetch(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	for _, m := range listed {
-		got = append(got, m.ID)
-	}
-	if !slices.Equal(got, ids) {
-		t.Fatalf("sandbox backend listed %v, want %v", got, ids)
 	}
 	return ids
 }

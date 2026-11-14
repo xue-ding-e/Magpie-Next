@@ -8,9 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
+	"runtime"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/yetone/magpie/internal/sessions"
 	"github.com/yetone/magpie/internal/usage"
@@ -67,30 +68,15 @@ func TestSessionsListMakesOnlyTheGatewayRowsItShows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Count the actual work at both boundaries: yielding a projection and
-	// making its list row. Process-wide TotalAlloc also counts native file
-	// discovery, Windows path lookups and unrelated background goroutines.
-	walk, row := eachGatewaySession, gatewayListRow
-	visited, built := 0, 0
-	eachGatewaySession = func(keys map[string]bool, each func(usage.GatewaySession) bool) {
-		walk(keys, func(g usage.GatewaySession) bool {
-			visited++
-			return each(g)
-		})
-	}
-	gatewayListRow = func(g usage.GatewaySession, title func(string, string) string) sessions.ExternalSession {
-		built++
-		return row(g, title)
-	}
-	t.Cleanup(func() { eachGatewaySession, gatewayListRow = walk, row })
 	mux := http.NewServeMux()
 	sessionRoutes(mux, folderOnly{})
-	ask := func(path string) []sessions.Session {
+	ask := func(path string) ([]sessions.Session, uint64) {
 		t.Helper()
-		beforeVisited, beforeBuilt := visited, built
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("GET", path, nil)
-		mux.ServeHTTP(w, r)
+		mux.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		runtime.ReadMemStats(&after)
 		if w.Code != 200 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
@@ -98,22 +84,7 @@ func TestSessionsListMakesOnlyTheGatewayRowsItShows(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 			t.Fatal(err)
 		}
-		n, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		if n <= 0 {
-			n = sessions.All
-		}
-		// One native id is excluded by the ledger iterator, g3 is hidden,
-		// and one further yield tells listedExternal its limit is full.
-		wantBuilt := min(n, gateway-1)
-		wantVisited := min(wantBuilt+2, gateway)
-		if got := built - beforeBuilt; got != wantBuilt {
-			t.Fatalf("%s built %d gateway list rows, want %d for its limit", path, got, wantBuilt)
-		}
-		if got := visited - beforeVisited; got != wantVisited {
-			t.Fatalf("%s visited %d gateway sessions, want %d before stopping", path, got, wantVisited)
-		}
-		t.Logf("%s: visited %d gateway sessions, built %d rows", path, visited-beforeVisited, built-beforeBuilt)
-		return out.Sessions
+		return out.Sessions, after.TotalAlloc - before.TotalAlloc
 	}
 	// what the whole merge gives, as the list made it before
 	want := func(n int) []sessions.Session {
@@ -152,10 +123,10 @@ func TestSessionsListMakesOnlyTheGatewayRowsItShows(t *testing.T) {
 		}
 	}
 	for _, n := range []int{5, 40, gateway + 10} {
-		got := ask(fmt.Sprint("/api/sessions?limit=", n))
+		got, _ := ask(fmt.Sprint("/api/sessions?limit=", n))
 		same(fmt.Sprint("limit ", n), got, want(n))
 	}
-	got := ask("/api/sessions")
+	got, _ := ask("/api/sessions")
 	same("no limit", got, want(sessions.All))
 	for _, s := range got {
 		if s.Gateway && (s.ID == "g3" || s.ID == "00000001-1111-2222-3333-444444444444") {
@@ -174,9 +145,15 @@ func TestSessionsListMakesOnlyTheGatewayRowsItShows(t *testing.T) {
 	fh.WriteString(line(id, grown, "more"))
 	fh.Close()
 	os.Chtimes(p, grown, grown)
-	got = ask("/api/sessions?limit=20")
+	got, alloc := ask("/api/sessions?limit=20")
 	same("after a session grew", got, want(20))
 	if got[0].ID != id || !got[0].Last.Equal(grown) {
 		t.Fatalf("the grown session isn't first at %v: %+v", grown, got[0])
+	}
+	// a row of each gateway session is ~3 MB here, and it was ~20 MB;
+	// what doesn't grow with them is ~1 MB
+	rows := uint64(gateway) * uint64(unsafe.Sizeof(sessions.Session{}))
+	if alloc > rows {
+		t.Fatalf("a poll of 20 rows after a session grew allocated %d bytes; %d gateway sessions' rows are %d", alloc, gateway, rows)
 	}
 }

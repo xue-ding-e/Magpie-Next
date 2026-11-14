@@ -216,7 +216,7 @@ type state struct {
 	// the agent whose file it is, for its parseVersions
 	Agent     string            `json:"agent,omitempty"`
 	Codex     *codexUsageState  `json:"-"`
-	codexPath string            // the rollout read, for its fork's parent
+	parsePath string            // the file read: a Codex fork's parent, a Pi subagent's lead (piLeadID)
 	Claude    *claudeUsageState `json:"claude,omitempty"`
 	Head      digest            `json:"head,omitzero"`
 	// int32 beside CdRead: the head is headLen bytes at most, and the 8 bytes
@@ -1464,7 +1464,11 @@ const cacheVersion = 29
 // (a parse kept from before has none, under the same row revision).
 // dsh 3: the ids of its newest turn's messages (TurnConvs), which a
 // request still answering carried and has no reply id for yet.
-var parseVersions = map[string]int{"codex": 3, "zcode": 1, "dsh": 3, "antigravity": 2}
+// agy 1: a step's tokens are counted under the model its conversation's
+// database names (agyStepModels), not "agy".
+// pi 1, raft 1, cindy 1: a pi-subagents tool result's model work is its
+// subagents', counted from their own files (piSubagentsRead).
+var parseVersions = map[string]int{"codex": 3, "zcode": 1, "dsh": 3, "antigravity": 2, "agy": 1, "pi": 1, "raft": 1, "cindy": 1}
 
 type cacheFile struct {
 	Version int    `json:"version"`
@@ -1628,6 +1632,8 @@ func saved() {
 		saving.Wait()
 	}
 	saving.Unlock()
+	ccFamilyWrites.Wait()
+	ccRestWrites.Wait()
 }
 
 // saveHook, when a test sets it, runs before each save is written.
@@ -1663,6 +1669,7 @@ func writeCache(c *save) {
 		return
 	}
 	ok = true
+	writeCodexWindows(c.Files)
 }
 
 // refresh parses those of want that changed since their parse was kept, a
@@ -1762,13 +1769,16 @@ func refresh(want, all []file) {
 				j := &jobs[i]
 				// its file's calls lock is taken before a read slot, as
 				// readCalls takes them
-				calls := callsAlong(j.f, j.old)
+				// a rollout's window kept on disk: its calls are read on
+				// too, by readCalls, rather than ride a read from the start
+				old := codexWindowed(j.f, j.old)
+				calls := callsAlong(j.f, old)
 				release := readSlot()
 				end := readBegin()
 				if parseHook != nil {
 					parseHook()
 				}
-				j.parsed = parseWith(j.f, j.old, calls)
+				j.parsed = parseWith(j.f, old, calls)
 				end()
 				release()
 				if j.parsed.Agent != j.f.agent {
@@ -1983,6 +1993,7 @@ func Reset() {
 	mu.Lock()
 	defer mu.Unlock()
 	saved()
+	ccFamiliesForget()
 	cache, loaded = nil, false
 	cacheGeneration++
 	forgetKeptStats()
@@ -2324,8 +2335,10 @@ func parseRead(f file, old *state, calls *callsRide) *state {
 			calls.release()
 		}
 	}()
-	// Summary caches contain aggregates only. After a restart, a changed
-	// Codex file rebuilds its transient response index from the source.
+	// sessions.json keeps aggregates only, and a rollout's window beside it
+	// (codex_window.go). A changed rollout with no window of its read kept
+	// rebuilds it from the source.
+	old = codexWindowed(f, old)
 	if f.agent == "codex" && old != nil && old.Codex == nil {
 		old = nil
 	}
@@ -2356,8 +2369,8 @@ func parseRead(f file, old *state, calls *callsRide) *state {
 	s.CdRead = parser.claude
 	s.ContentHash = prefixHash(f.path, f.size)
 	var head func([]byte) bool
+	s.Agent, s.parsePath = f.agent, f.path
 	if f.agent == "codex" {
-		s.codexPath = f.path
 		head = func(b []byte) bool { return codexHead(s, b, f.main) }
 	}
 	line := func(b []byte, _, _ int64) bool {

@@ -105,7 +105,7 @@ const usage = `magpie — one place to pick every agent's model
   magpie accounts add <agent>     sign in to one more Claude, ChatGPT or Google (Gemini CLI, Antigravity) subscription
   magpie accounts add copilot [--host <name>.ghe.com]   one more Copilot account, on github.com or an enterprise's GHE.com
   magpie accounts discovery [on|off]   read agents' sign-ins (default on; MAGPIE_NO_ACCOUNTS=1 disables too)
-  magpie accounts import <codex|claude|antigravity|factory> <file>... [--yes]   bring in accounts from other tools' files (Codex's auth.json, Cockpit Tools, CLIProxyAPI, Sub2API, claude-swap); the tool a ChatGPT or Claude file came from is signed out of it
+  magpie accounts import <codex|claude|antigravity|factory|<plugin>> <file>... [--yes]   bring in accounts from other tools' files (Codex's auth.json, Cockpit Tools, CLIProxyAPI, Sub2API, claude-swap, a plugin's own); the tool a ChatGPT or Claude file came from is signed out of it
   magpie accounts export <codex|claude> [<email>...] [--format sub2api|cliproxyapi] [--to <folder>] [--yes]   write accounts as a file Sub2API, CLIProxyAPI or magpie imports (0600; holds live sign-ins)
   magpie accounts import codex <file>... --access-only   keep each ChatGPT account with its access token only: never renewed, so the tool it came from stays signed in
   magpie accounts access-only codex <email> [on|off]   keep a ChatGPT account access token only, or let magpie renew its sign-in again
@@ -155,6 +155,7 @@ const usage = `magpie — one place to pick every agent's model
   magpie gateway-key concurrency <id> [<n>|off]   at most n of a key's requests at once; the rest wait their turn
   magpie gateway-key mcp <id> [all|none|<server>|<server>/<tool> ...]   the MCP servers and tools a key may use
   magpie gateway-key access <id> [read-only|full]   read-only: the key reads quotas and usage (GET /, /v1/magpie/quotas, /v1/magpie/usage) and uses no model, MCP server or write
+  magpie gateway-key admin <id> [off|local|any]   let the key manage providers, accounts and gateway keys through /v1/magpie/admin/ (local: from this computer only)
   magpie gateway-key move <id> <place>   put a key at a place in the list (from 1), the order list and the app show them in
   magpie gateway-key issue --ttl 1h [--name n] [--models a,b] [--accounts a,b] [--tokens N] [--cost USD] [--read-only] [--from <id>] [--json]
                                          a short-lived key (1m to 30 days) that stops working by itself; --from holds it to a key that issues keys; prints the key
@@ -880,12 +881,6 @@ func fieldForValue(a *agent.Agent, v string) *agent.Field {
 			return nil
 		}
 		v = m
-	}
-	// A provider/model names the main model even when its picker omits it
-	// but a subagent or role picker offers it. Other model fields are
-	// selected by name, not inferred from the models they offer.
-	if pid, model, ok := strings.Cut(v, "/"); ok && pid != "" && model != "" {
-		return nil
 	}
 	// a model stays with the model, even where other fields offer it too
 	// (Claude Code's opus/sonnet/haiku/fable)

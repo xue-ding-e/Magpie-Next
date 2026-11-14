@@ -186,15 +186,6 @@ func (s *Server) codexBackend(w http.ResponseWriter, r *http.Request) {
 		// here, never relayed to the ChatGPT backend; a magpie model is
 		// refused by serve
 		if !strings.Contains(model, "/") {
-			if isCodexOwnResponsesTurn(rest, model, body) && codexBodyNeedsCompaction(body) {
-				// Compact before the request reaches the backend's smaller
-				// byte limit. The client receives the same Responses compaction
-				// item it would have received from its own trigger and can keep
-				// the conversation alive.
-				compactBody := withModel(codexBudgetedCompactBody(body), "codex/"+model)
-				s.codexCompact(w, r, compactBody)
-				return
-			}
 			if msg, off := codexNativeOff(model); off {
 				writeError(w, provider.Responses, http.StatusForbidden, msg)
 				return
@@ -1001,27 +992,10 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	}
 	start := time.Now()
 	usage.Saw(agentOf(r))
-	inference := r.Method == http.MethodPost && (strings.HasPrefix(rest, "/responses") || modelOf(body) != "")
-	if inference {
-		if err := provider.RequireAllowedModel(modelOf(body)); err != nil {
-			writeError(w, provider.Responses, http.StatusForbidden, err.Error())
-			return
-		}
-	}
-	if r.Method == http.MethodPost && rest == "/responses" {
-		// A gateway pick reaches a thread already running with an older
-		// config. Ultra stays the pick; the native API receives its max.
-		if effort := provider.AgentEffort("codex"); effort != "" {
-			if effort == "ultra" {
-				effort = "max"
-			}
-			body = withFixedEffort(provider.Responses, body, effort)
-		}
-	}
 	// Codex's own turns come here from the mux, not through serve: the
 	// row written below sums this call's tries in its own context (#4456)
 	r = r.WithContext(s.countBytes(r.Context()))
-	w0, body0 := w, body // before masking, for the fallbacks (codexFallBack)
+	w0, body0 := w, body // as they came, for the fallbacks (codexFallBack)
 	// Claude's blocks magpie gave Codex (claudeseal) are Claude's alone:
 	// to OpenAI each item is its summary, as before magpie carried them
 	body = withoutClaudeSeals(body)
@@ -1113,7 +1087,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	kind := requestCallKind(r.Header, metadata)
 	var titleReply capturedBody // bounded; ordinary streams incur no copy
 	captureTitle := false
-	effort := "" // the reasoning sent, including an explicit gateway pick
+	effort := "" // the reasoning Codex asked for, which goes on as it is
 	end := func(status int, msg string, tokens, out int) {}
 	var tools *toolScan // whether the reply calls a tool, for a turn's end
 	var live *liveRow   // the reply counted as it reaches Codex (live.go)
@@ -1133,6 +1107,10 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		model := modelOf(body)
 		kept.model = model // only a turn is kept alive (overload)
 		effort = requestEffort(provider.Responses, body)
+		// the service tier the body goes out at, on the route and on each
+		// of its tries as the accounts loop's tries say it, so the Routing
+		// page's row tells a /fast turn (priority) apart (Anotiaww on X)
+		tier := bodyTier(provider.Responses, body)
 		seat := Weighed{ID: "codex", Provider: "openai", Name: "OpenAI", Icon: "openai", Who: who, Kind: "account", Agent: "codex", Model: model}
 		link := s.titlePrompts.observe(r, body, metadata, kind, start)
 		captureTitle = link != nil && isTitleKind(kind)
@@ -1147,8 +1125,8 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 			user = on.Account.User
 		}
 		window := cmp.Or(provider.CodexWindow(user, model), catalog.ContextOf(model))
-		tr = s.trace.beginFor(r, Route{turn: turn, window: window, dirOf: dirOf(provider.Responses, body), tools: tools, imageTurn: drawingTurnID(metadata.Turn), imageCaller: codexTurnKey(r, callerOf(r).agent), imageProvider: imageProvider, TitleLink: link, Time: start, Agent: callerOf(r).agent, Session: sessionOf(r.Header), Conv: convOf(r.Header, body), ParentSession: titleParentSession(r.Header, metadata, kind), Kind: kind, Model: model, Effort: effort, Tier: bodyTier(provider.Responses, body), Provider: "openai", Subagent: subagentPickOf(r),
-			Order: []Weighed{seat}, Tries: []Try{{ID: seat.ID, Model: model, Effort: effort, Start: start}}})
+		tr = s.trace.beginFor(r, Route{turn: turn, window: window, dirOf: dirOf(provider.Responses, body), tools: tools, imageTurn: drawingTurnID(metadata.Turn), imageCaller: codexTurnKey(r, callerOf(r).agent), imageProvider: imageProvider, TitleLink: link, Time: start, Agent: callerOf(r).agent, Session: sessionOf(r.Header), Conv: convOf(r.Header, body), ParentSession: titleParentSession(r.Header, metadata, kind), Kind: kind, Model: model, Effort: effort, Tier: tier, Provider: "openai", Subagent: subagentPickOf(r),
+			Order: []Weighed{seat}, Tries: []Try{{ID: seat.ID, Model: model, Effort: effort, Tier: tier, Start: start}}})
 		if m := noteMasked(r, "chat", maskedHits, sentOf(maskedHits, body), tr.ID, "openai", model); m != nil {
 			s.trace.update(tr, func(t *Route) { t.Masked = m })
 		}
@@ -1197,6 +1175,9 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 				if prompt != nil {
 					t.Prompt = prompt.calibrated(promptCounted(t.Usage), window)
 				}
+				// what the reply said it ran at; the ChatGPT backend's
+				// "auto"/"default" tell nothing (servedTierAt)
+				try.TierServed = servedTierAt(provider.HostOf(base), uu.Tier)
 				try.Served, try.Swapped = served, swapped(model, served)
 				t.Served, t.Swapped = try.Served, try.Swapped
 			})
@@ -1232,7 +1213,8 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		rec := usage.Record{RouteID: tr.ID, Time: began, Agent: callerOf(r).agent, Provider: servedProvider, Host: provider.HostOf(base),
 			ProviderAccount: servedAccount, Model: modelOf(body), Requested: modelOf(body), Effort: effort,
 			Millis: time.Since(began).Milliseconds(), Status: status, Session: sessionOf(r.Header), NativeSession: nativeSessionOf(r.Header),
-			Kind: kind, Endpoint: r.URL.Path, HandedOn: true}
+			Kind: kind, Endpoint: r.URL.Path, HandedOn: true,
+			TierAsked: bodyTier(provider.Responses, body), TierSent: bodyTier(provider.Responses, body)}
 		failedWith(&rec, status, msg, "")
 		appendUsage(r, rec)
 		tried = append(tried, fmt.Sprintf("openai: %d %s", status, msg))
@@ -1248,7 +1230,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	askAgain := func(status int, msg string, wait time.Duration) bool {
 		handOn(status, msg, wait)
 		busyAgain++
-		if !pauseAlive(r.Context(), w, kept, streams, start, wait) {
+		if !pauseAlive(r.Context(), w, kept, streams, start, wait, nil) {
 			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1].Gone = true })
 			end(status, msg, 0, 0)
 			return false
@@ -1256,7 +1238,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		began, nt = time.Now(), &netTrace{}
 		s.trace.update(tr, func(t *Route) {
 			again := t.Tries[0]
-			t.Tries = append(t.Tries, Try{ID: again.ID, Model: again.Model, Effort: again.Effort, Start: began})
+			t.Tries = append(t.Tries, Try{ID: again.ID, Model: again.Model, Effort: again.Effort, Tier: again.Tier, Start: began})
 		})
 		first, titleReply = firstToken{start: start, onFirst: s.trace.firstContent(tr)}, capturedBody{}
 		return true
@@ -1319,13 +1301,6 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 				req.Header.Del("Accept")
 				for _, v := range accept {
 					req.Header.Add("Accept", v)
-				}
-			}
-			if inference {
-				if err := provider.RequireAllowedModel(modelOf(body)); err != nil {
-					failWith(http.StatusForbidden, err.Error())
-					end(http.StatusForbidden, err.Error(), 0, 0)
-					return
 				}
 			}
 			// left to the transport, the reply comes back plain for the usage in it
@@ -1442,6 +1417,13 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 				break
 			}
 			body = b
+		}
+		if rest == "/images/generations" || rest == "/images/edits" {
+			if acct, ok := codexRelayedAccount(base, r.Header, on); ok {
+				// Codex's own drawing, relayed: the image window its reply
+				// tells is the account's image row (#6412)
+				heardCodexImage(acct, res.Header)
+			}
 		}
 		if rest == "/responses" {
 			if acct, ok := codexRelayedAccount(base, r.Header, on); ok {
@@ -1736,7 +1718,7 @@ func codexAccountOut(status int, body []byte) bool {
 	if status == http.StatusUnauthorized {
 		return false
 	}
-	if status == http.StatusForbidden && bytes.Contains(body, []byte("usage_not_included")) {
+	if status == http.StatusForbidden && bodyHas(body, "usage_not_included") {
 		return true
 	}
 	switch failure(status, body) {
@@ -1943,7 +1925,7 @@ func withoutUnreadable(body, msg []byte) ([]byte, bool) {
 		// (passthrough_refused.go)
 		return withoutPassthrough(body, f)
 	}
-	if !foreignReasoning.Match(msg) && !bytes.Contains(bytes.ToLower(msg), []byte("not found")) {
+	if !foreignReasoning.Match(msg) && !bodyHas(bytes.ToLower(msg), "not found") {
 		return nil, false
 	}
 	if m := unreadableItem.FindSubmatch(msg); m != nil {
@@ -2408,10 +2390,6 @@ func (s *Server) askCodexList(rctx context.Context, h http.Header, query string,
 // magpie's models after it. Should the backend not answer, or not in
 // time, Codex's last list of its own stands in.
 func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
-	if _, err := settings.LoadChecked(); err != nil {
-		writeError(w, provider.Responses, http.StatusServiceUnavailable, "the outbound model policy could not be read")
-		return
-	}
 	var own []any
 	body, etag, deny, denyBody := s.codexBackendList(r)
 	// A sign-in the backend calls revoked (401 token_revoked, "Encountered
@@ -2597,23 +2575,6 @@ func codexMerged(own []any, cached bool) []any {
 			mine[m.ID] = true
 		}
 	}
-	// The exact outbound policy includes hidden jobs such as auto-review,
-	// and the native models listed under a pool account's qualified id.
-	own = slices.DeleteFunc(own, func(m any) bool {
-		o, _ := m.(map[string]any)
-		slug, _ := o["slug"].(string)
-		return provider.RequireAllowedModel(slug) != nil
-	})
-	ms = slices.DeleteFunc(ms, func(m catalog.Model) bool {
-		pid, model, qualified := strings.Cut(m.ID, "/")
-		if qualified && pid == "group" {
-			return false // its concrete candidates are checked at dispatch
-		}
-		if !qualified {
-			model = m.ID
-		}
-		return provider.RequireAllowedModel(model) != nil
-	})
 	all := append(own, codexcat.Entries(ms, len(own)+100)...)
 	if at, ok := provider.CodexOrder(); ok {
 		codexcat.Order(all, at)
@@ -2685,9 +2646,7 @@ func codexInputAs(body []byte, magpieModel, native bool) (_ []byte, compact bool
 		return body, false
 	}
 	var items []map[string]any
-	dec := json.NewDecoder(bytes.NewReader(q["input"]))
-	dec.UseNumber() // tool output keeps exact integers and exponent forms during replay
-	if dec.Decode(&items) != nil {
+	if json.Unmarshal(q["input"], &items) != nil {
 		return body, false
 	}
 	changed := false
@@ -2927,7 +2886,7 @@ func refusesInput(status int, b []byte) bool {
 // request goes back 400 "Item with id 'rs_…' not found" (#1008); its
 // summary was the model's notes to itself, which no model reads back.
 func withoutBareReasoning(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"reasoning"`)) || !anyInputItem(body, func(it []byte) bool {
+	if !bodyHas(body, `"reasoning"`) || !anyInputItem(body, func(it []byte) bool {
 		r := reasoningOf(it)
 		return r.typeOK && r.encOK && r.reasoning && !r.sealed
 	}) {
@@ -3081,7 +3040,7 @@ func refusesReasoningText(status int, b, body []byte) bool {
 // than its text, so the item goes, as codexInput leaves it out for one of
 // Codex's own models.
 func withoutReasoningText(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"reasoning"`)) || !anyInputItem(body, func(it []byte) bool {
+	if !bodyHas(body, `"reasoning"`) || !anyInputItem(body, func(it []byte) bool {
 		r := reasoningOf(it)
 		return r.typeOK && r.contentOK && r.reasoning && r.text
 	}) {
@@ -3144,7 +3103,7 @@ func refusesCitationOffsets(status int, b []byte) bool {
 // with it. Such an annotation goes; the text, and a citation with its
 // offsets, stay as they came.
 func withoutOffsetlessCitations(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"annotations"`)) || !anyInputItem(body, itemCitesWithoutOffsets) {
+	if !bodyHas(body, `"annotations"`) || !anyInputItem(body, itemCitesWithoutOffsets) {
 		return body
 	}
 	q, err := rawObject(body)
@@ -3214,7 +3173,7 @@ func withoutOffsetlessCitations(body []byte) []byte {
 // output_text annotation without the offsets OpenAI's schema wants, read
 // as the scan reads it, without decoding the conversation.
 func itemCitesWithoutOffsets(it []byte) bool {
-	if !bytes.Contains(it, []byte(`"annotations"`)) {
+	if !bodyHas(it, `"annotations"`) {
 		return false
 	}
 	for _, part := range elementsOf(memberOrNil(it, "content")) {
@@ -3247,7 +3206,7 @@ var openaiItemPrefix = map[string]string{
 // call's output names it by as it was, and the rest of the request byte
 // for byte.
 func callItemIDs(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"tool_search_call"`)) && !bytes.Contains(body, []byte(`"custom_tool_call"`)) {
+	if !bodyHas(body, `"tool_search_call"`) && !bodyHas(body, `"custom_tool_call"`) {
 		return body
 	}
 	if !anyInputItem(body, func(it []byte) bool {
@@ -3429,7 +3388,7 @@ var itemKindPrefix = map[string]string{
 // with each other character as "_"; a call's call_id, which its output
 // names it by, stays as it was.
 func plainItemIDs(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"id"`)) {
+	if !bodyHas(body, `"id"`) {
 		return body
 	}
 	if !anyInputItem(body, func(it []byte) bool {
@@ -3580,7 +3539,7 @@ func forVendor(p provider.Provider, body []byte, compaction bool) []byte {
 	if compaction {
 		body = developerItemsAsSystem(body)
 	}
-	if !slices.ContainsFunc(openaiOnly, func(k []byte) bool { return bytes.Contains(body, k) }) || !forVendorChanges(body) {
+	if !slices.ContainsFunc(openaiOnly, func(k []byte) bool { return bodyHasBytes(body, k) }) || !forVendorChanges(body) {
 		return body
 	}
 	q, err := rawObject(body)
@@ -3680,7 +3639,7 @@ func keepsAccessPrograms(p provider.Provider, in http.Header) bool {
 // withoutAccessPrograms is body without its top-level access_programs, the
 // rest byte for byte (withoutTopMember).
 func withoutAccessPrograms(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"access_programs"`)) {
+	if !bodyHas(body, `"access_programs"`) {
 		return body
 	}
 	return withoutTopMember(body, "access_programs")
@@ -3702,7 +3661,7 @@ func forVendorChanges(body []byte) bool {
 	}
 	if inc, found, ok := topMember(body, "include"); !ok {
 		return false
-	} else if found && bytes.Contains(inc, []byte(`"`+outputReplay+`"`)) {
+	} else if found && bodyHas(inc, `"`+outputReplay+`"`) {
 		return true
 	}
 	return anyInputItem(body, func(it []byte) bool {
@@ -3734,7 +3693,7 @@ func forVendorChanges(body []byte) bool {
 // takes developer alone, never comes here. The message stays where it
 // stood, so a thread's cached prefix keeps its shape (#502).
 func developerItemsAsSystem(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"developer"`)) {
+	if !bodyHas(body, `"developer"`) {
 		return body
 	}
 	var q map[string]json.RawMessage
@@ -4145,7 +4104,7 @@ func summaryTooLarge(rec *recorder) bool {
 // 'rs_…' not found", #1008), which a relay in front of them passes on.
 func itemNotFound(rec *recorder) bool {
 	b := rec.body.Bytes()
-	return rec.status == http.StatusBadRequest && unreadableItem.Match(b) && bytes.Contains(bytes.ToLower(b), []byte("not found"))
+	return rec.status == http.StatusBadRequest && unreadableItem.Match(b) && bodyHas(bytes.ToLower(b), "not found")
 }
 
 // inputKindRefused is a summary request turned away for a kind of item in

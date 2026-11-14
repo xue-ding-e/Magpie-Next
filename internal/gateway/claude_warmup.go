@@ -49,9 +49,6 @@ func warmClaude(ctx context.Context, configDir string) error {
 // it is how a Claude account's model test runs (provider.ProbeClaudeVia),
 // so the test asks Anthropic as Claude Code does, through Claude Code.
 func askClaude(ctx context.Context, configDir, model string) error {
-	if err := checkClaudeModelPolicy(ctx, model); err != nil {
-		return err
-	}
 	binary, err := claudeBinary()
 	if err != nil {
 		return err
@@ -74,7 +71,7 @@ func askClaude(ctx context.Context, configDir, model string) error {
 	cmd.Env = binary.env(env, configDir)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
-	runErr := runClaudeTree(ctx, cmd, "a Claude Code test on "+model, model)
+	runErr := runClaudeTree(ctx, cmd, "a Claude Code test on "+model)
 	if res, ok := claudeResult(out.Bytes()); ok && res.IsError {
 		return errors.New("Claude Code: " + clip(res.Result))
 	}
@@ -96,9 +93,6 @@ func askClaude(ctx context.Context, configDir, model string) error {
 // through its helper as the bridge runs it, and the run ends at its
 // result.
 func askClaudeTUI(ctx context.Context, binary claudeCLI, configDir, model string) error {
-	if err := checkClaudeModelPolicy(ctx, model); err != nil {
-		return err
-	}
 	if _, why := claudeMachineWhy(binary); why != "" {
 		return claudeTUIErr(why)
 	}
@@ -132,7 +126,7 @@ func askClaudeTUI(ctx context.Context, binary claudeCLI, configDir, model string
 	out := &resultLines{done: func() { _ = stdin.Close() }}
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = out, &stderr
-	runErr := runClaudeTree(ctx, cmd, "a Claude Code test on "+model, model)
+	runErr := runClaudeTree(ctx, cmd, "a Claude Code test on "+model)
 	dropOneOff(binary, configDir, work, out.sid)
 	if out.res != nil {
 		if out.res.IsError {
@@ -459,19 +453,13 @@ func logSafe(s string) string {
 // claude.cmd, whose node went on running with nobody waiting for it
 // (#1894). In a tree, a job on Windows and a session elsewhere, what is
 // left once the head is gone is ended with it, and on Windows when magpie
-// exits mid-run. Model probes pass their model so a policy changed while
-// waiting for a slot is checked before launch; /usage names no model.
-func runClaudeTree(ctx context.Context, cmd *exec.Cmd, what string, models ...string) error {
+// exits mid-run.
+func runClaudeTree(ctx context.Context, cmd *exec.Cmd, what string) error {
 	room, err := claudeRoom.take(ctx, what)
 	if err != nil {
 		return err
 	}
 	defer room(false)
-	for _, model := range models {
-		if err := checkClaudeModelPolicy(ctx, model); err != nil {
-			return err
-		}
-	}
 	t, err := proc.StartTree(cmd)
 	if err != nil {
 		return err

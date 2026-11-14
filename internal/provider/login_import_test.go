@@ -21,7 +21,7 @@ func importStatuses(rs []ImportedAccount) string {
 }
 
 // CLIProxyAPI's Codex auth files and Codex CLI's own auth.json come in as
-// ChatGPT accounts needing renewal; a token already held, another
+// ChatGPT accounts, each refreshed first; a token already held, another
 // app's file and a used-up token are said so.
 func TestImportCodexLogins(t *testing.T) {
 	home := claudeHome(t)
@@ -55,9 +55,8 @@ func TestImportCodexLogins(t *testing.T) {
 	// signed in to Codex already
 	codexSignIn(t, home, "live@example.com", "r-live")
 
-	// No access token: these fixtures exercise the explicit renewal path.
-	cpa := `{"type":"codex","id_token":"x","access_token":"","refresh_token":"r-cpa","account_id":"acct-cpa","email":"cpa@example.com","expired":"2026-01-01T00:00:00Z"}`
-	native := `{"OPENAI_API_KEY":null,"auth_mode":"chatgpt","tokens":{"id_token":"x","access_token":"","refresh_token":"r-native","account_id":"acct-native"}}`
+	cpa := `{"type":"codex","id_token":"x","access_token":"y","refresh_token":"r-cpa","account_id":"acct-cpa","email":"cpa@example.com","expired":"2026-01-01T00:00:00Z"}`
+	native := `{"OPENAI_API_KEY":null,"auth_mode":"chatgpt","tokens":{"id_token":"x","access_token":"y","refresh_token":"r-native","account_id":"acct-native"}}`
 	list := `[{"type":"claude","refresh_token":"r-claude","email":"c@example.com"},
 		{"type":"codex","refresh_token":"r-live","email":"live@example.com"},
 		{"type":"codex","refresh_token":"r-used","email":"used@example.com"},
@@ -182,14 +181,14 @@ func TestImportCockpitExports(t *testing.T) {
 	t.Cleanup(CodexTokenURLForTest(fake.URL))
 
 	sub2api := `{"exported_at":"2026-10-09T00:00:00Z","proxies":[],"type":"sub2api-data","version":1,"accounts":[
-		{"name":"sub@example.com","platform":"openai","type":"oauth","credentials":{"access_token":"","refresh_token":"r-sub","id_token":"x","chatgpt_account_id":"acct-sub"}},
+		{"name":"sub@example.com","platform":"openai","type":"oauth","credentials":{"access_token":"a","refresh_token":"r-sub","id_token":"x","chatgpt_account_id":"acct-sub"}},
 		{"name":"key","platform":"openai","type":"apikey","credentials":{"api_key":"sk-1"}},
 		{"name":"c@example.com","platform":"anthropic","type":"oauth","credentials":{"access_token":"a","refresh_token":"r-c"}},
 		{"name":"web@example.com","platform":"openai","type":"oauth","credentials":{"access_token":"a-only"}}]}`
-	cockpit := `[{"id":"1","type":"codex","email":"cockpit@example.com","id_token":"x","access_token":"","refresh_token":"r-cockpit","account_id":"acct-cockpit"},
+	cockpit := `[{"id":"1","type":"codex","email":"cockpit@example.com","id_token":"x","access_token":"y","refresh_token":"r-cockpit","account_id":"acct-cockpit"},
 		{"id":"2","type":"codex","email":"session@example.com","access_token":"y"}]`
-	seat1 := `{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"","refresh_token":"r-seat1","account_id":"acct-t1"},"type":"codex"}`
-	seat2 := `{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"","refresh_token":"r-seat2","account_id":"acct-t2"},"type":"codex"}`
+	seat1 := `{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"y","refresh_token":"r-seat1","account_id":"acct-t1"},"type":"codex"}`
+	seat2 := `{"OPENAI_API_KEY":null,"tokens":{"id_token":"x","access_token":"y","refresh_token":"r-seat2","account_id":"acct-t2"},"type":"codex"}`
 	rs, err := ImportLogins(context.Background(), "codex", []string{sub2api, "{not json", cockpit, seat1, seat2})
 	if err != nil {
 		t.Fatal(err)

@@ -161,7 +161,12 @@ type Record struct {
 	RequestID string `json:"rid,omitempty"`
 	// ResponseID is the response object ID actually sent to the client.
 	ResponseID string `json:"response_id,omitempty"`
-	Endpoint   string `json:"ep,omitempty"`
+	// MessageID is the id the agent's own session file gives the call's
+	// message (Claude Code's msg_…), on a call read from such a file. Not
+	// persisted: it is read back with the file, and told by the request
+	// feed (FeedOriginals).
+	MessageID string `json:"-"`
+	Endpoint  string `json:"ep,omitempty"`
 	// Stop is why the upstream said its reply ended, in its own words
 	// (stop_reason, finish_reason …): "" when it said none, a stream that
 	// just stopped. Told apart by it, a reply that ended too soon is the
@@ -933,6 +938,13 @@ func (t *Totals) count(r Record) {
 // failed row that no later try took over from.
 func (r Record) LostRequest() bool { return r.Failed() && !r.HandedOn }
 
+// FailedTry is whether a try of r's request failed: r failed (whether the
+// agent got the error or a later try took over), or r answered after a
+// try that failed first. What Usage's Failed filter keeps: Routing shows
+// those tries failed, and a request a fallback answered had none of its
+// own failures listed under Failed (maohy915 on X).
+func (r Record) FailedTry() bool { return r.Failed() || r.RetriedRequest() }
+
 // RetriedRequest is whether r ends a request that was answered after a try
 // that failed first (not one its agent canceled after a failed try).
 func (r Record) RetriedRequest() bool { return !r.HandedOn && r.Answered() && r.Tries > 1 }
@@ -1053,7 +1065,7 @@ type Summary struct {
 // Summarize caches the four periods over an indexed log snapshot. Callers
 // receive their own result slices, without retaining historical Records.
 func Summarize(p Period) Summary {
-	return indexedSummary(p, Clock())
+	return indexedSummary(p, localNow())
 }
 
 func summarize(p Period, now time.Time, recs []Record) Summary {

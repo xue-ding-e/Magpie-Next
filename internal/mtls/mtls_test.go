@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -179,41 +178,6 @@ func TestServerCert(t *testing.T) {
 	}
 	if _, err := c.Leaf.Verify(x509.VerifyOptions{Roots: pool, DNSName: "evil.example"}); err == nil {
 		t.Error("signed for a name not given")
-	}
-}
-
-// Internationalized computer names need ASCII DNS SANs, while the CA's
-// signature, ordinary DNS names and IP address checks must still hold.
-func TestServerCertInternationalNames(t *testing.T) {
-	var st = Store{Dir: t.TempDir()}
-	var names = []string{"localhost", "例子", "例子.local", "bu\u0308cher.example", "*.example.com", "*.例子.example", "box_name.local"}
-	var want = []string{"localhost", "xn--fsqu00a", "xn--fsqu00a.local", "xn--bcher-kva.example", "*.example.com", "*.xn--fsqu00a.example", "box_name.local"}
-	c, err := st.ServerCert(names, []net.IP{net.IPv4(127, 0, 0, 1)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(c.Leaf.DNSNames, want) {
-		t.Fatalf("DNS SANs = %q, want %q", c.Leaf.DNSNames, want)
-	}
-	if names[1] != "例子" || names[3] != "bu\u0308cher.example" {
-		t.Fatalf("changed the caller's names: %q", names)
-	}
-	pool, err := st.Pool()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"localhost", "xn--fsqu00a", "xn--fsqu00a.local", "xn--bcher-kva.example", "box.example.com", "box.xn--fsqu00a.example", "box_name.local", "127.0.0.1"} {
-		if _, err := c.Leaf.Verify(x509.VerifyOptions{Roots: pool, DNSName: name}); err != nil {
-			t.Errorf("%s: %v", name, err)
-		}
-	}
-	for _, name := range []string{"other.example", "127.0.0.2"} {
-		if _, err := c.Leaf.Verify(x509.VerifyOptions{Roots: pool, DNSName: name}); err == nil {
-			t.Errorf("signed for %s without being asked", name)
-		}
-	}
-	if _, err := st.ServerCert([]string{"localhost", "bad\u200d.example"}, nil); err == nil {
-		t.Error("issued a certificate with an invalid internationalized DNS name")
 	}
 }
 

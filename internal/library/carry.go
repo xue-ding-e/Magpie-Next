@@ -41,6 +41,11 @@ type Bundle struct {
 	// Put keeps this computer's. Applied.Env stays out. A backup made
 	// without keys carries the names with empty values (WithoutSecrets).
 	Env *[]*EnvVar `json:"env,omitempty"`
+	// Bili is billion-context's own billion-context.json, with magpie's
+	// recipe at the default gateway address (carriedBili). It is nil when
+	// this computer has none or it can't be read, and in a bundle from a
+	// magpie before it was carried: Put keeps this computer's then.
+	Bili *string `json:"bili,omitempty"`
 }
 
 // CarriedSkill is a skill with its folder's files.
@@ -57,6 +62,13 @@ type CarriedSkill struct {
 	Note string `json:"note,omitempty"`
 	// Router is Skill.Router: direct, kept out of the skill router
 	Router string `json:"router,omitempty"`
+	// From is the repository the skill was traced to on the computer that
+	// made the bundle (Skill.From, skill_from.go), when it isn't a source
+	// the skill carries itself: the lock, a checkout, CC Switch's record or
+	// an install-again there. What traced it is that computer's own files,
+	// so without this the other computer groups the skill under "this
+	// computer". Bundles from before this have none.
+	From string `json:"from,omitempty"`
 }
 
 // A skill's file bigger than maxCarried is left out, and so are the
@@ -105,7 +117,9 @@ func Collect() (*Bundle, error) {
 	// a server kept to this computer stays out; another computer's by its
 	// name, which a sync brought, goes on as it came (mcp_local.go)
 	for _, s := range sorted(l.carriedServers(), func(s *Server) string { return s.Name }) {
-		c := *carried(s) // magpie's own by name, each computer's own binary
+		// magpie's own by name, each computer's own binary; a server
+		// started its own way here goes with the synced start (mcp_here.go)
+		c := *carried(carriedStart(s))
 		c.Agents = orNone(slices.Sorted(slices.Values(s.Agents)))
 		b.MCP = append(b.MCP, &c)
 	}
@@ -114,8 +128,12 @@ func Collect() (*Bundle, error) {
 	for _, s := range skills {
 		dirs = append(dirs, realDir(skillDir(s.Name)))
 	}
+	tr := &tracer{}
 	for i, c := range readSkills(dirs) {
 		s := skills[i]
+		if s.Source == nil || s.Source.Kind == "folder" {
+			c.From = tr.repoOf(s)
+		}
 		c.Name, c.Source, c.Agents, c.Called, c.Note, c.Router = s.Name, s.Source, orNone(slices.Sorted(slices.Values(s.Agents))), s.Called, s.Note, s.Router
 		b.Skills = append(b.Skills, c)
 	}
@@ -124,6 +142,7 @@ func Collect() (*Bundle, error) {
 		c := *s
 		c.Skills, c.MCP = slices.Sorted(slices.Values(s.Skills)), slices.Sorted(slices.Values(s.MCP))
 		c.Agents = orNone(slices.Sorted(slices.Values(s.Agents)))
+		c.From = s.From.clone()
 		subs = append(subs, &c)
 	}
 	b.Subagents = &subs
@@ -141,6 +160,7 @@ func Collect() (*Bundle, error) {
 		envs = append(envs, &c)
 	}
 	b.Env = &envs
+	b.Bili = carriedBili()
 	return b, nil
 }
 
@@ -340,6 +360,12 @@ func localFile(rel string) bool {
 // WithoutSecrets empties the values of the servers' environment variables
 // and headers that secret says hold one; their names stay, to be filled in.
 func (b *Bundle) WithoutSecrets(secret func(string) bool) {
+	// billion-context.json holds no keys (bili takes a key's variable or
+	// its own store's name), except a storage DSN's password: a file
+	// naming one stays out, kept on each computer as it is
+	if b.Bili != nil && strings.Contains(strings.ToLower(*b.Bili), "dsn") {
+		b.Bili = nil
+	}
 	// a variable's name says nothing of what its value is: every value
 	// goes, the names stay
 	if b.Env != nil {
@@ -454,7 +480,8 @@ func Put(b *Bundle) (*Result, error) {
 	if err := b.check(); err != nil {
 		return nil, err
 	}
-	return change(func(l *Library) error {
+	biliWrote := false
+	res, err := change(func(l *Library) error {
 		if err := os.MkdirAll(skillsDir(), 0o755); err != nil {
 			return err
 		}
@@ -515,7 +542,18 @@ func Put(b *Bundle) (*Result, error) {
 		for _, s := range b.Skills {
 			// turned off here stays off here: that is this computer's own
 			off := l.skill(s.Name) != nil && l.skill(s.Name).OffHere
-			skills = append(skills, &Skill{Name: s.Name, Source: s.Source, Agents: slices.Clone(orNone(s.Agents)), OffHere: off, Called: s.Called, Note: s.Note, Router: s.Router})
+			n := &Skill{Name: s.Name, Source: s.Source, Agents: slices.Clone(orNone(s.Agents)), OffHere: off, Called: s.Called, Note: s.Note, Router: s.Router}
+			// where it came from: the other computer's trace, else what
+			// this one has found itself (Group again) for the same skill,
+			// which a bundle from before From was carried says nothing of
+			n.From = s.From
+			if cur := l.skill(s.Name); cur != nil && sameSource(cur.Source, s.Source) {
+				if n.From == "" {
+					n.From = cur.From
+				}
+				n.Gone = cur.Gone // kept on this computer only
+			}
+			skills = append(skills, n)
 			if keep[s.Name] {
 				continue
 			}
@@ -594,6 +632,7 @@ func Put(b *Bundle) (*Result, error) {
 			for _, s := range *b.Subagents {
 				c := *s
 				c.Skills, c.MCP, c.Agents = slices.Clone(s.Skills), slices.Clone(s.MCP), slices.Clone(orNone(s.Agents))
+				c.From = s.From.clone()
 				subs = append(subs, &c)
 			}
 			l.Subagents = subs
@@ -619,8 +658,21 @@ func Put(b *Bundle) (*Result, error) {
 			}
 			l.Env = envs
 		}
+		if b.Bili != nil {
+			wrote, err := putBili(*b.Bili, kept)
+			if err != nil {
+				return err
+			}
+			biliWrote = wrote
+		}
 		return nil
 	})
+	if err == nil && biliWrote {
+		// the running bilis read their settings again (best effort: one
+		// started later reads the file anyway)
+		biliReload()
+	}
+	return res, err
 }
 
 func sameSource(a, b *Source) bool {
@@ -693,11 +745,15 @@ func isDir(p string) bool {
 }
 
 // Changed is when the library was last changed: library.json, or a file
-// of its own (links not followed).
+// of its own (links not followed), or billion-context.json, which a
+// sync carries with it.
 func Changed() time.Time {
 	var t time.Time
 	if fi, err := os.Stat(path()); err == nil {
 		t = fi.ModTime()
+	}
+	if b := biliChanged(); b.After(t) {
+		t = b
 	}
 	filepath.WalkDir(Dir(), func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
