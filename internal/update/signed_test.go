@@ -125,6 +125,29 @@ func TestUnsignedEraNeedsNoSignature(t *testing.T) {
 	}
 }
 
+// An ambient endpoint outside the accepted transport fixture scope cannot
+// turn a missing signature into a trusted upstream release.
+func TestSignedRequirementIgnoresUntrustedFeed(t *testing.T) {
+	for _, feed := range []string{
+		"https://updates.example.invalid/feed",
+		"http://192.0.2.1/feed",
+		"http://name:example@localhost/feed",
+	} {
+		t.Run(feed, func(t *testing.T) {
+			t.Setenv("MAGPIE_UPDATE_FEED", feed)
+			if err := (&Release{Version: firstSigned}).verify(); err == nil {
+				t.Fatal("an untrusted feed disabled the required release signature")
+			}
+		})
+	}
+	// Even a loopback address needs the isolated test environment.
+	t.Setenv("MAGPIE_UPDATE_FEED", "http://127.0.0.1:12345/feed")
+	t.Setenv("MAGPIE_TEST_SANDBOX", "")
+	if err := (&Release{Version: firstSigned}).verify(); err == nil {
+		t.Fatal("a feed outside the test sandbox disabled the required release signature")
+	}
+}
+
 // The embedded key is the one release CI signs with: a sample signed by
 // the private key (UPDATE_SIGNING_KEY) with openssl, as the workflow does.
 func TestEmbeddedKeyVerifiesCIsSignature(t *testing.T) {

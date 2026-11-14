@@ -4,6 +4,6 @@
   "type": "module",
   "description": "Records a pull request's UI changes in the real app; see .github/workflows/ui-preview.yml",
   "dependencies": {
-    "playwright": "1.61.1"
+    "playwright": "1.65.0"
   }
 }

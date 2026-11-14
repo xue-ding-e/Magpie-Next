@@ -76,6 +76,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await menu.waitFor({ state: "detached" });
         await until(() => sent("group-save").length === 2);
         assert.deepEqual(sent("group-save")[1], { id: "g1", name: "Night", accounts: ["relay/spare@example.com", "openai/k-1a2b3c"] });
+        // A response redraws these fields. Wait for the applied reply
+        // before typing into the name that it will replace.
+        await ed.locator('.agp-row[data-group="g1"] .agp-accounts[title*="relay/spare"]').waitFor();
 
         // renamed in place
         const dayName = group("gday").getByRole("textbox", { name: w.name, exact: true });

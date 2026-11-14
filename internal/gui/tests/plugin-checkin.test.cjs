@@ -239,9 +239,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const on = row.locator(".segs button").nth(1);
       await inEditor(page, on);
       const y = await scrolls(page);
-      const saved = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/settings/plugin-checkin");
-      await on.click();
-      await saved;
+      const saved = page.waitForResponse((r) =>
+        new URL(r.url()).pathname === "/api/settings/plugin-checkin" && r.request().method() === "POST");
+      const [response] = await Promise.all([saved, on.click()]);
+      assert.equal(response.status(), 200, "the settings request succeeded");
       assert.deepEqual(asked, [["set", { provider: "fakeco", on: true }]]);
       await page.waitForFunction(() => document.querySelector('.editor .ci-plugin[data-provider="fakeco"] > .row.pref:first-child .segs .opt.on') === document.querySelectorAll('.editor .ci-plugin[data-provider="fakeco"] > .row.pref:first-child .segs .opt')[1]);
       assert.equal(await scrolls(page), y, "the switch moved the page");

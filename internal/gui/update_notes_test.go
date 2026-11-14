@@ -32,7 +32,10 @@ func TestUpdateNotesRoute(t *testing.T) {
 	t.Setenv("MAGPIE_NOTES_FEED", feed.URL)
 	t.Setenv("MAGPIE_UPDATE_FEED", "http://127.0.0.1:1/")
 	oldV, oldState, oldLatest, oldIn := Version, updates.state, updates.latest, updates.notesIn
-	defer func() { Version, updates.state, updates.latest, updates.notesIn = oldV, oldState, oldLatest, oldIn }()
+	defer func() {
+		updates.loops.Wait()
+		Version, updates.state, updates.latest, updates.notesIn = oldV, oldState, oldLatest, oldIn
+	}()
 	Version = "0.1.604"
 	updates.mu.Lock()
 	updates.state, updates.latest, updates.notesIn = "ready", &update.Release{Version: "0.1.607", Notes: "- seven only"}, "en"
@@ -108,6 +111,7 @@ func TestUpdateNotesAskTheFeedAgain(t *testing.T) {
 	updates.latest, updates.asked = &update.Release{Version: "0.1.1020", Notes: "- twenty"}, time.Now().Add(-3*time.Hour)
 	updates.mu.Unlock()
 	defer func() {
+		updates.loops.Wait()
 		updates.mu.Lock()
 		updates.state, updates.staged, updates.notesIn, updates.latest, updates.asked, Version = oldState, oldStaged, oldIn, oldLatest, oldAsked, oldV
 		updates.mu.Unlock()
@@ -154,6 +158,7 @@ func TestUpdateRecheckTakesNotesLate(t *testing.T) {
 	updates.lang = "en"
 	updates.mu.Unlock()
 	defer func() {
+		updates.loops.Wait()
 		updates.mu.Lock()
 		updates.state, updates.staged, updates.notesIn, updates.latest, updates.asked, updates.lang, Version = oldState, oldStaged, oldIn, oldLatest, oldAsked, oldLang, oldV
 		updates.mu.Unlock()

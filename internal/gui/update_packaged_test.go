@@ -43,6 +43,7 @@ func TestUpdatePackagedLeavesItToTheManager(t *testing.T) {
 	}
 	packagedBy = func(string) *update.Packaged { return &update.Packaged{Manager: "pacman", Package: "magpie-bin"} }
 	u := &updater{}
+	defer u.loops.Wait()
 	u.placeExe(exe)
 	if u.exe != "" {
 		t.Fatalf("a packaged binary is to be replaced: %q", u.exe)

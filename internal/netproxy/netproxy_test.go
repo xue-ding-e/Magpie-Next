@@ -117,6 +117,40 @@ func TestFor(t *testing.T) {
 	}
 }
 
+func TestAutoNoProxyDoesNotFallBackToSystem(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, key := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"} {
+		t.Setenv(key, "")
+	}
+	sysCache.Lock()
+	sysCache.at, sysCache.p = farFuture, Proxy{URL: "http://127.0.0.1:18080"}
+	sysCache.Unlock()
+	t.Cleanup(func() { sysCache.Lock(); sysCache.at = zero; sysCache.Unlock() })
+	t.Setenv("ALL_PROXY", "http://127.0.0.1:18081")
+	t.Setenv("NO_PROXY", "trace.example.invalid")
+	u, err := url.Parse("http://trace.example.invalid/cdn-cgi/trace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := For(u); err != nil || got != nil {
+		t.Fatalf("an automatic proxy bypass fell back to the system proxy: %v %v", got, err)
+	}
+	other, _ := url.Parse("http://other.example.invalid/")
+	if got, err := For(other); err != nil || got == nil || got.String() != "http://127.0.0.1:18081" {
+		t.Fatalf("an unrelated host lost its environment proxy: %v %v", got, err)
+	}
+	if err := settings.Save(settings.Settings{Proxy: "socks5://127.0.0.1:18082"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := For(u); err != nil || got == nil || got.String() != "socks5://127.0.0.1:18082" {
+		t.Fatalf("NO_PROXY replaced an explicit proxy setting: %v %v", got, err)
+	}
+	r := (&http.Request{URL: u}).WithContext(With(context.Background(), "http://127.0.0.1:18083"))
+	if got, err := Func(r); err != nil || got == nil || got.String() != "http://127.0.0.1:18083" {
+		t.Fatalf("NO_PROXY replaced an explicit per-request proxy: %v %v", got, err)
+	}
+}
+
 func TestEnv(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	sysCache.at, sysCache.p = farFuture, Proxy{URL: "http://127.0.0.1:7890", Bypass: []string{"*.corp", "<local>"}}

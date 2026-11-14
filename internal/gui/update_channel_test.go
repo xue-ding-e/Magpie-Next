@@ -56,7 +56,7 @@ func TestUpdateChannelSwitch(t *testing.T) {
 	u := &updater{exe: exe}
 	u.self, _ = os.Stat(exe)
 	updates = u
-	defer func() { updates = o }()
+	defer func() { u.loops.Wait(); updates = o }()
 	settle := func() updateJSON {
 		t.Helper()
 		for range 1000 {
@@ -200,7 +200,7 @@ func TestUpdateFeedBehindKeepsDownload(t *testing.T) {
 	u := &updater{exe: exe}
 	u.self, _ = os.Stat(exe)
 	updates = u
-	defer func() { updates = o }()
+	defer func() { u.loops.Wait(); updates = o }()
 	settle := func() updateJSON {
 		t.Helper()
 		for range 1000 {
@@ -264,6 +264,7 @@ func TestStableUpToDateNamesNewest(t *testing.T) {
 	row := func() map[string]any {
 		t.Helper()
 		updates = &updater{}
+		defer updates.loops.Wait()
 		updates.check()
 		rec := httptest.NewRecorder()
 		Handler(nil, nil).ServeHTTP(rec, httptest.NewRequest("GET", "/api/update?fresh=1", nil))

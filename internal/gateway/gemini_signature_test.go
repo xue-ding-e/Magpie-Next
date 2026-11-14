@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,12 +20,15 @@ import (
 // signatures go: the first turn answers with a call it signed, in
 // extra_content, and a request that sends a call back checks the first
 // call of each assistant turn has a signature, as Google does (#687).
-func geminiSigUpstream(t *testing.T, sig string, stream bool) (*httptest.Server, *[]map[string]any) {
+func geminiSigUpstream(t *testing.T, sig string, stream bool) (*httptest.Server, func() map[string]any) {
+	var mu sync.Mutex
 	var bodies []map[string]any
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var b map[string]any
 		json.NewDecoder(r.Body).Decode(&b)
+		mu.Lock()
 		bodies = append(bodies, b)
+		mu.Unlock()
 		msgs, _ := b["messages"].([]any)
 		answered := false
 		for _, m := range msgs {
@@ -57,7 +61,14 @@ func geminiSigUpstream(t *testing.T, sig string, stream bool) (*httptest.Server,
 		sigReply(w, stream, map[string]any{"role": "assistant", "tool_calls": []any{call}}, "tool_calls")
 	}))
 	t.Cleanup(up.Close)
-	return up, &bodies
+	return up, func() map[string]any {
+		mu.Lock()
+		defer mu.Unlock()
+		if len(bodies) == 0 {
+			t.Fatal("the upstream did not receive a request")
+		}
+		return bodies[len(bodies)-1]
+	}
 }
 
 func sigReply(w http.ResponseWriter, stream bool, msg map[string]any, finish string) {
@@ -136,7 +147,7 @@ func TestGeminiThoughtSignatureThroughPi(t *testing.T) {
 			if !strings.Contains(out, "done") {
 				t.Fatalf("the second turn: %s", out)
 			}
-			sent := (*bodies)[len(*bodies)-1]
+			sent := bodies()
 			msgs := sent["messages"].([]any)
 			call := msgs[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)
 			got := call["extra_content"].(map[string]any)["google"].(map[string]any)["thought_signature"]
@@ -176,7 +187,7 @@ func TestGeminiThoughtSignatureThroughAnthropic(t *testing.T) {
 		{"role":"assistant","content":[{"type":"tool_use","id":"`+id+`","name":"bash","input":{"command":"ls"}}]},
 		{"role":"user","content":[{"type":"tool_result","tool_use_id":"`+id+`","content":"a.txt"}]}],
 		"tools":[{"name":"bash","input_schema":{"type":"object"}}]}`)
-	sent := (*bodies)[len(*bodies)-1]
+	sent := bodies()
 	msgs := sent["messages"].([]any)
 	var call, result map[string]any
 	for _, m := range msgs {
@@ -416,7 +427,7 @@ func TestFortyCharacterIDThroughGateway(t *testing.T) {
 		if !strings.Contains(out, "done") {
 			t.Fatalf("kept %d, the second turn: %s", c.keep, out)
 		}
-		msgs := (*bodies)[len(*bodies)-1]["messages"].([]any)
+		msgs := bodies()["messages"].([]any)
 		call := msgs[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)
 		if got := call["extra_content"].(map[string]any)["google"].(map[string]any)["thought_signature"]; got != c.want {
 			t.Fatalf("kept %d: Gemini was sent the call %v", c.keep, call)

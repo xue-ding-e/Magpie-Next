@@ -52,6 +52,39 @@ Only requests agents send go through `serveAgent`. magpie's own requests (thread
 
 Measured with a real account and real Claude Code: about 1–1.6µs an event, 0.2–0.7ms an `onRequest` that parses and rewrites Claude Code's ~80KB body. `BenchmarkEvent` is about 0.9µs, 11 allocations.
 
+## Next local literal lists
+
+[`localdictionary`](../../internal/localdictionary/store.go) keeps exact,
+case-sensitive Mask these literals and Never mask lists in the private local
+`local-sensitive-dictionary.json` file. Each list allows at most 100,000 nonempty
+entries and 16 MiB of decoded UTF-8 literals. Spaces, commas and line breaks within
+a JSON string remain literal; text import uses one entry per line. Both lists
+share one revision, a cross-process lock and an atomic private-file replacement,
+so saving one list preserves the other and stale edits fail with a conflict.
+
+[`masking.Masker.NewRequest`](../../internal/masking/masking.go) fixes the two
+matchers and their shared budget for one outbound request. The gateway scopes only
+the built-in masker this way; other maskers keep their existing lifecycle. The
+compound image/video prompt and extra fields, native JSON string fields, speech
+input/instructions and classifier state reuse that returned masking context. They
+do not reset the budget or load a different local generation between fields. The
+current upstream route, per-kind actions, cache decisions and original Never mask
+settings remain in effect. Local Never mask subtracts its exact occurrences from
+all detected spans, so an exception wins while surrounding secrets remain masked.
+Partially excepted bare JSON values remain a single valid quoted JSON value.
+
+Only requests and fields already using privacy masking are affected. The lists do
+not scrub existing sessions, logs or telemetry. An invalid or unreadable local
+file blocks a protected send. Once this process loaded a nonempty list, a missing
+file also blocks it; a fresh process cannot distinguish an intentionally empty
+setup from a deleted file that has left no state. Request-wide limits are 32 MiB
+of scanned text, 4,096 candidate matches and 128 KiB of placeholder growth;
+exceeding them blocks the send rather than sending partially masked content.
+Local literals do not enter password hints or the remembered-known-secret index.
+The lists are excluded from ordinary setup backup and synchronization.
+
+The masker treats serialized tool arguments as JSON: Responses `input` function calls and Chat messages' function/tool calls expose their string values to the privacy model, while their quotes, escapes and delimiters stay structural. A model span reaching the end of a value therefore cannot consume the argument document's closing syntax. In a Responses function call carrying the backend's seal, a parameter declared `encrypted: true` retains its opaque ciphertext; declarations in `tools`, historical `additional_tools` and `tool_search_output` all count. Ordinary sibling parameters remain subject to masking. Decoded values retain their field context for computer-use element tokens: automatic detection keeps a valid token usable, while explicit user literals and regular-expression rules can still mask it. These positions and the nested JSON walk are defined by `functionArguments` and `walkArguments` in [`internal/redact/tool_arguments.go`](../../internal/redact/tool_arguments.go). `TestMaskJSONToolArgumentsKeepJSON`, `TestMaskJSONEncryptedToolArguments` and `TestDecodedElementTokensKeepExplicitMasking` cover malformed-span recovery, plaintext masking, protocol-shaped user values, restoration and a second masking pass.
+
 ## Verification
 
 ```sh

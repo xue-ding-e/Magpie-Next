@@ -11,6 +11,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
+const { inEditor, reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const now = new Date();
@@ -83,16 +84,8 @@ const posted = async (lifted) => {
   for (let i = 0; i < 60 && !lifted.length; i++) await new Promise((r) => setTimeout(r, 50));
   return lifted;
 };
-const scrolled = (page) => page.evaluate(() => [window.scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => `${e.className}:${e.scrollTop}`)].join(" "));
+const scrolled = (page) => page.evaluate(() => [window.scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => `${e.classList[0]}:${e.scrollTop}`)].join(" "));
 const sideways = (page) => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-// a reader wheels down to it, and it is the button under the pointer
-async function reach(page, go) {
-  await page.mouse.move(200, 300);
-  for (let i = 0; i < 30 && !(await go.evaluate((e) => e.getBoundingClientRect().bottom < innerHeight - 80)); i++) await page.mouse.wheel(0, 200);
-  await page.waitForTimeout(200);
-  assert(await go.evaluate((e) => { const r = e.getBoundingClientRect(); return e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }), "the button can't be reached");
-}
-
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of Object.keys(want)) {
     for (const width of [1100, 420]) {
@@ -147,7 +140,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const go = row.getByRole("button", { name: want[lang].go, exact: true });
         await go.waitFor();
         assert(!(await sideways(page)), "the page scrolls sideways");
-        await reach(page, go);
+        await inEditor(page, go);
         // the note and Try now don't push the row's own buttons out of
         // reach (they did in German at 1100px before they took a line)
         await row.hover();
@@ -155,6 +148,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           const btn = row.getByRole("button", { name: b, exact: true });
           assert(await btn.evaluate((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }), `${b} can't be reached`);
         }
+        // The hover above can move the inner editor after the first reach.
+        // Start the click assertion from the reader's settled position.
+        await inEditor(page, go);
         const sc = await scrolled(page);
         await go.click();
         assert.deepEqual(await posted(lifted), [{ key: "relay#bbbbbbbbbb" }]);

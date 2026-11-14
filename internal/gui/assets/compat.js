@@ -37,5 +37,11 @@ if (!window.structuredClone) {
 // an end, would scroll the page; it keeps the wheel here instead
 if (!CSS.supports("overscroll-behavior-y", "contain")) addEventListener("wheel", (e) => {
   const b = e.target.closest?.(".holds");
-  if (b && e.deltaY && (e.deltaY < 0 ? b.scrollTop < 1 : b.scrollTop >= b.scrollHeight - b.clientHeight - 1)) e.preventDefault();
+  if (!b || !e.deltaY) return;
+  const style = getComputedStyle(b);
+  if (style.getPropertyValue("--wheel-chain").trim() === "auto") return;
+  const range = b.scrollHeight - b.clientHeight;
+  const reverse = style.flexDirection === "column-reverse" && style.display.includes("flex");
+  const low = reverse ? -range : 0, high = reverse ? 0 : range;
+  if (e.deltaY < 0 ? b.scrollTop <= low + 1 : b.scrollTop >= high - 1) e.preventDefault();
 }, { passive: false });

@@ -46,6 +46,12 @@ func TestRequestStateKeptAcrossACatalogFetchedAgain(t *testing.T) {
 		t.Error("the same catalog fetched again changed the price key")
 	}
 	write(`{"openai":{"id":"openai","models":{"gpt-6.1-sol":{"id":"gpt-6.1-sol","cost":{"input":3,"output":10}}}}}`)
+	// Give the changed catalog a distinct stamp even when both writes land
+	// in the same filesystem tick.
+	changed := old.Add(2 * time.Hour)
+	if err := os.Chtimes(p, changed, changed); err != nil {
+		t.Fatal(err)
+	}
 	if usagePriceCacheKey(now) == price {
 		t.Error("a catalog that changed kept the price key")
 	}

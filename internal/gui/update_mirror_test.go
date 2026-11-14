@@ -73,6 +73,7 @@ func TestUpdateMirrorSetting(t *testing.T) {
 	u := &updater{exe: exe}
 	u.self, _ = os.Stat(exe)
 	defer os.Remove(exe + ".new")
+	defer u.loops.Wait()
 	u.check()
 	j := u.json()
 	if j.State != "error" || !j.Retry || j.Mirror != mirror.URL+"/" || j.Network || !strings.Contains(j.Error, mirror.URL) {

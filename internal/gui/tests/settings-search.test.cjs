@@ -36,6 +36,8 @@ function server(lang, posts, web, { provs = ["codex", "claude"], off = [], built
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data) => route.fulfill({ json: data });
+    // Native title-bar paint and updater usage notifications do not save a preference.
+    if (req.method() === "POST" && ["/api/window/titlebar", "/api/update/using"].includes(url.pathname)) return json({});
     if (req.method() !== "GET") posts.push(url.pathname);
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:${web},textSize:100,featuresOff:${JSON.stringify(off)}};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });

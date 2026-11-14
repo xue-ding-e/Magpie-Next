@@ -39,7 +39,8 @@ function server(lang, posts, refuse) {
     const json = (data) => route.fulfill({ json: data });
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:true};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
-    // the panel fitting its window is no setting
+    // Window fitting and the updater usage heartbeat are independent of picking.
+    if (url.pathname === "/api/update/using") return json({});
     if (req.method() === "POST" && url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/window/")) {
       posts.push({ path: url.pathname, body: req.postDataJSON() });
       if (url.pathname === "/api/agent-fast") {

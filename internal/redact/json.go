@@ -61,15 +61,17 @@ func isID(key string) bool {
 // Responses' encrypted reasoning.
 var signatureKeys = []string{"signature", "thoughtSignature", "thought_signature", "encrypted_content"}
 
-// scan finds three kinds of objects in body. signed are those a vendor
+// scan finds the protocol positions masking treats specially. signed are those a vendor
 // sealed with a signature: what is in them the vendor wrote and checks, so
 // it goes back exactly as the vendor wrote it. args are a tool call's
-// arguments (Anthropic's tool_use input, Gemini's functionCall args), whose
+// arguments (Anthropic's tool_use input, Gemini's functionCall args and
+// serialized Responses/Chat arguments), whose
 // keys are the tool's own, as are those of Gemini's functionResponse
 // response, the structured result the tool gave; nothing in them counts
 // as sealed. defs are what the agent defines for the vendor rather than
-// says to the model (definitions).
-func scan(body []byte) (signed, args, defs []string) {
+// says to the model (definitions). arguments also records which strings
+// contain JSON and which declared parameters of a backend-sealed call are opaque.
+func scan(body []byte) (signed, args, defs []string, arguments argumentRules) {
 	found := false
 	for _, k := range append(signatureKeys, "functionCall", "function_call", "functionResponse", "function_response", "arguments") {
 		found = found || bytes.Contains(body, []byte(`"`+k+`"`))
@@ -81,13 +83,19 @@ func scan(body []byte) (signed, args, defs []string) {
 		found = found || bytes.Contains(body, []byte(`"`+k+`"`))
 	}
 	if !found {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	var v any
-	if json.Unmarshal(body, &v) != nil {
-		return nil, nil, nil
+	d := json.NewDecoder(bytes.NewReader(body))
+	d.UseNumber()
+	if d.Decode(&v) != nil {
+		return nil, nil, nil, nil
 	}
 	defs = definitions(v)
+	arguments = functionArguments(v)
+	for path := range arguments {
+		args = append(args, path)
+	}
 	var visit func(path, key string, v any)
 	visit = func(path, key string, v any) {
 		switch x := v.(type) {
@@ -111,7 +119,7 @@ func scan(body []byte) (signed, args, defs []string) {
 		}
 	}
 	visit("", "", v)
-	return signed, args, defs
+	return signed, args, defs, arguments
 }
 
 // toolArgs says the value under k, in an object of type t under key, is
@@ -226,7 +234,14 @@ func under(path string, roots []string) bool {
 // what fn returns in its place. Everything else is kept byte for byte, and
 // b comes back as it is if nothing changed; if it isn't JSON, ok is false.
 func walk(b []byte, fn func(path, key, s string) string) (out []byte, ok bool) {
-	w := walker{in: b, fn: fn}
+	return walkWithBare(b, fn, nil)
+}
+
+// walkWithBare also lets a serialized tool argument replace a primitive's
+// raw JSON bytes. Its callback must return one valid JSON value; the ordinary
+// string walk continues to preserve every number byte for byte.
+func walkWithBare(b []byte, fn func(path, key, s string) string, bare func(path, key, raw string) string) (out []byte, ok bool) {
+	w := walker{in: b, fn: fn, bare: bare}
 	i, good := w.value(w.ws(0), "", "")
 	if !good || w.ws(i) != len(b) {
 		return b, false
@@ -249,6 +264,7 @@ type walker struct {
 	out  bytes.Buffer
 	last int
 	fn   func(path, key, s string) string
+	bare func(path, key, raw string) string
 }
 
 func (w *walker) ws(i int) int {
@@ -372,6 +388,17 @@ func (w *walker) value(i int, path, key string) (int, bool) {
 		if j == i {
 			return i, false
 		}
+		if w.bare != nil {
+			raw := string(w.in[i:j])
+			if t := w.bare(path, key, raw); t != raw {
+				if w.out.Cap() == 0 {
+					w.out.Grow(len(w.in) + len(w.in)/16 + 64)
+				}
+				w.out.Write(w.in[w.last:i])
+				w.out.WriteString(t)
+				w.last = j
+			}
+		}
 		return j, true
 	}
 }
@@ -399,7 +426,7 @@ func jsonEscape(s string) string {
 // is the vendor's to read, and masked by its name, it would no longer
 // work.
 func namedSecret(key, s string) bool {
-	return key != "" && len(s) >= 8 && notAVariable(s) && !timestampValue(s) && SecretName(key)
+	return key != "" && len(s) >= 8 && notAVariable(s) && !timestampValue(s) && SecretName(key) && !elementValue(key, s)
 }
 
 // MaskJSON masks the strings of a request body, and says how many values
@@ -421,9 +448,11 @@ func namedSecret(key, s string) bool {
 // wrote of its own that looks like an email or a phone number went as a
 // placeholder: either way the text no longer matched its signature, and
 // Anthropic answers 400 "Invalid `signature` in `thinking` block".
-func MaskJSON(body []byte, o Options) ([]byte, int) {
+func MaskJSON(body []byte, o Options) (maskedBody []byte, count int) {
+	o = dictionaryOptions(o, 0)
+	defer func() { o.checkDictionaryOutput(len(maskedBody) - len(body)) }()
 	o.sent = true
-	signed, args, defs := scan(body)
+	signed, args, defs, arguments := scan(body)
 	masked := func(path, key, s string) bool {
 		return !keepIn(path, key, s, args, defs) && (signed == nil || !under(path, signed))
 	}
@@ -440,11 +469,16 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 	if o.Model != nil {
 		// the model is asked once, for all of the request's texts
 		var texts []string
-		if _, ok := walk(body, func(path, key, s string) string {
+		if _, ok := walkArguments(body, arguments, func(path, key, s string) string {
 			if masked(path, key, s) && !under(path, defs) {
 				texts = append(texts, s)
 			}
 			return s
+		}, func(path, key, raw string) string {
+			if masked(path, key, raw) && !under(path, defs) {
+				texts = append(texts, "["+raw+"]")
+			}
+			return raw
 		}); ok {
 			o = withModel(o, texts)
 		}
@@ -458,11 +492,17 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 	}
 	// the definitions after the rest, so a value the model found in what
 	// is said is masked in them too, as known
-	out, ok := walk(body, func(path, key, s string) string {
+	out, ok := walkArguments(body, arguments, func(path, key, s string) string {
 		if strings.HasPrefix(s, "data:") || signed != nil && under(path, signed) {
 			return s
 		}
 		if o.Secrets && under(path, args) && namedSecret(key, s) {
+			o.reserveDictionaryInput(len(s))
+			if o.AllowDictionary != nil && len(o.AllowDictionary.nodes) > 1 {
+				t, n := apply(s, []span{{start: 0, end: len(s), kind: "SECRET", by: ByRule}}, put, o)
+				total += n
+				return t
+			}
 			p := put("SECRET", s)
 			total++
 			return p
@@ -472,9 +512,23 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 		}
 		so := o
 		so.args = under(path, args) || key == "arguments"
+		if under(path, args) {
+			so.field = key
+		}
 		t, n := mask(s, so, put, asJSON(key, ""))
 		total += n
 		return t
+	}, func(path, key, raw string) string {
+		if !masked(path, key, raw) || under(path, defs) {
+			return raw
+		}
+		so := o
+		so.args = true
+		// The array gives the existing bare-value rules their JSON context:
+		// a partial exception still gets exactly one enclosing pair of quotes.
+		t, n := mask("["+raw+"]", so, put, true)
+		total += n
+		return t[1 : len(t)-1]
 	})
 	if ok && len(defs) > 0 {
 		out, ok = walk(out, func(path, key, s string) string {
@@ -497,7 +551,7 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 	if len(seen) > 0 {
 		remask = replacerOf(seen)
 	}
-	out, _ = walk(out, func(path, key, s string) string {
+	out, _ = walkArguments(out, arguments, func(path, key, s string) string {
 		if keepIn(path, key, s, args, defs) || !under(path, signed) {
 			return s
 		}
@@ -516,8 +570,12 @@ func MaskJSON(body []byte, o Options) ([]byte, int) {
 		ko := Options{Secrets: o.Secrets, Route: o.Route}
 		t, n := apply(t, sentSpans(sentKnown, t, ko, func() []span { return knownSpans(t, ko) }), o.put(), o)
 		total += n
+		if o.Dictionary != nil {
+			t, n = maskSignedDictionary(t, o)
+			total += n
+		}
 		return t
-	})
+	}, nil)
 	return out, total
 }
 

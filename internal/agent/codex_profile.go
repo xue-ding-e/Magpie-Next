@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/access"
+	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/codexcat"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/lastgood"
@@ -231,6 +232,7 @@ func codexProfileIn(at place) *Agent {
 				Options: func(cur map[string]string) []Option { return codexEfforts(magpieModels("codex"), cur["model"]) },
 			},
 			codexScopeField(at, wired),
+			codexGatewayEffortField(func() []catalog.Model { return magpieModels("codex") }),
 		},
 	}, path, catalogPath)
 }

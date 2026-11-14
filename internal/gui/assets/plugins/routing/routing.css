@@ -220,7 +220,7 @@
 .rt-bodies > .call-archive-err { padding: 10px 12px 4px; }
 .rt-bodies > .call-archive-err + button.text { margin: 0 12px 10px; }
 .rt-steps { list-style: none; margin: 6px 0 0; padding: 0; display: grid; align-content: start; gap: 5px; counter-reset: rt; max-height: 200px; overflow-y: auto; }
-.rt-steps li { position: relative; padding-left: 20px; font-size: 12.5px; line-height: 1.45; color: var(--fg-2); }
+.rt-steps li { position: relative; padding-left: 20px; font-size: 12.5px; line-height: 1.45; user-select: text; -webkit-user-select: text; color: var(--fg-2); }
 .rt-steps li::before { content: ""; position: absolute; left: 5px; top: .5em; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
 .rt-steps li.why { color: var(--fg); }
 .rt-steps li.why::before { background: var(--fg); }
@@ -281,6 +281,9 @@
 :is(#view-routing, #view-groups) .row-head { margin: 14px 0 6px; padding: 0 2px; gap: 0; }
 :is(#view-routing, #view-groups) .row-head .note { font-size: 11px; color: var(--faint); margin-left: 8px; }
 #view-routing .row-head .rt-livedot + .note { margin-left: 8px; }
+@media (max-width: 620px) {
+  #view-routing > .row-head { flex-wrap: wrap; height: auto; min-height: 26px; row-gap: 4px; }
+}
 .rt-gnew { display: inline-flex; align-items: center; gap: 4px; }
 /* the groups page's toolbar: the filter first, then how many */
 .rt-gsec > .row-head:first-child .rt-gfilter { flex: 0 1 300px; width: auto; margin: 0; }

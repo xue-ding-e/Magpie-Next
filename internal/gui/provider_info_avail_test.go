@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -46,42 +45,24 @@ func TestProviderInfoReadsTheListOnce(t *testing.T) {
 	// as a request to the page reads it (held)
 	defer provider.Hold()()
 	defer filememo.Hold()()
+	// Count real list builds. On Windows a row's per-model environment
+	// and file lookups can cost more than several complete lists, and
+	// TotalAlloc also includes work done by unrelated goroutines.
+	list := providerInfoList
+	builds := 0
+	providerInfoList = func(p provider.Provider) provider.Listing {
+		builds++
+		return list(p)
+	}
+	t.Cleanup(func() { providerInfoList = list })
 	got := providerInfo(p, nil)
+	if builds != 1 {
+		t.Fatalf("a provider row built its model list %d times, want once", builds)
+	}
 	if !slices.Equal(got.Chosen, p.Picks()) {
 		t.Fatalf("chosen %v, picks %v", got.Chosen, p.Picks())
 	}
 	if got.Exposed != len(p.Exposed()) || got.Models[0].ID != "gone" {
 		t.Fatalf("exposed %d of %d, first %+v", got.Exposed, len(p.Exposed()), got.Models[0])
-	}
-
-	if raceOn {
-		t.Skip("-race: sync.Pool drops what it holds, so allocations are not what a build allocates")
-	}
-	bytesPer := func(f func()) uint64 {
-		f()
-		var a, b runtime.MemStats
-		runtime.ReadMemStats(&a)
-		for range 5 {
-			f()
-		}
-		runtime.ReadMemStats(&b)
-		return (b.TotalAlloc - a.TotalAlloc) / 5
-	}
-	// The row's own work (each model's price, window and protocol
-	// look-ups) is measured apart, with the list read beforehand, so
-	// the bound follows neither: e6184b368 made the list 8x cheaper
-	// while the look-ups stayed, and a bar of 5 lists went red with the
-	// list still read once.
-	avail := bytesPer(func() { p.Available() })
-	list := bytesPer(func() { p.Listing() })
-	ls := p.Listing()
-	rest := bytesPer(func() { providerInfoWith(p, ls, nil, desktopNumbers(nil)) })
-	row := bytesPer(func() { providerInfo(p, nil) })
-	t.Logf("a row %d bytes: the listing %d (the list %d), the rest %d", row, list, avail, rest)
-	// read once: row = listing + rest; one more read of the list adds a
-	// whole list, so half of one is the room left for what else a build
-	// allocates
-	if row > rest+list+avail/2 {
-		t.Fatalf("a row took %d bytes, the listing %d (the list %d) and the rest %d: the list read more than once", row, list, avail, rest)
 	}
 }

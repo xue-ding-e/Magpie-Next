@@ -119,12 +119,19 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // pressed by coordinate, on the edge of the agent's row in the middle
         // of the window, as the reader's pointer is
         const [x, y] = await p.evaluate(([x, y]) => {
-          const row = window.__clicked = document.elementFromPoint(x, y)?.closest(".row.agent");
+          const row = document.elementFromPoint(x, y)?.closest(".row.agent");
+          window.__clickedAgent = row?.dataset.id;
           const b = row?.getBoundingClientRect();
           return b ? [b.left + 3, b.top + b.height / 2] : [0, 0];
         }, [r.x + r.width / 2, r.y + r.height / 2]);
         assert(x > 0, "an agent's row is in the middle of the window");
-        const rowTop = () => p.evaluate(() => window.__clicked.getBoundingClientRect().top);
+        // Opening the row can replace its DOM node. Measure that agent again
+        // after the redraw, when its place is what the reader sees.
+        const rowTop = () => p.evaluate(() => {
+          const row = document.querySelector(`#agents .row.agent[data-id="${CSS.escape(window.__clickedAgent)}"]`);
+          if (!row) throw new Error("The clicked agent row disappeared: " + window.__clickedAgent);
+          return row.getBoundingClientRect().top;
+        });
         await p.mouse.click(x, y);
         const at = await rowTop();
         await going;

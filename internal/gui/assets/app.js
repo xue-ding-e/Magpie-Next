@@ -1489,12 +1489,13 @@ function expandLink(a) {
     const want = open ? null : a.id;
     const own = want && agentPrefsOf(a);
     const compact = own && own.includes("fullContextRow") && !window.agentCompactFill;
+    const windows = own && a.fields.length && !window.agentWindowFill;
     // sheet measures once: its settings are read first (#5360, chiperman)
-    if (own && (!prefs || compact)) {
+    if (own && ((!prefs && own.length) || compact || windows)) {
       const label = [...b.childNodes];
       b.disabled = true;
       saving(b, t("Loading…"));
-      try { await Promise.all([!prefs && loadSettings(), compact && import("./agentcompact.js")]); }
+      try { await Promise.all([!prefs && own.length && loadSettings(), compact && import("./agentcompact.js"), windows && import("./agentwindow.js")]); }
       catch (e) { if (request === agentExpandRequest && b.isConnected) statusErr(e); return; }
       finally { b.disabled = false; doneSaving(b); b.replaceChildren(...label); }
       if (request !== agentExpandRequest || !b.isConnected || view !== "agents") return;
@@ -1624,7 +1625,7 @@ function switchEntry(a) {
   // the panel's a line of its opened row
   const pn = mode === "panel", b = el("button", pn ? "field ag-who" : "ag-acc ag-who"), cx = a.id === "codex";
   b.type = "button";
-  b.setAttribute("aria-haspopup", "menu");
+  menuOf(b);
   if (cur) b.title = t("Switch accounts only: {agent} is signed in as {user}. Pick another of its accounts to sign {agent} in to it, without connecting it to magpie.", { ...ag, user: cur });
   b.append(pn ? el("span", "k", t("account")) : svg(EXTRA_GLYPH["sign-in"], 12, 1.5), el("span", "v", cur || t("Not signed in")));
   const ago = performance.now() - (accountSwitched?.at || -1e9);
@@ -8871,7 +8872,7 @@ let modalRefocus = false;
 // how far down the dialog an element sits, its animation left out: one
 // that scales by its own top (the owner, 10-23), one that turns by its holder.
 function modalDepth(a, d) {
-  if (!a?.isConnected || !d.contains(a) || a === d || !a.offsetParent) return null;
+  if (!a?.isConnected || !d.contains(a) || a === d || !a.offsetParent || a.closest(".surface-resize")) return null;
   if (getComputedStyle(d).transform === "none") {
     const moves = [];
     for (let x = a; x && x !== d; x = x.parentElement) {
@@ -8892,6 +8893,11 @@ function modalDepth(a, d) {
   return y;
 }
 function modalMark(a) {
+  // A corner that moves with the requested size cannot also be held still.
+  if (a?.closest(".surface-resize")) {
+    modalHold.at = modalHold.cap = modalHold.copy = modalHold.screen = modalHold.ways = null;
+    return;
+  }
   const d = $("#modal").firstElementChild, y = modalDepth(a, d);
   if (y == null) return;
   // a new place to hold lets go of the last one's cap, at the next change
@@ -8926,9 +8932,19 @@ function modalScrolled(a) {
   return s;
 }
 const modalCap = () => modalHold.cap == null ? `calc(100% - ${modalHold.off}px)` : `min(calc(100% - ${modalHold.off}px), ${modalHold.cap}px)`;
+function centerModal(m, d) {
+  m.classList.remove("held");
+  d.style.top = d.style.maxHeight = "";
+  modalHold.off = d.offsetTop - parseFloat(getComputedStyle(m).paddingTop);
+  modalHold.at = modalHold.cap = modalHold.copy = modalHold.screen = modalHold.ways = null;
+  modalHold.touched = false;
+  m.classList.add("held");
+  d.style.top = modalHold.off + "px";
+  d.style.maxHeight = modalHold.capSet = modalCap();
+}
 function holdModal(later) {
   const m = $("#modal"), d = m.firstElementChild;
-  if (m.hidden || !m.classList.contains("held")) return;
+  if (m.hidden || !m.classList.contains("held") || d.classList.contains("surface-sizing")) return;
   // what was pressed, or failing that what has the focus (a redraw swaps
   // the pressed element for its copy, and gives that copy the focus)
   let y = modalDepth(modalHold.at, d), stood = false;
@@ -8963,6 +8979,9 @@ function holdModal(later) {
   // grown to the window's foot it stays, capped there, its fields scrolling;
   // it moves up only for a window grown too short to show half of it
   modalHold.off = Math.max(0, Math.min(want, Math.max(space - h, modalHold.off), space / 2));
+  // A shorter viewport can put a manually sized dialog's minimum height
+  // below its held top. Move the complete dialog back into the available room.
+  if (d.style.width || d.style.height) modalHold.off = Math.min(modalHold.off, Math.max(0, space - h));
   if (y != null && want < -0.5) {
     // no room above: the fields over a button below them give way
     const body = d.querySelector(".ebody");
@@ -8970,6 +8989,7 @@ function holdModal(later) {
   }
   d.style.top = modalHold.off + "px";
   const cap = () => {
+    if (!m.classList.contains("held") || d.classList.contains("surface-sizing")) return;
     if (m.classList.contains("held") && modalCap() !== modalHold.capSet) d.style.maxHeight = modalHold.capSet = modalCap();
     // at the window's edge, a redrawn copy of the pressed element is held
     // by scrolling its part; the element itself pushed down (a fold's
@@ -9012,7 +9032,7 @@ function holdModal(later) {
 function modalClimb(body) {
   const m = $("#modal"), d = m.firstElementChild;
   if (!body?.classList?.contains("ebody") || body.parentElement?.parentElement !== d) return;
-  if (m.hidden || !m.classList.contains("held") || !modalHold.touched || modalHold.cap != null || modalHold.off <= 0) return;
+  if (m.hidden || !m.classList.contains("held") || d.classList.contains("surface-sizing") || !modalHold.touched || modalHold.cap != null || modalHold.off <= 0) return;
   const space = m.clientHeight - parseFloat(getComputedStyle(m).paddingTop) - parseFloat(getComputedStyle(m).paddingBottom);
   const need = d.offsetHeight + body.scrollHeight - body.clientHeight;
   const by = Math.min(modalHold.off - Math.max(0, (space - Math.min(need, space)) / 2), body.scrollTop);
@@ -9023,6 +9043,7 @@ function modalClimb(body) {
   body.scrollTop -= by;
 }
 function openModal(content, quiet) {
+  closeCodexAuth?.();
   const m = $("#modal"), d = m.firstElementChild;
   const fresh = m.hidden || m.classList.contains("out");
   const top = m.hidden ? 0 : d.querySelector(".ebody")?.scrollTop || 0;
@@ -9035,6 +9056,12 @@ function openModal(content, quiet) {
   frame(content);
   // a prompt's editor is wider, a provider's grows with the window
   for (const c of ["wide", "roomy"]) d.classList.toggle(c, content.classList.contains(c));
+  const resizable = content.classList.contains("provider-editor");
+  if (resizable !== d.classList.contains("next-resizable")) {
+    d.style.removeProperty("width");
+    d.style.removeProperty("height");
+  }
+  d.classList.toggle("next-resizable", resizable);
   // Keep focus through a redraw of an open editor.
   const active = d.contains(document.activeElement) ? document.activeElement : null;
   const focusID = active?.id;
@@ -9045,7 +9072,13 @@ function openModal(content, quiet) {
   const focusNth = focusLabel ? labelled(d).indexOf(active) : -1;
   const held = !fresh && d.contains(modalHold.at) ? modalHold.at : null;
   if (fresh) modalReturnFocus = document.activeElement;
-  d.replaceChildren(content);
+  const grip = resizable && d.querySelector(":scope > .surface-resize");
+  if (grip) {
+    // Keep focus and pointer capture through a background allowance redraw.
+    for (const child of [...d.children]) if (child !== grip) child.remove();
+    d.prepend(content);
+  } else d.replaceChildren(content);
+  resizeSurface(d, resizable);
   d.setAttribute("role", "dialog");
   d.setAttribute("aria-modal", "true");
   d.tabIndex = -1;
@@ -9055,30 +9088,23 @@ function openModal(content, quiet) {
   m.hidden = false;
   if (fresh) modalBackground(true);
   if (fresh) markModalSaved();
-  const focus = focusID && content.querySelector("#" + CSS.escape(focusID))
+  const newField = active?.closest(".keys-more, .adding .kb") && content.querySelector(active.closest(".keys-more") ? ".keys-filter" : ".adding .bulk-keys");
+  const focus = newField || active === grip && grip
+    || focusID && content.querySelector("#" + CSS.escape(focusID))
     || focusLabel && labelled(content)[Math.max(0, focusNth)]
     || focusIndex >= 0 && content.querySelectorAll("input, textarea, select, button")[focusIndex];
   // the focus given back is not a press: what was pressed stays held, by
   // the element a redraw put back or by the focused copy of it
-  const copy = held && (content.contains(held) ? held : held === active && focus) || null;
+  const copy = held && (content.contains(held) ? held : held === active && !newField && focus) || null;
   modalRefocus = !!copy;
-  try { (focus || content.querySelector("input:not([disabled]), textarea, select, button:not([disabled])") || d).focus(NO_SCROLL); }
+  try { (focus || (active?.classList.contains("surface-resize") && d.querySelector(":scope > .surface-resize")) || content.querySelector("input:not([disabled]), textarea, select, button:not([disabled])") || d).focus(NO_SCROLL); }
   finally { modalRefocus = false; }
   modalHold.copy = copy;
   const body = content.querySelector(":scope > .ebody");
   if (body) body.scrollTop = top; // a re-render keeps the place
   const nextNames = content.querySelector(".mnames:not([hidden])");
   if (namesAt && nextNames?.dataset.provider === namesAt.provider) nextNames.scrollTop = namesAt.top;
-  if (fresh) {
-    m.classList.remove("held");
-    d.style.top = d.style.maxHeight = "";
-    modalHold.off = d.offsetTop - parseFloat(getComputedStyle(m).paddingTop);
-    modalHold.at = modalHold.cap = modalHold.screen = null;
-    modalHold.touched = false;
-    m.classList.add("held");
-    d.style.top = modalHold.off + "px";
-    d.style.maxHeight = modalHold.capSet = modalCap();
-  }
+  if (fresh) centerModal(m, d);
   holdModal();
   if (!fresh) return;
   for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
@@ -9109,8 +9135,10 @@ function openModal(content, quiet) {
 const edAlign = new ResizeObserver((es) => es.forEach((e) => edAlignAt(e.target)));
 function edAlignAt(n) {
   if (!n.isConnected) return edAlign.unobserve(n);
-  const cs = getComputedStyle(n.parentElement), cols = cs.gridTemplateColumns.split(" ");
-  const lab = cols.length > 1 ? parseFloat(cols[0]) || 0 : 0;
+  const cs = getComputedStyle(n.parentElement);
+  const cols = cs.gridTemplateColumns.trim().split(/\s+/);
+  const label = cols.length > 1 && [...n.parentElement.children].find(c => c.tagName === "LABEL" && c.offsetWidth);
+  const lab = label ? label.getBoundingClientRect().width : 0;
   // only when changed; an open fold's later change a frame later, or its
   // own height change is reported as an observer loop (a page error)
   const at = (lab && lab + parseFloat(cs.columnGap)) + "px";
@@ -9129,10 +9157,12 @@ function frame(ed) {
   ed.classList.add("framed");
 }
 function closeModal() {
+  closeCodexAuth?.();
   const m = $("#modal"), d = m.firstElementChild;
   if (m.hidden) return Promise.resolve();
   if (m.classList.contains("out")) return modalDone || Promise.resolve();
   m.classList.add("out");
+  resizeSurface(d, false);
   modalBackground(false);
   modalFormBase = "";
   for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.commitStyles?.(), a.cancel();
@@ -9378,7 +9408,7 @@ function drawEditor(p, presetID) {
     : pr
       ? { id: pr.id, name: pr.name, preset: pr.id, key: "", chosen: [], extra: [], headers: [] }
       : { id: "", name: "", preset: "", chat: "", responses: "", anthropic: "", decide: "", catalog: "", key: "", api: "openai", chosen: [], extra: [], headers: [], icon: "" });
-  const ed = el("div", "editor roomy" + (isNew ? " new" : ""));
+  const ed = el("div", "editor roomy provider-editor" + (isNew ? " new" : ""));
   ed.onclick = (e) => e.stopPropagation();
 
   {
@@ -9766,7 +9796,8 @@ function drawEditor(p, presetID) {
         took.push(t("Base URL") + " (" + t(API_NAMES[api]) + ")");
       }
     }
-    if (c.key) { key.value = draft.key = c.key; countKeys(); took.push(t("API key")); }
+    // The account rows own saved keys; a paste can fill the visible key box.
+    if (c.key && key.isConnected) { key.value = draft.key = c.key; countKeys(); took.push(t("API key")); }
     if (curlModel && c.model) { curlModel(c.model); took.push(t("model {model}", { model: c.model })); }
     if (took.length) notes.push(env ? t("Filled in from the pasted text: {what}.", { what: took.join(" · ") }) : t("Filled in from the curl command: {what}.", { what: took.join(" · ") }));
     if (curlBase && !c.api) notes.push(t("Its URL isn't an address ending in /chat/completions, /messages or /responses: type the base URL."));
@@ -12580,11 +12611,11 @@ function importSay(agent) {
   if (agent === "codex") {
     return {
       from: t("Bring in accounts from Codex's auth.json, codexbar's config.json, or exports from Cockpit Tools, CLIProxyAPI or Sub2API"),
-      intro: t("Choose or paste one or more files: Codex's auth.json, codexbar's config.json (in ~/.codexbar), or an export from Cockpit Tools, CLIProxyAPI or Sub2API. Each account's sign-in is refreshed with ChatGPT before it is added."),
-      spent: t("This takes the sign-in over: the tool the file came from (Codex on another computer, codexbar, Cockpit Tools, CLIProxyAPI) is signed out of that account and has to sign in again. The file itself is only read."),
+      intro: t("Choose or paste one or more files: Codex's auth.json (including AI Toolbox exports), codexbar's config.json (in ~/.codexbar), or an export from Cockpit Tools, CLIProxyAPI or Sub2API. A usable access token is checked without refreshing the sign-in."),
+      spent: t("Refreshing a sign-in can invalidate the source tool's copy. Two tools must not refresh the same session independently; sign in separately for continued use in both. The file itself is only read."),
       kept: t("Each account is kept with the file's access token and never renewed, so the tool it came from stays signed in. Once that token expires, import it again."),
       checking: t("Checking the accounts with {vendor}…", { vendor: "ChatGPT" }),
-      checks: t("Each account's sign-in is refreshed and its account looked up, as signing in does."),
+      checks: t("Usable access tokens are checked first; a missing or refused access token may need refreshing."),
     };
   }
   if (agent === "claude") {
@@ -13006,6 +13037,7 @@ function signInProxyLink(sub) {
   // the whole address too, which a narrow sheet cuts short
   b.title = proxyName(signing.proxy) + "\n" + t("The sign-in goes through this proxy, as the account's requests will. One picked here is kept as the account's.");
   b.setAttribute("aria-haspopup", "menu");
+  b.setAttribute("aria-expanded", "false");
   b.onclick = (e) => {
     e.stopPropagation();
     const flow = signing;
@@ -13535,7 +13567,11 @@ function renderAccounts(a, p) {
     const [amPill, amBox] = ls.length > 1 || accountModelsOf(p, l.user).length ? accountModels(p, l.user, false, l.user) : [];
     // what is set shows on it; the rest waits under ⋯ on a line below
     const tools = el("div", "acc-tools");
-    const pill = (x) => (x.classList.contains("set") ? line : tools).append(x);
+    if (a.agent === "codex" && !sub?.plugin) tools.append(codexAuthButton(l.user));
+    // Unset policy controls move together within the original tools menu;
+    // a configured pill still stays on the account's first line.
+    const limits = el("div", "acc-limits");
+    const pill = (x) => (x.classList.contains("set") ? line : limits).append(x);
     if (amPill) pill(amPill);
     // its usage cap: the share of each window it is used to at most
     const cap = accountCapOf(p, l.user);
@@ -13549,6 +13585,7 @@ function renderAccounts(a, p) {
     const capFor = (w) => windowCapOf(p, l.user, w);
     // how many requests it has out at once, and waiting (#892)
     if (p) pill(laneLimitPill(p, l.user, p.id + "@" + String(l.user).toLowerCase(), l.user));
+    if (limits.childElementCount) tools.append(limits);
     // its credits, as on its Usage card (jojonas_xyz on X)
     if (a.agent === "codex" && !sub?.plugin && !unusable(l)) {
       const c = creditsRow({ provider: "codex", user: l.user }, "acc-credits");
@@ -14805,6 +14842,7 @@ async function accountAction(path, body, okMsg, confirmed = false, say = (m) => 
   try {
     providers = await api(path, body);
     if (mode === "panel") panelAccts = providers;
+    if (editing === body.id && /^keys\/(on|off)$/.test(path)) releaseMovedKeyAnchor();
     renderProviders();
     state = await api("state");
     renderAgents();
@@ -15268,6 +15306,9 @@ function restLineOf(r, model, title, name, lifted) {
     go.classList.add("busy");
     try {
       await api("gateway/unrest", { key: r.key });
+      // The retry button disappears on success. Keep the editor anchored
+      // to a surviving control in that account instead of its old index.
+      if (document.activeElement === go) go.closest(".acc")?.querySelector("button:not(.key-unrest):not([disabled])")?.focus(NO_SCROLL);
       lifted();
       renderProviders();
       status(t("{key} is asked again from the next request", { key: name }), "ok");
@@ -17311,87 +17352,6 @@ function setPanelTab(tab) {
   queueMicrotask(panelUseShown);
   fit(0, TAB_GLIDE);
 }
-// Scroll to a requested card, or resume its highlight after a redraw.
-function flashCard(card, target = card, elapsed = 0) {
-  if (target) {
-    // The native menu-bar click has no DOM event; permit this requested scroll.
-    readerScrolls(1000);
-    target.scrollIntoView({ block: "nearest", behavior: "instant" });
-  }
-  card.classList.remove("flash");
-  void card.offsetWidth; // restart even if this card is still highlighted
-  card.classList.add("flash");
-  const animation = card.getAnimations().find((a) => a.animationName === "flash");
-  if (animation) animation.currentTime = elapsed;
-  card.onanimationend = (e) => {
-    if (e.target !== card || e.animationName !== "flash") return;
-    card.classList.remove("flash");
-    card.onanimationend = null;
-  };
-}
-
-// A focus refresh rebuilds quota cards. Carry the active animation's time
-// to its replacement, preserving scroll position and the remaining duration.
-function keepQuotaFlash(box) {
-  const view = box.closest(".view"), scroll = view?.scrollTop;
-  const flashes = [...box.querySelectorAll(".subscription-card.flash, .pq-card.flash")].flatMap((card) => {
-    const animation = card.getAnimations().find((a) => a.animationName === "flash");
-    if (!animation) return [];
-    const selector = card.matches(".pq-card") ? `.pq-card[data-card="${CSS.escape(card.dataset.card)}"]`
-      : `.subscription-card[data-provider="${CSS.escape(card.dataset.provider)}"]`;
-    return [{ selector, elapsed: animation.currentTime || 0 }];
-  });
-  return () => {
-    for (const { selector, elapsed } of flashes) {
-      const card = box.querySelector(selector);
-      if (card) flashCard(card, null, elapsed);
-    }
-    if (flashes.length && view) {
-      view.scrollTop = scroll;
-      readerLeaves(view);
-    }
-  };
-}
-
-// Keep the request until quota data has produced the target's DOM node.
-function focusQuotaCard() {
-  if (!quotaFocus) return;
-  if (performance.now() > quotaFocusUntil) { quotaFocus = ""; return; }
-  const box = mode === "panel" ? $("#panelQuota") : $("#subscriptionUsage");
-  if (mode === "panel") setPanelTab("usage");
-  else if (view !== "usage" || magpie.call("usage", "tab") !== "usage") return;
-  const id = CSS.escape(quotaFocus);
-  // a key's balance shown on its plan's card (keyCards): that card
-  const target = box.querySelector(`[data-card="${id}"]`) || box.querySelector(`[data-bal-card="${id}"]`) || box.querySelector(`[data-provider="${id}"]`);
-  // The one asked for is unfolded and opened in full.
-  const quota = quotas?.find((q) => trayCardID(q) === quotaFocus);
-  if (quota?.user && window.setQuotaAllFolded?.(quota.provider, false)) return;
-  if (quota?.user && !usageAcctOpen(quota, quotas.filter((q) => q.user && q.provider === quota.provider))) {
-    setUsageAccts([quota], true);
-    return; // the redraw queues focus once the account is visible
-  }
-  if (!target) {
-    if (quotas && !quotasLoading) quotaFocus = "";
-    return;
-  }
-  quotaFocus = "";
-  flashCard(target.closest(".subscription-card, .pq-card"), target);
-}
-
-// Go calls this when a menu-bar quota cell opens the panel.
-function panelQuotaFocus(id) {
-  if (mode !== "panel") return;
-  quotaFocus = id;
-  quotaFocusUntil = performance.now() + 5000;
-  // a cell for a subscription the tab hides shows its card all the same
-  panelPeek = id;
-  panelArranging = false;
-  setPanelTab("usage");
-  quotasOpened(); // the cell clicked opens them (#1588)
-  renderPanelQuota();
-  requestAnimationFrame(focusQuotaCard);
-}
-
 // panelUseFocus is a total in the menu bar clicked: the Usage tab, at its
 // period
 function panelUseFocus(per) {
@@ -17559,42 +17519,17 @@ function renderPanelUse() {
   } else {
     const hitRate = cacheHitOf(l);
     const tot = el("div", "pu-tot");
-    const blk = (label, value, sub, cls, subCls, full) => {
-      const b = el("div", "blk");
-      if (full) b.title = full;
-      // a value in parts (an array) keeps each whole, wrapping between them
-    const v = el("span", "v" + (cls ? " " + cls : "") + (Array.isArray(value) ? " parts" : ""), Array.isArray(value) ? undefined : value);
-    if (Array.isArray(value)) value.forEach((x, i) => v.append(...(i && /^\s/.test(x) ? [" "] : []), el("span", "", x.trim())));
-    b.append(el("span", "k", t(label)), v);
-      if (sub) b.append(el("span", "sub" + (subCls ? " " + subCls : ""), sub));
-      tot.append(b);
-    };
     const cached = l.cache_read + l.cache_write;
-    blk("Tokens", fmtN(allTokens(l)), t("{a} in · {b} out", { a: fmtN(l.input), b: fmtN(l.output) }) + (cached ? " · " + t("{n} cached", { n: fmtN(cached) }) : ""), "", "", ledNum(allTokens(l)));
-    blk("Requests", fmtN(l.calls), [l.errors ? t("{n} failed", { n: fmtN(l.errors) }) : t("none failed"), l.retried ? t("{n} answered on a retry", { n: fmtN(l.retried) }) : ""].filter(Boolean).join(" · "), "", l.errors ? "bad" : "", ledNum(l.calls));
+    panelUseTotal(tot, "Tokens", fmtN(allTokens(l)), t("{a} in · {b} out", { a: fmtN(l.input), b: fmtN(l.output) }) + (cached ? " · " + t("{n} cached", { n: fmtN(cached) }) : ""), "", "", ledNum(allTokens(l)));
+    panelUseTotal(tot, "Requests", fmtN(l.calls), [l.errors ? t("{n} failed", { n: fmtN(l.errors) }) : t("none failed"), l.retried ? t("{n} answered on a retry", { n: fmtN(l.retried) }) : ""].filter(Boolean).join(" · "), "", l.errors ? "bad" : "", ledNum(l.calls));
     const c = fmtCost(l);
     const u = l.unpriced, one = u === 1;
-    blk("Cost", c ? "≈" + c : "—", u ? t(one ? "{n} call unpriced" : "{n} calls unpriced", { n: u }) : t("effective prices"), c ? "cost" : "", "", u ? t(one ? "{n} call had no known price and is not counted" : "{n} calls had no known price and are not counted", { n: u }) : "");
-    blk("Cache hit rate", hitRate === null ? "—" : hitPct(hitRate), cacheLeftOut(l) || t("of the prompt"));
+    panelUseTotal(tot, "Cost", c ? "≈" + c : "—", u ? t(one ? "{n} call unpriced" : "{n} calls unpriced", { n: u }) : t("effective prices"), c ? "cost" : "", "", u ? t(one ? "{n} call had no known price and is not counted" : "{n} calls had no known price and are not counted", { n: u }) : "");
+    panelUseTotal(tot, "Cache hit rate", hitRate === null ? "—" : hitPct(hitRate), cacheLeftOut(l) || t("of the prompt"));
     const card = el("div", "pu-card");
     const head = el("div", "led-bar");
-    // a switch of the card's, kept for the next time the panel opens
-    const seg = (cls, opts, cur, key, set) => {
-      const s = el("div", cls);
-      for (const [id, name] of opts) {
-        const b = el("button", "opt" + (id === cur ? " on" : ""), t(name));
-        b.onclick = () => {
-          if (id === cur) return;
-          set(id);
-          try { localStorage.setItem("magpie." + key, id); } catch {}
-          renderPanelUse();
-        };
-        s.append(b);
-      }
-      return s;
-    };
-    const met = seg("segs", LED_METRICS, panelUseMetric, "panelUseMetric", (id) => panelUseMetric = id);
-    const by = seg("segs pu-split", [["provider", "Provider"], ["model", "Model"]], panelUseSplit, "panelUseSplit", (id) => panelUseSplit = id);
+    const met = panelUseSeg("segs", LED_METRICS, panelUseMetric, "panelUseMetric", (id) => panelUseMetric = id);
+    const by = panelUseSeg("segs pu-split", [["provider", "Provider"], ["model", "Model"]], panelUseSplit, "panelUseSplit", (id) => panelUseSplit = id);
     head.append(met, ...(panelUseProvider ? [] : [el("span", "grow"), by]));
     const split = panelUseProvider ? "model" : panelUseSplit;
     const chart = el("div", "led-chart"), rank = el("div", "led-rank");
@@ -20693,7 +20628,7 @@ function renderTrayUsage(s, keep) {
     writingPrefs(api("settings/quota-reads", { reads: v })).then((ns) => { prefs = state.settings = ns; renderSettings(); })
       .catch(settingsErr)));
   // the currency rows, in currencyprefs.js
-  import("./currencyprefs.js").then(() => currencyPrefs(s, keep), () => {});
+  window.currencyPrefs ? currencyPrefs(s, keep) : import("./currencyprefs.js").then(() => currencyPrefs(s, keep), () => {});
   // 万 and 亿 are Chinese's alone: in English a count is always K, M and B
   $("#unitsRow").hidden = locale !== "zh" && locale !== "zh-TW";
   $("#unitsSegs").replaceChildren(segs([[false, t("K / M / B")], [true, t("万 / 亿")]], !!s.chineseUnits,
@@ -20782,6 +20717,7 @@ function renderTrayUsage(s, keep) {
     (v) => savePrefs({ ...keep, trayPace: v === "on" })));
   // a card's windows
   if (!ids.length) $("#trayWindowsRow").hidden = $("#trayNumberRow").hidden = true;
+  else if (typeof window.trayWindowsRow === "function") trayWindowsRow(s, keep, ids, mac);
   else import("./traywindows.js").then(() => trayWindowsRow(s, keep, ids, mac), () => {});
   // and the cost beside magpie's own totals, in their cards and the
   // tooltip, which every OS shows with or without cards (BussanQ)
@@ -23206,9 +23142,11 @@ function hold(h) {
     // button held, and room made for the button slid the chip up under the
     // tabs, out of sight
     if (want > max && h.top) want = max;
-    // room only while a third of the window still shows the view, never a
-    // blank page; the browser's own clamp stands instead
-    if (want > max && contentEnd(v) - want < v.clientHeight / 3) want = max;
+    // Keep a clicked tray agent's row in place as it closes. The native
+    // panel can shrink around it, whereas a full-page view keeps at least
+    // a third of its height filled when a redraw takes content away.
+    const trayRow = mode === "panel" && a[0].closest(".row.agent");
+    if (want > max && !trayRow && contentEnd(v) - want < v.clientHeight / 3) want = max;
     if (want > max) setRoom(v, want + v.clientHeight - contentEnd(v));
     v.scrollTop = want;
   }
@@ -23898,7 +23836,11 @@ function sideBars() {
     if (window.ResizeObserver) {
       const ro = new ResizeObserver(place);
       ro.observe(box);
-      new MutationObserver(() => { for (const c of box.children) ro.observe(c); place(); }).observe(box, { childList: true, subtree: true });
+      new MutationObserver(() => {
+        if (box.classList.contains("side-foot")) box.classList.toggle("with-tabs", !!box.querySelector(":scope > .nav-sub"));
+        for (const c of box.children) ro.observe(c);
+        place();
+      }).observe(box, { childList: true, subtree: true });
     }
     addEventListener("resize", place);
     place();

@@ -122,6 +122,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await ed.locator(".move button").click();
       await ed.locator(".move-why").waitFor({ state: "visible" });
       // Model 1 ticked, Model 0 unticked, nothing saved
+      const rest = ed.locator(".mchips-rest");
+      if (await rest.isVisible()) await rest.click();
       await ed.locator(".mchip", { hasText: "Model 1" }).first().click();
       await ed.locator(".mchip.on", { hasText: "Model 0" }).click();
       await ed.locator(".move button").click();

@@ -65,7 +65,7 @@ func TestUpdateDownloadWaitsForAClick(t *testing.T) {
 	u := &updater{exe: exe}
 	u.self, _ = os.Stat(exe)
 	updates = u
-	defer func() { updates = o }()
+	defer func() { u.loops.Wait(); updates = o }()
 	mux := http.NewServeMux()
 	updateRoutes(mux, &quitCount{})
 	post := func(path, in string) updateJSON {

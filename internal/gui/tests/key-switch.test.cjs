@@ -103,11 +103,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           assert.equal((await b.textContent()).trim(), label, `${id}'s switch`);
           const box = await b.boundingBox();
           assert.ok(box && box.x >= 0 && box.x + box.width <= width, `${id}'s switch off the row: ${JSON.stringify(box)}`);
+          await b.scrollIntoViewIfNeeded();
           const sc = await scrolled();
           const n = posted.length;
           await b.click();
-          // the post is counted, not waited for by time
-          while (posted.length === n) await page.waitForTimeout(20);
+          await b.filter({ hasText: label === off ? on : off }).waitFor();
+          assert.equal(posted.length, n + 1, "one switch request");
           assert.equal(await scrolled(), sc, "a click scrolled");
         };
 

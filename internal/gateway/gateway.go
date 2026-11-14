@@ -499,6 +499,8 @@ type Call struct {
 	// when it was on (archive.go); wire what it keeps besides
 	Archive string `json:"archive,omitempty"`
 	wire    *wire
+	// A local refusal never puts an otherwise healthy account to rest.
+	policyDenied bool
 	// headers: its headers both ways, as they went (wire_headers.go),
 	// read masked by Headers
 	headers *headerLog
@@ -861,13 +863,20 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	})
 	defer stopLimits()
 	freshCtx, stopFresh := context.WithCancel(ctx)
-	defer stopFresh()
+	hubPruned := make(chan struct{})
+	defer func() {
+		stopFresh()
+		<-hubPruned
+	}()
 	// what another process writes to them is seen at once, not on the
 	// loops' next look (#3185)
 	go filememo.Watch(freshCtx, pluginrt.Path(), settings.Path(), provider.Path(), plugin.ListPath(), plugin.ToolsPath(), access.Path())
 	go pluginrt.KeepFresh(freshCtx, filememo.OthersEvery, settings.Path(), provider.Path(), plugin.ListPath(), plugin.ToolsPath(), access.Path())
 	// and the MCP hub's servers that the Library no longer gives are ended
-	go keepHubPruned(freshCtx)
+	go func() {
+		defer close(hubPruned)
+		keepHubPruned(freshCtx)
+	}()
 	srv := &http.Server{Handler: s.closesWhenHandedOff(s.Front()), ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 5 * time.Minute, ConnState: s.unread.note}
 	// the magpie serving the gateway, and only it, keeps the saved accounts
 	// signed in, so two never refresh one sign-in at once
@@ -4528,6 +4537,21 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			i--
 			continue
 		}
+		if call.policyDenied {
+			call.To, call.Status = "", http.StatusForbidden
+			try.Status, try.Fail = call.Status, failOther
+			watched.attempt(call, try, c.p.ID, sent, hw, capture)
+			s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
+			if !last {
+				if other == nil {
+					other = &Try{Status: call.Status, Error: call.Error}
+				}
+				skipped = append(skipped, c.label()+": "+call.Error)
+				continue
+			}
+			failTo(w, kept, from, call.Status, call.Error)
+			break
+		}
 		watched.attempt(call, try, c.p.ID, sent, hw, capture)
 		if autoPicks(c) && repicked < 2 && !hw.passing && hw.code() == http.StatusBadRequest &&
 			(provider.CopilotRefusal(hw.errBody()) || wrongEndpoint(hw.code(), hw.errBody())) {
@@ -4565,21 +4589,24 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, from provider.Pro
 			// sealed that goes (waroy: Codex compacted on GPT, then
 			// switched to Grok)
 			b, ok := []byte(nil), false
-			if resealed == 0 {
+			// A refusal naming an item says nothing about the other seals.
+			// Preserve them, including the current account's own reasoning.
+			named := unreadableItem.FindSubmatch(hw.errBody())
+			if named != nil {
+				resealed++
+				b, ok = withoutNamedSeal(attemptBody, string(named[1]), checkpoint != nil || s.compactsNatively(c.p, c.model))
+			} else if resealed == 0 {
 				resealed = 1
-				if b, ok = withoutSeals(body); ok {
-					refused(stuck, c.vendor(), attemptBody, b)
-				}
+				b, ok = withoutSeals(attemptBody)
 			}
 			// a compaction sealed where native compaction is on is never
 			// left out: its writer's refusal goes back as it came (#1099)
-			if !ok && checkpoint == nil && !s.compactsNatively(c.p, c.model) {
+			if !ok && named == nil && checkpoint == nil && !s.compactsNatively(c.p, c.model) {
 				resealed = 2
-				if b, ok = withoutCompaction(body); ok {
-					refused(stuck, c.vendor(), attemptBody, b)
-				}
+				b, ok = withoutCompaction(attemptBody)
 			}
 			if ok {
+				refused(stuck, c.vendor(), attemptBody, b)
 				body = b
 				try.Fail = failForeign
 				s.trace.update(tr, func(t *Route) { t.Tries[len(t.Tries)-1] = try })
@@ -5655,6 +5682,18 @@ func sinceStart(before, d time.Duration) int64 {
 // attempt sends a request to one provider. call.To stays empty when the
 // provider has no endpoint to send it to.
 func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.Protocol, p provider.Provider, model string, body []byte, call *Call) (int, string) {
+	var denied atomic.Bool
+	r = r.WithContext(context.WithValue(r.Context(), modelPolicyKey{}, &denied))
+	defer func() { call.policyDenied = denied.Load() }()
+	// Every candidate, including one added during fallback, is checked
+	// before its plugin, subscription or vendor is asked.
+	policy := checkModelPolicy
+	if p.Account != nil && p.Account.Agent == "claude" {
+		policy = checkClaudeModelPolicy
+	}
+	if err := policy(r.Context(), model); err != nil {
+		return writeError(w, from, http.StatusForbidden, err.Error()), err.Error()
+	}
 	// the try that answers is the one whose rate estimates the reply's
 	// tokens (live.go), after a fallback another than the first
 	liveOfInflight(inflightOf(r.Context())).routed(p.ID, unprefixed(model))
@@ -5705,6 +5744,9 @@ func (s *Server) attempt(w http.ResponseWriter, r *http.Request, from provider.P
 	} else if m != model {
 		r, model = r.WithContext(ctx), m
 		noteMember(w, r, p, model)
+	}
+	if err := checkModelPolicy(r.Context(), model); err != nil {
+		return writeError(w, from, http.StatusForbidden, err.Error()), err.Error()
 	}
 	// a backend that only streams gets a non-streaming request translated
 	// (the provider is always streamed on that path) rather than relayed,
@@ -6145,6 +6187,15 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		}
 		body = extra
 	}
+	// Keep OpenCode's current client shape; only this model's missing
+	// Chat defaults come from its earlier native request profile.
+	body = p.OpenCodeDeepSeekBody(to, body)
+	if to == provider.Chat && p.OpenCodeDeepSeek(modelOf(body)) {
+		// Extra fields and profile defaults can change the actual effort
+		// after translation. The try and usage name what goes on the wire.
+		var sent = Request{Effort: bodyEffort(to, body)}
+		noteWireEffort(ctx, to, &sent)
+	}
 	if !countsTokens(path) {
 		// the tier it goes at, the user's own fields in it (#1784)
 		noteWireTier(ctx, to, body)
@@ -6160,6 +6211,11 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 		}
 		path, body = at, b
 	}
+	codexResponses := p.Account != nil && p.Account.Agent == "codex" && to == provider.Responses &&
+		(path == "/responses" || path == "/responses/compact")
+	if codexResponses {
+		body = responsesWireBody(body)
+	}
 	base := p.Base(to)
 	zenFree := p.IsOpenCode() && p.OpenCodeFree(gjson.GetBytes(body, "model").String())
 	if zenFree {
@@ -6174,6 +6230,11 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, nil)
 	if err != nil {
+		return nil, err
+	}
+	// The wire name may differ from the selected catalog id. Gemini and
+	// Vertex name it in the URL, with no model left in the outgoing body.
+	if err := checkModelPolicy(ctx, provider.OutboundModel(to, req.URL, body)); err != nil {
 		return nil, err
 	}
 	// the body goes once it is answered, not when a stream ends (#3383)
@@ -6334,6 +6395,10 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	if err := p.Sign(ctx, req, to, body); err != nil {
 		return nil, err
 	}
+	// A sign-in can wait while the policy changes, or rewrite the URL.
+	if err := checkModelPolicy(ctx, provider.OutboundModel(to, req.URL, body)); err != nil {
+		return nil, err
+	}
 	// a sign-in its vendor revoked isn't sent again: the next member is
 	// asked, and the agent told to sign in again (#1793)
 	if why, ok := provider.RevokedSignIn(p.Account, req); ok {
@@ -6365,6 +6430,20 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	res, err := p.Do(s.client, req)
 	// what comes back is counted as it is read, as what went is (#4456)
 	res = gotDown(ctx, res)
+	historyBytes := 0
+	if err == nil && codexResponses && !p.PassesErrors() {
+		if smaller, ok := codexHistoryRetry(res, body); ok {
+			res.Body.Close()
+			historyBytes = len(body)
+			body = smaller
+			req = req.Clone(ctx)
+			defer provider.LetGo(req)
+			req.Header.Del("Content-Encoding")
+			provider.SetBody(req, body)
+			sent = provider.CodexCompressed(req, body)
+			res, err = again(req)
+		}
+	}
 	if err == nil && res.StatusCode >= 400 && provider.OpenCodeURL(req.URL.String()) {
 		logOpenCodeRefusal(p, req, res.StatusCode)
 	}
@@ -6400,9 +6479,16 @@ func (s *Server) forwardOnce(ctx context.Context, p provider.Provider, to provid
 	// member is asked and the agent told why (@xanahopper on X)
 	res = notAnAPIReply(clineUnwrapped(p, provider.ZhipuEnveloped(req, openCodeBareRefusal(req, res))), "")
 	if p.Account != nil && p.Account.Agent == "codex" {
+		diagRoutedCodex(res, body)
 		// a large request ChatGPT closed the connection on: asked again,
 		// nobody resting for it, and said what may help (#1628)
 		res = codexDropped(res, sent)
+		size := max(len(body), historyBytes)
+		if codexResponses && !p.PassesErrors() && res.StatusCode == http.StatusBadRequest && size >= codexBareCapLeast {
+			if codexByteCapRefused(res.StatusCode, peekError(res), size) {
+				res = codexByteCapReply(res, size)
+			}
+		}
 	}
 	// what a Codex account's reply says it has used, for its cap (#1295)
 	heardCodexLimits(p, res)
@@ -9189,6 +9275,11 @@ func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Pr
 	var zen *zenReply
 	if p.OpenCodeFree(model) {
 		zen = &zenReply{z: zenFreeTools(request)}
+		if p.OpenCodeDeepSeek(model) && request.MaxTokens <= 0 {
+			// Set the profile's budget before fitting the context. The
+			// caller's explicit budget keeps its existing meaning.
+			request.MaxTokens = 32000
+		}
 	}
 	search := request.WebSearch && !searching(r.Context()) && canSearchFor(p) && (!searchesFor(p, to, model, request) || magpieSearches(r.Context(), p))
 	if search || request.Advisor != "" {

@@ -120,7 +120,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const top = await view.evaluate((v) => v.scrollTop);
         const edTop = await editor.evaluate((e) => e.scrollTop);
         await again.click();
-        for (let i = 0; i < 60 && !(await chips()).includes("b-chat"); i++) await page.waitForTimeout(50);
+        const rest = editor.locator(".mchips-rest");
+        await rest.waitFor();
+        await rest.click();
+        await editor.locator(".mchips .mchip", { hasText: /^b-chat$/ }).waitFor();
         assert.equal(calls.length, 1);
         assert.equal(calls[0].key, "sk-group-b", "asked with the key just typed");
         assert.equal(calls[0].typed, true);

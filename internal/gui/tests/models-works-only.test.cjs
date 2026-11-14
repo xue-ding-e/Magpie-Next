@@ -109,7 +109,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const fits = await works.evaluate((b) => { const r = b.getBoundingClientRect(), e = b.closest(".editor").getBoundingClientRect(); return r.right <= e.right + 1 && r.left >= e.left - 1; });
         assert(fits, "the button runs off the editor");
 
-        // a model picked after the test: not tested, so it stays
+        // A model picked after the test is still kept. Reveal the vendor's
+        // remaining models before picking one that was not tested.
+        const rest = editor.locator(".mchips-rest");
+        if (await rest.isVisible()) await rest.click();
         await editor.locator(".mchips .mchip", { hasText: "minimax-m3" }).click();
 
         // the editor's body scrolled to the buttons; the click leaves it,

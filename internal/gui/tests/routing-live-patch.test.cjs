@@ -165,7 +165,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await context.close();
       });
       await t.test(`${width}x${height}, folded`, async () => {
-        const context = await browser.newContext({ viewport: { width, height } });
+        const context = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce" });
         const page = await context.newPage();
         // the block grid, the look these cells are drawn in (the map is the default)
         await page.addInitScript(() => { try { localStorage.setItem("magpie.ctxLook", "grid"); } catch {} });

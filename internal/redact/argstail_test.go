@@ -12,11 +12,15 @@ import (
 // (the privacy filter run on them, 10-29): a password ending in ! or % is
 // one token with the quote after it, so its span ran over the closing
 // quote, and an address's over its full stop and the quote.
+// Serialized arguments now reach the model as decoded values; the same
+// findings exclude the enclosing JSON quote, which the model no longer reads.
+// Use an eight-byte secret so this checks the JSON boundary independently
+// of the local model's minimum length for a secret.
 var argsTailModel = &fakeModel{values: map[string]string{
-	`Hunt3r!"`:                    "secret",
-	`Abc!23456%"`:                 "secret",
-	`221B Baker Street, London."`: "private_address",
-	`pwd=Qq123456@#"`:             "secret",
+	`Hunt3r!9`:                   "secret",
+	`Abc!23456%`:                 "secret",
+	`221B Baker Street, London.`: "private_address",
+	`pwd=Qq123456@#`:             "secret",
 }}
 
 // A value the masking finds at the very end of a tool call's arguments
@@ -32,7 +36,7 @@ func TestArgumentsValueAtEndKeepsQuote(t *testing.T) {
 	o := Options{Secrets: true, Personal: true, Model: argsTailModel.find,
 		Rules: []Rule{{Kind: "TOK", Regex: `tok-\S+`}}}
 	cases := []struct{ args, gone string }{
-		{`{"cmd":"export DB_PASSWORD=Hunt3r!"}`, "Hunt3r"},
+		{`{"cmd":"export DB_PASSWORD=Hunt3r!9"}`, "Hunt3r"},
 		{`{"cmd":["bash","-lc","echo 密码是 Abc!23456%"],"workdir":"/tmp"}`, "Abc!23456"},
 		{`{"command":"pwd=Qq123456@#"}`, "Qq123456"},
 		{`{"text":"ship to 221B Baker Street, London."}`, "Baker Street"},

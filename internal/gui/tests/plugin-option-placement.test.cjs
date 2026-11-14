@@ -1,6 +1,6 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
 // A plugin option that says placement "top" is drawn under the accounts,
-// above Routing (#5269, mycf_711): WorkBuddy Pro's "panel" switch is about
+// above Models (#5269, mycf_711): WorkBuddy Pro's "panel" switch is about
 // the whole plugin, and under the models it took a scroll past the whole
 // list each time. The rest stay under the models, where they always were;
 // a plugin that says no placement is drawn as before. The note saying the
@@ -81,13 +81,15 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.waitForTimeout(300); // the editor drawn again as what it asked for comes in
 
         // each block: whether it is the top one, its label, its keys, its
-        // note, and where it sits among the accounts, Routing and Models
+        // note, and where it sits among the accounts, Models and Advanced
         const seen = await ed.evaluate((ed, w) => {
           const e = ed.querySelector(":scope > .ebody") || ed, kids = [...e.children];
           const at = (x) => kids.findIndex((k) => k.contains(x));
           const label = (text) => kids.findIndex((k) => k.tagName === "LABEL" && k.textContent === text);
           return {
-            accounts: at(e.querySelector(".accts")), routing: label(w.routing), models: label(w.models),
+            accounts: at(e.querySelector(".accts")), models: label(w.models),
+            advanced: at(e.querySelector("details.advanced")),
+            routingInAdvanced: [...e.querySelectorAll("details.advanced label")].some((n) => n.textContent === w.routing),
             blocks: [...e.querySelectorAll(".plugin-options")].map((b) => ({
               top: b.classList.contains("top"), at: at(b), label: kids[at(b) - 1].textContent,
               keys: [...b.querySelectorAll(".plugin-option")].map((o) => o.dataset.key),
@@ -96,18 +98,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
             spill: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           };
         }, w);
-        assert.ok(seen.accounts >= 0 && seen.routing > seen.accounts && seen.models > seen.routing, JSON.stringify(seen));
+        assert.ok(seen.accounts >= 0 && seen.models > seen.accounts && seen.advanced > seen.models && seen.routingInAdvanced, JSON.stringify(seen));
         const shape = seen.blocks.map((b) => [b.top, b.label, b.keys, b.note]);
         if (which === "mixed") {
           assert.deepEqual(shape, [[true, w.field, ["panel"], true], [false, w.field, ["free_only"], false]]);
-          assert.ok(seen.blocks[0].at > seen.accounts && seen.blocks[0].at < seen.routing, "the top block sits between the accounts and Routing: " + JSON.stringify(seen));
-          assert.ok(seen.blocks[1].at > seen.models, "the rest stay under the models: " + JSON.stringify(seen));
+          assert.ok(seen.blocks[0].at > seen.accounts && seen.blocks[0].at < seen.models, "the top block sits between the accounts and Models: " + JSON.stringify(seen));
+          assert.ok(seen.blocks[1].at > seen.models && seen.blocks[1].at < seen.advanced, "the rest stay under the models: " + JSON.stringify(seen));
         } else if (which === "top") {
           assert.deepEqual(shape, [[true, w.field, ["panel"], true]]);
-          assert.ok(seen.blocks[0].at > seen.accounts && seen.blocks[0].at < seen.routing, JSON.stringify(seen));
+          assert.ok(seen.blocks[0].at > seen.accounts && seen.blocks[0].at < seen.models, JSON.stringify(seen));
         } else {
           assert.deepEqual(shape, [[false, w.field, ["panel", "free_only"], true]]);
-          assert.ok(seen.blocks[0].at > seen.models, "as before, under the models: " + JSON.stringify(seen));
+          assert.ok(seen.blocks[0].at > seen.models && seen.blocks[0].at < seen.advanced, "as before, under the models: " + JSON.stringify(seen));
         }
         assert.ok(seen.spill <= 0, "the page scrolls sideways by " + seen.spill);
         if (process.env.ARTIFACT_DIR && which === "mixed") await ed.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `plugin-option-placement-${engine}-${width}-${lang}.png`) });

@@ -8,6 +8,30 @@ supported agent: where its config lives, which fields matter and which
 values to offer. It also records what magpie set, so a later change made by
 something else shows up as drift.
 
+## Next Codex portability guards
+
+[`PortCodexRollouts` and `PortCodexRolloutsLeft`](../../internal/sessions/codex_portable.go)
+retain upstream's portable summaries, reasoning retirement and paginated-rollout
+support. Next does not reject all paginated histories: upstream's line fitting
+preserves decompressed record boundaries, and a line that cannot fit is not
+published in place. A paginated Magpie summary whose full Codex prefix does
+not fit can use a shorter text prefix with the full summary intact. Existing
+scan checkpoints are revisited once to catch records previously skipped for
+this reason. Incomplete scans keep pending work without advancing the scan
+watermark. Per-rollout writer locks use cancellable waits, and publication checks
+cancellation again before replacing a file.
+
+Lineage repair keeps the child file unchanged when source metadata, identity,
+ordinal or a complete source record cannot be established. Ordinals and cutoffs
+are exact unsigned integers; valid gaps remain supported. The planning and legacy
+preview helpers do not by themselves authorize rewriting arbitrary `history_base`
+graphs or restoring every old AI Toolbox history. Those operations still need
+their complete provenance, index and recovery protocol.
+
+The Codex gateway effort picker gets its options for a stopped WSL
+distribution from Magpie's model catalog. It can display the available
+efforts without opening the distribution's Codex configuration.
+
 ## Responsibilities and sources of truth
 
 | Part | Responsibility | Source |

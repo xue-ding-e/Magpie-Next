@@ -78,7 +78,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       test(`${engine} ${lang} ${where}: the closed models button says what its list ticks`, async (t) => {
         const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
         t.after(() => browser.close());
-        const page = await browser.newPage({ viewport: where === "panel" ? { width: 360, height: 640 } : { width: 1100, height: 700 } });
+        const page = await browser.newPage({ viewport: where === "panel" ? { width: 360, height: 640 } : { width: 1100, height: 700 }, reducedMotion: "reduce" });
         page.setDefaultTimeout(5000);
         page.setDefaultNavigationTimeout(60000);
         const errors = [];

@@ -331,6 +331,8 @@ Every other call but `init` is cancellable too (#4678): a models list, a usage r
 
 The GUI's plugin integration includes `subOf`, `pluginSubs`, and `startPluginSignIn`. A change to sign-in or provider presentation must follow these paths as well as the built-in paths it affects.
 
+OAuth callbacks in [`host.js`](../../internal/plugin/host.js) normalize a successful access-only result with an empty refresh field before saving it. A success with neither an access token nor an existing refresh/key result is rejected instead of reporting an unsaved account as signed in. Provider redirection and one-shot callback sessions are unchanged. `TestHostOAuthCallbackKeepsAccessOnly` covers this boundary with synthetic storage and no vendor requests.
+
 ## Verification
 
 Plugins may also declare a provider-independent `magpie.hooks` entry, including pure gateway packages and mixed provider/Pi packages. Its asynchronous request contract and verification are documented in [Gateway request hooks](gateway-request-hooks.md). Existing provider hooks still use their normal entry path.

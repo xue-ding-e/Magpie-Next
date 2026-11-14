@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+// Decoding a serialized call must keep the element-token field context;
+// the user's literal and regular-expression rules still take precedence.
+func TestDecodedElementTokensKeepExplicitMasking(t *testing.T) {
+	const token = "s0000002a:14"
+	for _, options := range []Options{
+		{Secrets: true, Words: []string{token}},
+		{Secrets: true, Rules: []Rule{{Kind: "TOK", Regex: "s0000002a:14"}}},
+	} {
+		out, count := MaskJSON(chatWithCall(`{"element_token":"`+token+`"}`), options)
+		if count != 1 || strings.Contains(string(out), token) {
+			t.Fatalf("the user's explicit rule lost its element-token match: %d %s", count, out)
+		}
+	}
+}
+
 // An id goes as written wherever it is and whatever is around it: a UUID,
 // one whose last group holds a phone number's digits, one whose groups read
 // as a card number, without hyphens, in capitals, a commit's hash. It is

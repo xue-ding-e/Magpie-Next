@@ -491,6 +491,10 @@ var wslKinds = []wslKind{
 				return func(cur map[string]string) []Option {
 					return codexEfforts(append(catalog.Codex(), magpieModels("codex")...), cur["model"])
 				}
+			case "gateway_effort":
+				return func(cur map[string]string) []Option {
+					return codexGatewayEffortOptions(append(catalog.Codex(), magpieModels("codex")...), cur["model"])
+				}
 			case "subagent_effort":
 				return func(cur map[string]string) []Option {
 					m := cur["subagent"]

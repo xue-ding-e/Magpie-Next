@@ -75,7 +75,7 @@ function server(lang, answered) {
   };
 }
 
-const PERIOD_AT = { today: 0, "7d": 1, "30d": 2 };
+const PERIOD_AT = { today: 0, "7d": 2, "30d": 3 };
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   test(engine + ": the speed chart draws every model timed at a point", async (t) => {

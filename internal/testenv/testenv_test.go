@@ -64,6 +64,13 @@ func TestIsolate(t *testing.T) {
 	if p := os.Getenv("XDG_CONFIG_DIRS"); !within(p, home) {
 		t.Errorf("XDG_CONFIG_DIRS is %q, outside %q", p, home)
 	}
+	// An agent may use an XDG root too. Clearing agent variables must
+	// not erase the safe shared folder installed by this sandbox.
+	for _, key := range folderVars {
+		if p := os.Getenv(key); p == "" || !within(p, home) {
+			t.Errorf("sandbox folder %s is %q, outside %q", key, p, home)
+		}
+	}
 	if _, ok := os.LookupEnv("CODEX_HOME"); ok {
 		t.Error("CODEX_HOME is still set")
 	}

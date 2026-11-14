@@ -14,8 +14,31 @@ import (
 // -overlay flag.
 func overlay(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	out, err := exec.Command("sh", "footprint-overlay.sh", filepath.Join(dir, "ovl")).CombinedOutput()
+	dir := filepath.Join(t.TempDir(), "overlay path 中文")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	shell := "sh"
+	var gitTools string
+	if runtime.GOOS == "windows" {
+		// Git is already required by the suite. Use its own shell and
+		// awk without assuming that Git's bin folders are on PATH.
+		git, err := exec.LookPath("git")
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := filepath.Dir(filepath.Dir(git))
+		shell = filepath.Join(root, "bin", "sh.exe")
+		gitTools = filepath.Join(root, "usr", "bin")
+		if info, err := os.Stat(shell); err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("Git's shell is unavailable at %s: %v", shell, err)
+		}
+	}
+	command := exec.Command(shell, "footprint-overlay.sh", filepath.Join(dir, "ovl"))
+	if gitTools != "" {
+		command.Env = append(os.Environ(), "PATH="+gitTools+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("footprint-overlay.sh: %v\n%s", err, out)
 	}

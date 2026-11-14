@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -38,7 +39,25 @@ func TestPluginProxyDownDoesNotRest(t *testing.T) {
 				fmt.Fprint(w, `data: {"id":"c","object":"chat.completion.chunk","model":"fake-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
 			}))
 			defer good.Close()
-			down := deadAddr(t, good.Listener.Addr().String())
+			// Own the failed endpoint for the entire test. A port released
+			// before the request can become another race shard's fake vendor.
+			refuse, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			down := refuse.Addr().String()
+			stopped := make(chan struct{})
+			go func() {
+				defer close(stopped)
+				for {
+					conn, err := refuse.Accept()
+					if err != nil {
+						return
+					}
+					conn.Close()
+				}
+			}()
+			t.Cleanup(func() { refuse.Close(); <-stopped })
 			t.Setenv("FAKE_BASE", "http://vendor.invalid/v1")
 
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

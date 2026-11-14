@@ -6,6 +6,14 @@
 window.updateSourcePick = function updateSourcePick(s, keep) {
   const names = { "": "Automatic", site: "usemagpie.ai only", github: "GitHub only" };
   const b = $("#updateSourcePick");
+  if (window.bootPrefs?.fixedUpdateSource) {
+    b.setAttribute("aria-label", t("Update source"));
+    b.disabled = true;
+    b.textContent = "Magpie Next";
+    b.removeAttribute("aria-haspopup");
+    b.removeAttribute("aria-expanded");
+    return;
+  }
   const chosen = s.updateSource in names ? s.updateSource : "";
   b.dataset.value = chosen;
   b.setAttribute("aria-label", t("Update source"));

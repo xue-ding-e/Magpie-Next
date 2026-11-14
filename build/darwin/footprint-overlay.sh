@@ -34,5 +34,14 @@ END { if (!done) exit 3 }
 	echo "footprint-overlay.sh: sysUnusedOS not found in $src" >&2
 	exit 1
 }
-printf '{"Replace":{"%s":"%s"}}\n' "$src" "$(cd "$dir" && pwd)/mem_darwin.go" > "$dir/overlay.json"
-echo "-overlay=$(cd "$dir" && pwd)/overlay.json"
+# Git's shell on Windows sees /tmp and /d paths; the native Go command
+# reading this JSON needs Windows paths. Unix paths already have that form.
+native_path() {
+	if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s\n' "$1"; fi
+}
+json_path() {
+	native_path "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+absolute=$(cd "$dir" && pwd)
+printf '{"Replace":{"%s":"%s"}}\n' "$(json_path "$src")" "$(json_path "$absolute/mem_darwin.go")" > "$dir/overlay.json"
+printf '%s\n' "-overlay=$(native_path "$absolute/overlay.json")"

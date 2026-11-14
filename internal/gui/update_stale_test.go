@@ -34,7 +34,7 @@ func TestStaleLatestIsNotUpToDate(t *testing.T) {
 	u := &updater{} // nothing it may replace: a newer one is "available"
 	oldU := updates
 	updates = u
-	defer func() { updates = oldU }()
+	defer func() { u.loops.Wait(); updates = oldU }()
 	mux := http.NewServeMux()
 	updateRoutes(mux, nil)
 	get := func(path string) updateJSON {
@@ -84,6 +84,7 @@ func TestStaleLatestIsNotUpToDate(t *testing.T) {
 	if err := settings.Save(s); err != nil {
 		t.Fatal(err)
 	}
+	u.loops.Wait() // finish notes before this test changes the running version
 	newest.Store("0.1.1402")
 	Version = "0.1.1517"
 	u.check()

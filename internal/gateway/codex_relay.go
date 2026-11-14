@@ -65,6 +65,9 @@ func CodexRelay() http.Handler {
 		if apiKey(r.Header) && rest != "/models" {
 			base = codexAPIBase
 		}
+		if r.Method == http.MethodPost && base == provider.CodexBase && (rest == "/responses" || rest == "/responses/compact") {
+			body = responsesWireBody(body)
+		}
 		if r.Method == http.MethodPost && rest == "/responses" && base == provider.CodexBase {
 			body = provider.DeclareSearch(body, strings.EqualFold(r.Header.Get("X-OpenAI-Internal-Codex-Responses-Lite"), "true"))
 		}

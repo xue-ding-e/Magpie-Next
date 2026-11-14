@@ -40,10 +40,12 @@ func TestRetriedRequestCountsOnce(t *testing.T) {
 	if sum.Calls != 1 || sum.Errors != 0 || sum.Retried != 1 {
 		t.Fatalf("ledger counts %d calls, %d failed, %d retried", sum.Calls, sum.Errors, sum.Retried)
 	}
-	// Failed lists every request a try failed on, the ones a later try
-	// answered too (d370bef98): both rows of this one, as Routing shows.
-	if rows, _, _ := usage.Ledger(usage.All, usage.Filter{Failed: true}); len(rows) != 2 {
-		t.Fatalf("failed filter leaves out the tries a fallback answered: %+v", rows)
+	// Failed shows the refused try and its fallback answer. Totals still
+	// count the request once, by how it ended.
+	if rows, filtered, _ := usage.Ledger(usage.All, usage.Filter{Failed: true}); len(rows) != 2 ||
+		rows[0].Provider != "a" || !rows[0].HandedOn || rows[1].Provider != "c" || !rows[1].RetriedRequest() ||
+		filtered.Calls != 1 || filtered.Errors != 0 || filtered.Retried != 1 {
+		t.Fatalf("failed filter should keep the refused try and count its answer once: %+v, totals %+v", rows, filtered)
 	}
 	if rows, _, _ := usage.Ledger(usage.All, usage.Filter{Retried: true}); len(rows) != 1 || rows[0].Provider != "c" {
 		t.Fatalf("retried filter: %+v", rows)

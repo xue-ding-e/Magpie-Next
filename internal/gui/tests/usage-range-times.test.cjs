@@ -74,7 +74,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await items.nth((await items.count()) - 1).click();
       };
       const menu = page.locator(".range-menu");
-      const fromT = menu.locator(".rm-time").first(), toT = menu.locator(".rm-time").last();
+      const fromT = menu.locator(".rm-times:not(.rm-hours) .rm-time").first(), toT = menu.locator(".rm-times:not(.rm-hours) .rm-time").last();
       const day = async (d) => {
         for (let i = 0; i < 3 && !(await menu.locator(`.rm-day[data-day="${dayKey(d)}"]`).count()); i++) await menu.locator(".rm-step").first().click();
         await menu.locator(`.rm-day[data-day="${dayKey(d)}"]`).click();
@@ -83,7 +83,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
       await openDays();
       await menu.waitFor();
-      assert.equal(await menu.locator(".rm-time").count(), 2, "a start and an end time");
+      assert.equal(await menu.locator(".rm-times:not(.rm-hours) .rm-time").count(), 2, "a start and an end time");
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "the page scrolls sideways");
       const box = await menu.boundingBox();
       assert.ok(box.x >= 0 && box.x + box.width <= 390, `the menu runs off a phone's width: ${JSON.stringify(box)}`);

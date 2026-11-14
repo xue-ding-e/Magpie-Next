@@ -54,6 +54,7 @@ function fixture(lang) {
   const route = async (route) => {
     const request = route.request(), url = new URL(request.url());
     const json = (data) => route.fulfill({ json: data });
+    if (route.request().method() === "POST" && ["/api/window/titlebar", "/api/update/using"].includes(url.pathname)) return json({});
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:"${lang}",theme:"light",web:false};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json(state);

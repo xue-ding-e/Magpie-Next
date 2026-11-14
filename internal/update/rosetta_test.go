@@ -23,9 +23,9 @@ func onSystem(t *testing.T, sys, arch string, tr bool) {
 	goos, goarch, translated = sys, arch, func() bool { return tr }
 }
 
-// An Intel magpie under Rosetta updates to Apple silicon's build, the app
-// and the terminal build alike; anywhere else an update is the build's
-// own architecture.
+// Upstream bundle selection retains Rosetta's Apple silicon architecture.
+// Next's bare binaries keep the fixed asset names published by this fork,
+// whatever platform the inherited bundle fixtures simulate.
 func TestRosettaUpdatesToAppleSilicon(t *testing.T) {
 	was := GUI
 	t.Cleanup(func() { GUI = was })
@@ -34,14 +34,14 @@ func TestRosettaUpdatesToAppleSilicon(t *testing.T) {
 		tr, gui  bool
 		app, bin string
 	}{
-		{"darwin", "amd64", true, true, "magpie-darwin-arm64.zip", "magpie-cli-darwin-arm64"},
-		{"darwin", "amd64", true, false, "magpie-darwin-arm64.zip", "magpie-cli-darwin-arm64"},
-		{"darwin", "amd64", false, true, "magpie-darwin-amd64.zip", "magpie-cli-darwin-amd64"},
-		{"darwin", "arm64", false, true, "magpie-darwin-arm64.zip", "magpie-cli-darwin-arm64"},
+		{"darwin", "amd64", true, true, "magpie-darwin-arm64.zip", "Magpie-Next.exe"},
+		{"darwin", "amd64", true, false, "magpie-darwin-arm64.zip", "magpie-next-cli.exe"},
+		{"darwin", "amd64", false, true, "magpie-darwin-amd64.zip", "Magpie-Next.exe"},
+		{"darwin", "arm64", false, true, "magpie-darwin-arm64.zip", "Magpie-Next.exe"},
 		// only macOS has Rosetta: a translated answer elsewhere changes nothing
-		{"windows", "amd64", true, true, "magpie-darwin-amd64.zip", "magpie-windows-amd64.exe"},
-		{"linux", "amd64", true, false, "magpie-darwin-amd64.zip", "magpie-cli-linux-amd64"},
-		{"linux", "arm64", false, true, "magpie-darwin-arm64.zip", "magpie-linux-arm64"},
+		{"windows", "amd64", true, true, "magpie-darwin-amd64.zip", "Magpie-Next.exe"},
+		{"linux", "amd64", true, false, "magpie-darwin-amd64.zip", "magpie-next-cli.exe"},
+		{"linux", "arm64", false, true, "magpie-darwin-arm64.zip", "Magpie-Next.exe"},
 	} {
 		onSystem(t, c.os, c.arch, c.tr)
 		GUI = c.gui

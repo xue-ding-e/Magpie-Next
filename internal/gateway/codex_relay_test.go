@@ -70,7 +70,8 @@ func TestCodexRelayPassesOwnTurnOn(t *testing.T) {
 	fresh(t)
 	up := newRelayUp(t)
 	h := CodexRelay()
-	rec := relayDo(h, "POST", "127.0.0.1:3425", CodexPath+"/responses", `{"model":"gpt-5.5","input":"hi","stream":true}`,
+	rec := relayDo(h, "POST", "127.0.0.1:3425", CodexPath+"/responses",
+		`{"model":"gpt-5.5","input":[{"type":"message","role":"user","content":"hi","internal_chat_message_metadata_passthrough":{"turn_id":"desktop-only"}}],"stream":true}`,
 		map[string]string{"Authorization": "Bearer chatgpt-token", "Content-Type": "application/json"})
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "response.completed") {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
@@ -78,6 +79,9 @@ func TestCodexRelayPassesOwnTurnOn(t *testing.T) {
 	got := up.sent()
 	if len(got) != 1 || got[0].path != "/backend-api/codex/responses" || got[0].auth != "Bearer chatgpt-token" {
 		t.Fatalf("upstream was sent %+v", got)
+	}
+	if strings.Contains(got[0].body, "internal_chat_message_metadata_passthrough") || !strings.Contains(got[0].body, `"content":"hi"`) {
+		t.Fatal("relay did not remove desktop bookkeeping while retaining the message")
 	}
 	// the model list Codex asks for, and localhost by name, go on too
 	rec = relayDo(h, "GET", "localhost:3425", CodexPath+"/models?client_version=0.162.1", "", map[string]string{"Authorization": "Bearer chatgpt-token"})

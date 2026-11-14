@@ -637,8 +637,8 @@ func importAccounts(args []string) error {
 			"When its access token runs out (about ten days after that sign-in was last renewed), magpie stops using the account until it is imported again.",
 			"The files are only read, never changed."}
 	case id == "codex":
-		say = []string{"Each account's sign-in is refreshed with ChatGPT before it is added, as signing in does.",
-			"That spends the file's sign-in: the tool it came from (Codex CLI on another computer, codexbar, Cockpit Tools, CLIProxyAPI) is signed out of that account and has to sign in again. From then on the account is magpie's.",
+		say = []string{"Access tokens are verified first. Only a missing or unauthorized access token needs a refresh.",
+			"Refreshing a sign-in can invalidate the source tool's copy. Two tools must not refresh the same session independently; sign in separately for continued use in both.",
 			"The files are only read, never changed. An account magpie holds already is left as it is."}
 	case id == "claude":
 		say = []string{provider.ClaudeRisk,

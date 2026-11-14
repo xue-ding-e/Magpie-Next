@@ -8,10 +8,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"syscall"
 	"testing"
 
+	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/update"
 )
@@ -23,6 +25,16 @@ import (
 // a check asked for tries it once more.
 func TestUpdateThatWontStart(t *testing.T) {
 	body := []byte("new magpie")
+	if runtime.GOOS == "windows" {
+		// InstallBinary now validates the PE image before the relaunch hook.
+		// Windows only maps this signed system image suspended, then ends it;
+		// none of cmd's code runs. The hook below still models the later block.
+		var err error
+		body, err = os.ReadFile(filepath.Join(appdir.Getenv("SystemRoot"), "System32", "cmd.exe"))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	sum := sha256.Sum256(body)
 	var downloads atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,8 +64,15 @@ func TestUpdateThatWontStart(t *testing.T) {
 	o := updates
 	u := &updater{exe: exe, self: self, staged: staged, state: "ready", latest: &update.Release{Version: "0.1.11"}}
 	updates = u
-	defer func() { updates = o }()
+	defer func() { u.loops.Wait(); updates = o }()
 	var relaunched atomic.Int32
+	wasInstall := installBinaryAside
+	installBinaryAside = func(staged, exe string) (string, error) {
+		// This case starts after a successful native install. Image trials
+		// and real rollback are covered by the update package's fixtures.
+		return "", os.Rename(staged, exe)
+	}
+	t.Cleanup(func() { installBinaryAside = wasInstall })
 	wasRelaunch := relaunchBinary
 	relaunchBinary = func(exe, old string, window bool, view string) error {
 		relaunched.Add(1)

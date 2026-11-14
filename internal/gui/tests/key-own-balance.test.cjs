@@ -108,7 +108,18 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         const scrolled = () => page.evaluate(() => [window.scrollY, ...[...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => `${e.className}:${e.scrollTop}`)].join(" "));
         const still = async (id) => {
           await row(id).hover();
-          await page.waitForTimeout(150);
+          await pill(id).evaluate((button) => new Promise((resolve, reject) => {
+            let previous, frames = 0;
+            const timer = setTimeout(() => { cancelAnimationFrame(frame); reject(new Error("The balance pill did not settle")); }, 5000);
+            let frame = requestAnimationFrame(function measure() {
+              const r = button.getBoundingClientRect();
+              const geometry = [r.left, r.top, r.width, r.height].join();
+              frames = geometry === previous && button.isConnected ? frames + 1 : 0;
+              previous = geometry;
+              if (frames >= 3) { clearTimeout(timer); resolve(); }
+              else frame = requestAnimationFrame(measure);
+            });
+          }));
           const before = await row(id).evaluate((e) => Math.round(e.getBoundingClientRect().top)), sc = await scrolled();
           await pill(id).click();
           await page.waitForTimeout(200);

@@ -29,6 +29,7 @@ package gateway
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1203,7 +1204,7 @@ var foreignReasoning = lazyre.New(`(?i)invalid_encrypted_content|invalid[ _]encr
 // conversation has moved, what was sealed before it moved is left out of
 // its later requests there up front, rather than refused and asked again
 // each turn. What the one it moved to sealed itself still goes along, for
-// its cache and its train of thought.
+// its cache and its train of thought. Only hashes and item types are kept.
 var refusedSeals = struct {
 	sync.Mutex
 	m map[string]sealsRefused // scope|conversation|who → what it refused
@@ -1211,7 +1212,14 @@ var refusedSeals = struct {
 
 type sealsRefused struct {
 	at    time.Time
-	seals map[[sha256.Size]byte]bool
+	seals map[sealRef]bool
+}
+
+// Item type keeps a refused replay seal from also rejecting a compaction
+// that wasn't removed, even if a fixture or upstream reused its ciphertext.
+type sealRef struct {
+	kind string
+	sum  [sha256.Size]byte
 }
 
 // sealedItem is what's read of an input item to tell what it has sealed.
@@ -1225,23 +1233,23 @@ type sealedItem struct {
 // folded into (OpenAI's, when Codex compacts on its own models; magpie's
 // own is text by the time a request is sent). Refused, they go whole;
 // any other item loses its sealed copy alone (withoutItemSeal).
-var sealedKinds = map[string]bool{"reasoning": true, "compaction": true, "compaction_summary": true}
+var sealedKinds = map[string]bool{"reasoning": true, "compaction": true, "compaction_summary": true, "context_compaction": true}
 
-var compactionKinds = []string{"compaction", "compaction_summary"}
+var compactionKinds = []string{"compaction", "compaction_summary", "context_compaction"}
 
 // seals are what is sealed (encrypted_content) in a Responses request's
 // input, item by item.
-func seals(body []byte) [][sha256.Size]byte {
+func seals(body []byte) []sealRef {
 	var q struct {
 		Input []sealedItem `json:"input"`
 	}
 	if decodeJSON(body, &q) != nil {
 		return nil
 	}
-	var out [][sha256.Size]byte
+	var out []sealRef
 	for _, it := range q.Input {
 		if it.Enc != "" {
-			out = append(out, sha256.Sum256([]byte(it.Enc)))
+			out = append(out, sealRef{it.Type, sha256.Sum256([]byte(it.Enc))})
 		}
 	}
 	return out
@@ -1251,16 +1259,16 @@ func seals(body []byte) [][sha256.Size]byte {
 // seals taken out of sent, the request it refused, to make left, the one
 // asked in its place.
 func refused(key, who string, sent, left []byte) {
-	kept := map[[sha256.Size]byte]bool{}
+	kept := map[sealRef]bool{}
 	for _, s := range seals(left) {
 		kept[s] = true
 	}
-	noteRefused(key, who, slices.DeleteFunc(seals(sent), func(s [sha256.Size]byte) bool { return kept[s] }))
+	noteRefused(key, who, slices.DeleteFunc(seals(sent), func(s sealRef) bool { return kept[s] }))
 }
 
 // noteRefused notes that who turned away the sealed items of these hashes
 // in the conversation key.
-func noteRefused(key, who string, ss [][sha256.Size]byte) {
+func noteRefused(key, who string, ss []sealRef) {
 	if len(ss) == 0 {
 		return
 	}
@@ -1269,8 +1277,11 @@ func noteRefused(key, who string, ss [][sha256.Size]byte) {
 	defer refusedSeals.Unlock()
 	k := key + "|" + who
 	r := refusedSeals.m[k]
+	// Readers keep a snapshot after releasing the lock. Publish a new map
+	// rather than changing one another request may still be reading.
+	r.seals = maps.Clone(r.seals)
 	if r.seals == nil {
-		r.seals = map[[sha256.Size]byte]bool{}
+		r.seals = map[sealRef]bool{}
 	}
 	for _, s := range ss {
 		r.seals[s] = true
@@ -1312,7 +1323,7 @@ func withoutRefused(key, who string, body []byte) ([]byte, bool) {
 	kept, changed := items[:0:0], false
 	for _, it := range items {
 		var t sealedItem
-		if decodeJSONView(it, &t) == nil && t.Enc != "" && r.seals[sha256.Sum256([]byte(t.Enc))] {
+		if decodeJSONView(it, &t) == nil && t.Enc != "" && r.seals[sealRef{t.Type, sha256.Sum256([]byte(t.Enc))}] {
 			if sealedKinds[t.Type] {
 				changed = true
 				continue

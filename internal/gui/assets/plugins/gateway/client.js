@@ -279,7 +279,7 @@ function renderGateway() {
   const mark = el("span", "gw-mark " + (older ? "old" : g.running ? "on" : ""));
   mark.innerHTML = GW_GLYPH;
   const who = el("div", "who");
-  const name = el("div", "name", t("Gateway"));
+  const name = el("div", "name", el("span", "gw-title", t("Gateway")));
   name.append(el("span", "state", older
     ? t("running · served by magpie {v}, older than this one", { v: g.version })
     : g.paused ? t("paused")

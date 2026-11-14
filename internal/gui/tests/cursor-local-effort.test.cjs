@@ -107,13 +107,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         // the default, then its models' four levels
         assert.equal(await page.locator("#effortTicks i").count(), 5);
         assert.equal(await page.locator("#effortMin").textContent(), w.def);
+        const saved = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/set" && r.request().method() === "POST");
         await page.locator("#effortRange").evaluate((r) => {
           r.value = "3";
           r.dispatchEvent(new Event("input", { bubbles: true }));
           r.dispatchEvent(new Event("change", { bubbles: true }));
         });
         assert.equal(await page.locator("#effortValue").textContent(), w.high);
-        await page.waitForFunction(() => document.querySelector('.row.agent[data-id="cursor-local"] .field[data-key="effort"] .v')?.textContent !== document.querySelector("#effortMin")?.textContent);
+        assert.equal((await saved).status(), 200);
         assert.deepEqual(sets, [{ agent: "cursor-local", field: "effort", value: "high" }]);
         assert.equal(await page.locator(`${row} .field[data-key="effort"] .v`).textContent(), w.high);
         assert(await noSideScroll(page), "the window scrolls sideways");

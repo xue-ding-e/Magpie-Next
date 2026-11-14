@@ -17,6 +17,8 @@ import (
 	"testing"
 )
 
+// These inherited cases call latestAt with a sandboxed loopback feed.
+// Public Latest remains bound to the independent Next repository.
 // fallbackWorld is a fake GitHub with a signed release and a feed host
 // that refuses every connection, the way a company allow list that lets
 // only github.com through does (ssharpcc on X).
@@ -93,7 +95,7 @@ func TestUpdateWorksFromGitHubWhenTheFeedIsUnreachable(t *testing.T) {
 		t.Run(fmt.Sprintf("api limited %v", limited), func(t *testing.T) {
 			w := newFallbackWorld(t, "0.1.4000")
 			w.limited = limited
-			rel, err := Latest(context.Background())
+			rel, err := latestAt(context.Background(), siteFeed, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -141,7 +143,7 @@ func TestGitHubFallbackRefusesABadSignature(t *testing.T) {
 				case "junk":
 					w.sig = "not base64!!"
 				}
-				if rel, err := Latest(context.Background()); err == nil {
+				if rel, err := latestAt(context.Background(), siteFeed, ""); err == nil {
 					t.Fatalf("accepted %+v", rel)
 				}
 				if w.dlHits.Load() != 0 {
@@ -158,7 +160,7 @@ func TestGitHubFallbackBindsTheVersion(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(nil)
 	signingKey = base64.StdEncoding.EncodeToString(pub)
 	w.sig = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, []byte("magpie release 0.1.3999\n"+w.sums)))
-	if _, err := Latest(context.Background()); err == nil {
+	if _, err := latestAt(context.Background(), siteFeed, ""); err == nil {
 		t.Fatal("accepted a signature for another version")
 	}
 }
@@ -168,7 +170,7 @@ func TestGitHubFallbackBindsTheVersion(t *testing.T) {
 func TestGitHubFallbackNeedsASignatureForOldVersionsToo(t *testing.T) {
 	w := newFallbackWorld(t, "0.1.100")
 	w.sig = ""
-	if _, err := Latest(context.Background()); err == nil {
+	if _, err := latestAt(context.Background(), siteFeed, ""); err == nil {
 		t.Fatal("accepted an unsigned release from GitHub")
 	}
 }
@@ -178,7 +180,7 @@ func TestGitHubFallbackNeedsASignatureForOldVersionsToo(t *testing.T) {
 func TestGitHubIsOnlyAFallback(t *testing.T) {
 	w := newFallbackWorld(t, "0.1.4000")
 	t.Setenv("MAGPIE_UPDATE_FEED", siteFeed+"?mine")
-	if _, err := Latest(context.Background()); err == nil {
+	if _, err := latestAt(context.Background(), fixtureFeed("MAGPIE_UPDATE_FEED"), ""); err == nil {
 		t.Fatal("a custom feed fell back")
 	}
 	if w.apiHits.Load() != 0 {
@@ -190,7 +192,7 @@ func TestGitHubIsOnlyAFallback(t *testing.T) {
 func TestGitHubFallbackSkipsStable(t *testing.T) {
 	w := newFallbackWorld(t, "0.1.4000")
 	stableFor(t, "stable")
-	if _, err := Latest(context.Background()); err == nil {
+	if _, err := latestAt(context.Background(), siteFeed, ""); err == nil {
 		t.Fatal("Stable fell back to the newest release")
 	}
 	if w.apiHits.Load() != 0 {

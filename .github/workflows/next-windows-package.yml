@@ -1,0 +1,244 @@
+name: Next Windows portable package
+on:
+  push:
+    branches: [main, maintenance/next-installers-20261030]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Explicitly publish a source-pinned main release after validation and packaging'
+        type: boolean
+        required: false
+        default: false
+permissions:
+  contents: read
+env:
+  # Upstream v0.1.4104 is the fixed source cutoff 92e760f3d182.
+  # Next ordering is the independent workflow run sequence.
+  NEXT_BASE_VERSION: '0.1.4104'
+concurrency:
+  group: next-package-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+jobs:
+  impact:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      package: ${{ steps.classify.outputs.package }}
+      publish: ${{ steps.classify.outputs.publish }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify previous tree for main push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        timeout-minutes: 1
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          [[ "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ && "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]]
+          if ! git cat-file -e "$BEFORE_SHA^{commit}"; then
+            git fetch --no-tags --depth=1 origin "$BEFORE_SHA"
+          fi
+      - name: Classify package inputs without skipping validation
+        id: classify
+        timeout-minutes: 1
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          MANUAL_PUBLISH: ${{ inputs.publish || false }}
+        run: |
+          python3 -I -B build/next-package-impact_test.py
+          python3 -I -B build/next-package-impact.py
+  validation:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    uses: ./.github/workflows/test.yml
+    with:
+      next_validation: true
+  ui-validation:
+    if: github.repository == 'xue-ding-e/Magpie-Next'
+    uses: ./.github/workflows/test-ui.yml
+  package:
+    needs: [validation, ui-validation, impact]
+    if: needs.impact.outputs.package == 'true' && github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: "off"
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify identity and isolate synthetic runtime home
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD) -ne $env:GITHUB_SHA) { throw 'Source SHA mismatch' }
+          if (git status --porcelain) { throw 'Dirty checkout' }
+          $homeDir = Join-Path $env:RUNNER_TEMP 'magpie-next-synthetic-home'
+          New-Item -ItemType Directory -Force $homeDir | Out-Null
+          "GOPATH=$(go env GOPATH)" >> $env:GITHUB_ENV
+          "GOMODCACHE=$(go env GOMODCACHE)" >> $env:GITHUB_ENV
+          "GOCACHE=$(go env GOCACHE)" >> $env:GITHUB_ENV
+          foreach ($key in @('HOME','USERPROFILE','APPDATA','LOCALAPPDATA')) { "$key=$homeDir" >> $env:GITHUB_ENV }
+      - name: Verify native Next update pipeline and release contract
+        shell: pwsh
+        run: |
+          $listed = @(go test -mod=readonly -tags 'nogui,next' -list '^TestNextNativeUpdatePipeline$' ./internal/update)
+          if ($LASTEXITCODE -ne 0 -or @($listed | Where-Object { $_ -ceq 'TestNextNativeUpdatePipeline' }).Count -ne 1) { throw 'Missing exact Next pipeline test' }
+          go test -mod=readonly -tags 'nogui,next' -count=1 -timeout=180s -run '^TestNext' ./internal/update
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -mod=readonly -tags 'nogui,next' -count=1 -timeout=180s ./internal/update/nextrelease
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build portable desktop and CLI from fixed source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Keep the upstream base visible; ordering comes from this workflow's
+          # monotonic run number, shared by the version and manifest.sequence.
+          $baseVersion = $env:NEXT_BASE_VERSION
+          if ($baseVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Invalid fixed upstream version' }
+          $sequence = [UInt64]::Parse($env:GITHUB_RUN_NUMBER)
+          if ($sequence -eq 0) { throw 'Invalid Next release sequence' }
+          $version = "$baseVersion-next.$sequence"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $env:GOBIN = Join-Path $env:RUNNER_TEMP 'next-build-tools'
+          go install github.com/tc-hib/go-winres@v0.3.3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:GOBIN/go-winres.exe" make --in build/windows/winres.json --arch amd64 --out rsrc --file-version $baseVersion --product-version $baseVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go build -mod=readonly -trimpath -tags 'production,next' -ldflags "-s -w -X main.version=$version -H windowsgui" -o dist/Magpie-Next.exe .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go build -mod=readonly -trimpath -tags 'nogui,next' -ldflags "-s -w -X main.version=$version" -o dist/magpie-next-cli.exe .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item rsrc_windows_amd64.syso
+          $actual = (& ./dist/magpie-next-cli.exe --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -notmatch [regex]::Escape($version)) { throw 'Version smoke failed' }
+          Copy-Item LICENSE dist/LICENSE
+          $files = @('Magpie-Next.exe','magpie-next-cli.exe') | ForEach-Object {
+            $file = Get-Item (Join-Path dist $_)
+            @{name=$file.Name; size=$file.Length; sha256=(Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+          }
+          # The consumer validates this exact schema; the tag is independently
+          # resolved to source_sha. Hashes cover the two native installer inputs.
+          @{schema=1; repository=$env:GITHUB_REPOSITORY; channel='stable'; sequence=$sequence; version=$version; source_sha=$env:GITHUB_SHA; platform='windows-amd64'; integrity='sha256-unsigned'; assets=@($files)} | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM dist/manifest.json
+          $zip = "Magpie-Next-$($env:GITHUB_SHA.Substring(0,12))-Windows-x64.zip"
+          Compress-Archive -Path dist/* -DestinationPath $zip
+          New-Item -ItemType Directory -Force next-release | Out-Null
+          Copy-Item dist/Magpie-Next.exe,dist/magpie-next-cli.exe,dist/manifest.json,$zip next-release/
+          Get-ChildItem next-release -File | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
+          } | Set-Content -Encoding ascii next-release/SHA256SUMS
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked source changed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magpie-next-windows-${{ github.sha }}
+          path: next-release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: [package, impact]
+    if: needs.impact.outputs.publish == 'true' && github.repository == 'xue-ding-e/Magpie-Next' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: magpie-next-windows-${{ github.sha }}
+          path: package
+      - name: Verify checksums and publish immutable Next release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify main' }
+          if ($head -ne $env:GITHUB_SHA) { Write-Output 'Newer main exists; retain last good public release'; exit 0 }
+          $tag = "next-$($env:GITHUB_SHA.Substring(0,12))"
+          $assetName = "Magpie-Next-$($env:GITHUB_SHA.Substring(0,12))-Windows-x64.zip"
+          $required = @('Magpie-Next.exe','magpie-next-cli.exe','manifest.json',$assetName)
+          $hashes = @{}
+          $sumLines = @(Get-Content package/SHA256SUMS | Where-Object { $_.Trim() })
+          if ($sumLines.Count -ne $required.Count) { throw 'Incomplete checksum manifest' }
+          foreach ($line in $sumLines) {
+            if ($line -notmatch '^([a-f0-9]{64})  ([A-Za-z0-9._-]+)$') { throw 'Invalid checksum manifest' }
+            $hash = $Matches[1]; $name = $Matches[2]
+            if ($name -cnotin $required -or $hashes.ContainsKey($name)) { throw 'Unexpected or duplicate asset' }
+            if ((Get-FileHash (Join-Path package $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash) { throw 'Artifact checksum mismatch' }
+            $hashes[$name] = $hash
+          }
+          $manifest = Get-Content package/manifest.json -Raw | ConvertFrom-Json
+          if ($manifest.schema -ne 1 -or $manifest.channel -cne 'stable' -or $manifest.platform -cne 'windows-amd64' -or $manifest.integrity -cne 'sha256-unsigned' -or $manifest.source_sha -cne $env:GITHUB_SHA -or $manifest.repository -cne $env:GITHUB_REPOSITORY -or $manifest.sequence -ne [UInt64]::Parse($env:GITHUB_RUN_NUMBER) -or $manifest.version -cne "$($env:NEXT_BASE_VERSION)-next.$env:GITHUB_RUN_NUMBER") { throw 'Package source/version identity mismatch' }
+          if (@($manifest.assets).Count -ne 2) { throw 'Manifest lacks native executable inputs' }
+          $seen = @{}
+          foreach ($file in $manifest.assets) {
+            if ($file.name -cnotin @('Magpie-Next.exe','magpie-next-cli.exe') -or $seen.ContainsKey($file.name)) { throw 'Invalid executable manifest' }
+            $seen[$file.name] = $true
+            if ($hashes[$file.name] -cne $file.sha256 -or (Get-Item (Join-Path package $file.name)).Length -ne $file.size) { throw 'Executable manifest hash/size mismatch' }
+          }
+          Expand-Archive -Path (Join-Path package $assetName) -DestinationPath unpacked
+          foreach ($name in @('Magpie-Next.exe','magpie-next-cli.exe','manifest.json')) {
+            if ((Get-FileHash (Join-Path unpacked $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hashes[$name]) { throw 'Portable and native assets differ' }
+          }
+          $notes = "Magpie Next $($manifest.version), Windows x64. Source: $env:GITHUB_SHA. Independently maintained Next build; unsigned. Close the upstream app before use and back up its configuration. Shared data locations are retained; simultaneous use is not validated. Native CLI and GUI updates use this repository's source-bound manifest. Old ZIP-only builds require one manual installation. Validation: native Next update integration tests, release contract tests and CLI version smoke; GUI launch not validated."
+          $notes += ' Extract the ZIP and run Magpie-Next.exe. WebView2 is required. The CLI executable is included.'
+          $refsJson = gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect release tag refs' }
+          $refs = @($refsJson | ConvertFrom-Json | Where-Object { $_.ref -ceq "refs/tags/$tag" })
+          if ($refs.Count -eq 0) {
+            gh api --method POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$env:GITHUB_SHA" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot create source-pinned release tag' }
+          }
+          $refJson = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify release tag' }
+          $object = ($refJson | ConvertFrom-Json).object
+          for ($depth = 0; $object.type -eq 'tag' -and $depth -lt 5; $depth++) {
+            $tagJson = gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($object.sha)"
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot dereference annotated tag' }
+            $object = ($tagJson | ConvertFrom-Json).object
+          }
+          if ($object.type -ne 'commit' -or $object.sha -ne $env:GITHUB_SHA) { throw 'Release tag points to another source' }
+          $existing = gh release view $tag -R $env:GITHUB_REPOSITORY --json isDraft,body 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $release = $existing | ConvertFrom-Json
+            if (-not $release.body.Contains($env:GITHUB_SHA)) { throw 'Existing tag belongs to a different source' }
+            if (-not $release.isDraft) { Write-Output 'Immutable release already published'; exit 0 }
+          } else {
+            gh release create $tag -R $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --draft --title "Magpie Next $($manifest.version)" --notes $notes
+            if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed' }
+          }
+          gh release edit $tag -R $env:GITHUB_REPOSITORY --title "Magpie Next $($manifest.version)" --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw 'Draft version and notes update failed' }
+          $uploads = @($required | ForEach-Object { Join-Path package $_ }) + @('package/SHA256SUMS')
+          gh release upload $tag -R $env:GITHUB_REPOSITORY @uploads --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Draft asset upload failed' }
+          New-Item -ItemType Directory -Force verify | Out-Null
+          gh release download $tag -R $env:GITHUB_REPOSITORY --dir verify
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read back uploaded assets' }
+          foreach ($name in $required) {
+            if ((Get-FileHash (Join-Path verify $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hashes[$name]) { throw 'Published asset readback mismatch' }
+          }
+          if ((Get-FileHash verify/SHA256SUMS -Algorithm SHA256).Hash -ne (Get-FileHash package/SHA256SUMS -Algorithm SHA256).Hash) { throw 'Published checksums readback mismatch' }
+          $head = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot recheck main before publication' }
+          if ($head -ne $env:GITHUB_SHA) { Write-Output 'Main advanced; leave this release draft'; exit 0 }
+          gh release edit $tag -R $env:GITHUB_REPOSITORY --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

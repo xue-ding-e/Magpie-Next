@@ -992,10 +992,27 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	}
 	start := time.Now()
 	usage.Saw(agentOf(r))
+	inference := r.Method == http.MethodPost && (strings.HasPrefix(rest, "/responses") || modelOf(body) != "")
+	if inference {
+		if err := provider.RequireAllowedModel(modelOf(body)); err != nil {
+			writeError(w, provider.Responses, http.StatusForbidden, err.Error())
+			return
+		}
+	}
+	if r.Method == http.MethodPost && rest == "/responses" {
+		// A gateway pick reaches a thread already running with an older
+		// config. Ultra stays the pick; the native API receives its max.
+		if effort := provider.AgentEffort("codex"); effort != "" {
+			if effort == "ultra" {
+				effort = "max"
+			}
+			body = withFixedEffort(provider.Responses, body, effort)
+		}
+	}
 	// Codex's own turns come here from the mux, not through serve: the
 	// row written below sums this call's tries in its own context (#4456)
 	r = r.WithContext(s.countBytes(r.Context()))
-	w0, body0 := w, body // as they came, for the fallbacks (codexFallBack)
+	w0, body0 := w, body // before masking, for the fallbacks (codexFallBack)
 	// Claude's blocks magpie gave Codex (claudeseal) are Claude's alone:
 	// to OpenAI each item is its summary, as before magpie carried them
 	body = withoutClaudeSeals(body)
@@ -1041,6 +1058,20 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 			return
 		}
 	}
+	sealScope, sealWho := "", ""
+	if r.Method == http.MethodPost && rest == "/responses" {
+		// Native Codex requests carry their own sign-in, which can differ
+		// from the one saved on this machine. Keep only a credential hash,
+		// scoped to that backend and conversation, never the bearer itself.
+		sealScope = "codex-upstream|" + base + "|" + conversationID(r.Header, body0)
+		sealWho = "codex#" + provider.KeyID(r.Header.Get("Authorization")+"\x00"+r.Header.Get("ChatGPT-Account-Id"))
+		if on != nil {
+			sealWho = (candidate{p: *on}).who()
+		}
+		if b, ok := withoutRefused(sealScope, sealWho, body); ok {
+			body = b
+		}
+	}
 	if r.Method == http.MethodPost && rest == "/responses" && base == provider.CodexBase {
 		// a replayed web search the request doesn't declare the tool for
 		// is refused by the ChatGPT backend (#1270), as on an account's
@@ -1056,6 +1087,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		// url_citation) as Codex stored it, turned them away alike
 		// (#4921)
 		body = withoutOffsetlessCitations(body)
+		body = responsesWireBody(body)
 	}
 	u := base + rest
 	if r.URL.RawQuery != "" {
@@ -1070,7 +1102,8 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	// fallbacks; nobody rests for it (夜松云 on Discord)
 	overload := r.Method == http.MethodPost && rest == "/responses" && base == provider.CodexBase && on == nil
 	streams := streamOf(body)
-	kept := &keptAlive{proto: provider.Responses, told: start, streams: streams}
+	kept := &keptAlive{proto: provider.Responses, told: start, streams: streams,
+		codex: rest == "/responses"}
 	busyAgain := 0     // times the turn was asked again for an overload
 	var tried []string // what each of those said, for the request log
 	// a turn goes in the Routing view's live trace as the others do, to
@@ -1087,7 +1120,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	kind := requestCallKind(r.Header, metadata)
 	var titleReply capturedBody // bounded; ordinary streams incur no copy
 	captureTitle := false
-	effort := "" // the reasoning Codex asked for, which goes on as it is
+	effort := "" // the reasoning sent, including an explicit gateway pick
 	end := func(status int, msg string, tokens, out int) {}
 	var tools *toolScan // whether the reply calls a tool, for a turn's end
 	var live *liveRow   // the reply counted as it reaches Codex (live.go)
@@ -1188,16 +1221,14 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 	creditsAsked := false // asked again onto the account's credits, once (relayOnCredits)
 	resetNote := ""       // what spending it did, for the request log
 	resets := 0           // times a large request ChatGPT closed on was asked again (#1628)
-	sent := len(body)     // the bytes that went, compressed (provider.CodexCompressed)
-	began := start        // when the try now going began
+	retriedCompact := false
+	historyBytes := 0
+	sent := len(body) // the bytes that went, compressed (provider.CodexCompressed)
+	began := start    // when the try now going began
 	// failWith tells Codex of a failure before any reply: as the stream's
 	// error once it was sent the stream's headers while it waited
 	failWith := func(status int, msg string) {
-		if kept.sent {
-			streamError(w, provider.Responses, kept.model, status, msg)
-			return
-		}
-		writeError(w, provider.Responses, status, msg)
+		failTo(w, kept, provider.Responses, status, msg)
 	}
 	// handOn notes a try that failed for an overload, which the turn goes
 	// on from, after wait: in the trace, and as a row handed on, as the
@@ -1303,6 +1334,13 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 					req.Header.Add("Accept", v)
 				}
 			}
+			if inference {
+				if err := provider.RequireAllowedModel(modelOf(body)); err != nil {
+					failWith(http.StatusForbidden, err.Error())
+					end(http.StatusForbidden, err.Error(), 0, 0)
+					return
+				}
+			}
 			// left to the transport, the reply comes back plain for the usage in it
 			req.Header.Del("Accept-Encoding")
 			// a turn to ChatGPT goes zstd-compressed again, as Codex sent it
@@ -1402,6 +1440,26 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 					}
 				}
 			}
+			if historyBytes == 0 && base == provider.CodexBase && r.Method == http.MethodPost &&
+				(rest == "/responses" || rest == "/responses/compact") {
+				if smaller, ok := codexHistoryRetry(res, body); ok {
+					res.Body.Close()
+					historyBytes = len(body)
+					body = smaller
+					continue
+				}
+			}
+			if !retriedCompact && base == provider.CodexBase && res.StatusCode >= 400 &&
+				(rest == "/responses/compact" || rest == "/responses" && compactionTriggerIn(body)) {
+				msg := peekError(res)
+				if byteCapRefusal(res.StatusCode, msg) || codexByteCapRefused(res.StatusCode, msg, len(body)) {
+					if smaller, ok := nativeCompactAsText(body); ok {
+						res.Body.Close()
+						body, retriedCompact = smaller, true
+						continue
+					}
+				}
+			}
 			if rest != "/responses" || tries >= 3 || (res.StatusCode != 400 && res.StatusCode != 404) {
 				break
 			}
@@ -1412,10 +1470,12 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 			msg, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 			res.Body.Close()
 			res.Body = io.NopCloser(bytes.NewReader(msg))
+			diagSealRefusal(res.StatusCode, res.Header, msg, body)
 			b, ok := withoutUnreadable(body, msg)
 			if !ok {
 				break
 			}
+			refused(sealScope, sealWho, body, b)
 			body = b
 		}
 		if rest == "/images/generations" || rest == "/images/edits" {
@@ -1461,7 +1521,24 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		}
 		if (rest == "/responses" || rest == "/responses/compact") && res.StatusCode >= 400 {
 			msg, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+			res.Body.Close()
 			res.Body = io.NopCloser(bytes.NewReader(msg))
+			// Classify the bare refusal against the original large request.
+			// The smaller retry, if any, is already below the evidence floor.
+			size := max(len(body), historyBytes)
+			if base == provider.CodexBase && codexByteCapRefused(res.StatusCode, msg, size) {
+				res = codexByteCapReply(res, size)
+				msg = peekError(res)
+			}
+			if rest == "/responses" && (res.StatusCode == http.StatusRequestEntityTooLarge || overflowed(res.StatusCode, msg)) {
+				said := provider.APIError(msg, res.Status)
+				failWith(res.StatusCode, said)
+				s.record(Call{Route: routeOf(tr), Time: start, From: provider.Responses, To: provider.Responses, Model: modelOf(body),
+					Provider: "openai", Agent: callerOf(r).agent, Kind: kind, Status: res.StatusCode,
+					Millis: time.Since(start).Milliseconds(), Error: said, headers: headerLogOf(r.Context())})
+				end(res.StatusCode, said, 0, 0)
+				return
+			}
 			// its credits and resets looked at above, a 429 that names
 			// when the account is back holds it till then (codexHolds)
 			noteCodexHold(holdKey, res.StatusCode, res.Header, msg)
@@ -1629,6 +1706,7 @@ func (s *Server) codexUpstreamOn(w http.ResponseWriter, r *http.Request, rest st
 		// the Routing view show why, not just that
 		call.Error = provider.APIError(refusal, res.Status)
 		errType = provider.ErrorType(refusal)
+		diagTurnRefusal(kind, r.URL.Path, res.StatusCode, refusal, body)
 		if relayedAcct != "" && failure(res.StatusCode, refusal) == failQuota {
 			// the account it went out on refused the turn as out of its
 			// allowance: read again now, so magpie takes the turns over
@@ -1916,9 +1994,11 @@ func codexRelayedAccount(base string, h http.Header, on *provider.Provider) (pro
 var unreadableItem = lazyre.New(`(?i)(?:encrypted content for item|item with id|referenced reasoning item) '?([A-Za-z]+_[A-Za-z0-9_-]+)'?`)
 
 // withoutUnreadable is body without what OpenAI's refusal msg says it
-// can't read: the item it names, what another account sealed
-// (withoutSeals: a web search's too, #3887), or a member of Codex's
-// passthrough it doesn't know.
+// can't read. A named item is repaired first, preserving the target account's
+// own reasoning beside it. A foreign seal on a message or call (Codex's output
+// token replay seals each of them) isn't named in every refusal; only that
+// unlocated refusal falls back to taking the replay seals out (withoutSeals).
+// A member of Codex's passthrough it doesn't know keeps its own repair.
 func withoutUnreadable(body, msg []byte) ([]byte, bool) {
 	if f, ok := refusedPassthrough(msg); ok {
 		// a member of Codex's passthrough the backend doesn't know yet
@@ -1929,9 +2009,10 @@ func withoutUnreadable(body, msg []byte) ([]byte, bool) {
 		return nil, false
 	}
 	if m := unreadableItem.FindSubmatch(msg); m != nil {
-		if b, ok := withoutItem(body, string(m[1])); ok {
-			return b, true
+		if foreignReasoning.Match(msg) {
+			return withoutNamedSeal(body, string(m[1]), false)
 		}
+		return withoutItem(body, string(m[1]))
 	}
 	if foreignReasoning.Match(msg) {
 		return withoutSeals(body)
@@ -2390,6 +2471,10 @@ func (s *Server) askCodexList(rctx context.Context, h http.Header, query string,
 // magpie's models after it. Should the backend not answer, or not in
 // time, Codex's last list of its own stands in.
 func (s *Server) codexModels(w http.ResponseWriter, r *http.Request) {
+	if _, err := settings.LoadChecked(); err != nil {
+		writeError(w, provider.Responses, http.StatusServiceUnavailable, "the outbound model policy could not be read")
+		return
+	}
 	var own []any
 	body, etag, deny, denyBody := s.codexBackendList(r)
 	// A sign-in the backend calls revoked (401 token_revoked, "Encountered
@@ -2575,6 +2660,23 @@ func codexMerged(own []any, cached bool) []any {
 			mine[m.ID] = true
 		}
 	}
+	// The exact outbound policy includes hidden jobs such as auto-review,
+	// and the native models listed under a pool account's qualified id.
+	own = slices.DeleteFunc(own, func(m any) bool {
+		o, _ := m.(map[string]any)
+		slug, _ := o["slug"].(string)
+		return provider.RequireAllowedModel(slug) != nil
+	})
+	ms = slices.DeleteFunc(ms, func(m catalog.Model) bool {
+		pid, model, qualified := strings.Cut(m.ID, "/")
+		if qualified && pid == "group" {
+			return false // its concrete candidates are checked at dispatch
+		}
+		if !qualified {
+			model = m.ID
+		}
+		return provider.RequireAllowedModel(model) != nil
+	})
 	all := append(own, codexcat.Entries(ms, len(own)+100)...)
 	if at, ok := provider.CodexOrder(); ok {
 		codexcat.Order(all, at)
@@ -2646,7 +2748,9 @@ func codexInputAs(body []byte, magpieModel, native bool) (_ []byte, compact bool
 		return body, false
 	}
 	var items []map[string]any
-	if json.Unmarshal(q["input"], &items) != nil {
+	dec := json.NewDecoder(bytes.NewReader(q["input"]))
+	dec.UseNumber() // tool output keeps exact integers and exponent forms during replay
+	if dec.Decode(&items) != nil {
 		return body, false
 	}
 	changed := false
@@ -4204,6 +4308,19 @@ func plainCompact(body []byte) []byte {
 	if q == nil {
 		return body
 	}
+	q["input"], _ = json.Marshal([]map[string]any{
+		userMessage(compactConversationText(items)),
+		userMessage(codexCompactPrompt),
+	})
+	delete(q, "previous_response_id")
+	nb, err := marshalJSON(q)
+	if err != nil {
+		return body
+	}
+	return nb
+}
+
+func compactConversationText(items []map[string]any) string {
 	var b strings.Builder
 	for _, it := range items {
 		role, text := itemText(it)
@@ -4216,16 +4333,35 @@ func plainCompact(body []byte) []byte {
 	if len(t) > plainCompactMax {
 		t = "…\n" + t[len(t)-plainCompactMax:]
 	}
-	q["input"], _ = json.Marshal([]map[string]any{
-		userMessage("This is the conversation so far:\n\n" + t),
-		userMessage(codexCompactPrompt),
-	})
-	delete(q, "previous_response_id")
-	nb, err := marshalJSON(q)
-	if err != nil {
-		return body
+	return "This is the conversation so far:\n\n" + t
+}
+
+// nativeCompactAsText retries an explicit native compaction in the
+// same wire format. The native checkpoint belongs to its writer and
+// must not be flattened into text.
+func nativeCompactAsText(body []byte) ([]byte, bool) {
+	if len(sealedCompactions(body)) != 0 {
+		return nil, false
 	}
-	return nb
+	q, history := compactItems(body)
+	if len(history) == 0 {
+		return nil, false
+	}
+	items := []map[string]any{userMessage(compactConversationText(history))}
+	for _, it := range history {
+		if it["type"] == "compaction_trigger" {
+			items = append(items, it)
+			break
+		}
+	}
+	delete(q, "previous_response_id")
+	var err error
+	q["input"], err = marshalPlain(items)
+	if err != nil {
+		return nil, false
+	}
+	fitted, err := marshalPlain(q)
+	return fitted, err == nil && len(fitted) < len(body)
 }
 
 // plainCompactMax bounds the conversation's text a plain summary request

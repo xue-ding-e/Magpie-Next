@@ -69,6 +69,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // Tailscale's serve, the daemon out of sight
       {
         const { context, page } = await open({ held: ts, answer: {} });
+        await sub(page).filter({ hasText: w.tail }).waitFor();
         assert.match(await sub(page).textContent(), w.tail);
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "the page scrolls sideways");
         await context.close();
@@ -76,6 +77,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // another program, named
       {
         const { context, page } = await open({ held: { port: "8848", name: "nginx", pid: 77 }, answer: {} });
+        await sub(page).filter({ hasText: w.named }).waitFor();
         assert.match(await sub(page).textContent(), w.named);
         await context.close();
       }
@@ -83,6 +85,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // (Norethcy on X): not an error, nothing to quit
       {
         const { context, page } = await open({ held: { port: "8848", name: "magpie", pid: 47634, path: "/home/u/.local/bin/magpie", own: true }, answer: {} });
+        await sub(page).filter({ hasText: w.starting }).waitFor();
         assert.match(await sub(page).textContent(), w.starting);
         assert.equal(await page.locator("#gateway .sub.err").count(), 0);
         await context.close();
@@ -90,6 +93,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // the holder not read: the card's old line, nothing made up
       {
         const { context, page } = await open({ held: undefined, answer: {} });
+        await sub(page).filter({ hasText: w.old }).waitFor();
         assert.match(await sub(page).textContent(), w.old);
         assert.equal(await page.locator("#gateway .sub.err").count(), 0);
         await context.close();
