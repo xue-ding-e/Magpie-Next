@@ -83,6 +83,92 @@ func TestResetPriorityRespectsAccountCaps(t *testing.T) {
 	}
 }
 
+func TestResetPriorityUsesRemainingCodexQuota(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		used, short float64
+		priority    bool
+		refused     bool
+		want        string
+	}{
+		{name: "one percent left", used: 99, priority: true, want: "acct-1"},
+		{name: "used up", used: 100, priority: true, want: "acct-2"},
+		{name: "another window used up", used: 99, short: 100, priority: true, want: "acct-2"},
+		{name: "vendor refuses remaining quota", used: 99, priority: true, refused: true, want: "acct-1,acct-2"},
+		{name: "ordinary smart routing", used: 99, want: "acct-2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			codexSignedIn(t, "spare@example.com")
+			var b *resetBackend
+			if tc.refused {
+				b = newResetBackend(t, "acct-1")
+			} else {
+				b = newResetBackend(t)
+			}
+			now := time.Now()
+			quota := week(tc.used, now.Add(6*time.Hour))
+			if tc.short > 0 {
+				quota = append(quota, provider.Limit{Used: tc.short, Resets: now.Add(time.Hour), Span: 5 * time.Hour})
+			}
+			old := allowances
+			t.Cleanup(func() { allowances = old })
+			allowances = func(string) map[string]provider.Allowance {
+				return map[string]provider.Allowance{
+					"me@example.com":    quota,
+					"spare@example.com": week(19, now.Add(5*24*time.Hour)),
+				}
+			}
+			if tc.priority {
+				p, err := provider.Find("codex")
+				if err != nil {
+					t.Fatal(err)
+				}
+				p.ResetPriority = &provider.ResetPriority{Hours: 48, Window: "any", Order: "soonest"}
+				if err := provider.Save(*p); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if code, body := resetPost(t, New()); code != 200 {
+				t.Fatalf("%d %s", code, body)
+			}
+			if tried, _ := b.seen(); tried != tc.want {
+				t.Fatalf("tried %s, want %s", tried, tc.want)
+			}
+		})
+	}
+}
+
+func TestResetPriorityBurstStaysInTier(t *testing.T) {
+	fresh(t)
+	now := time.Now()
+	keyWindows(t, map[string]provider.Allowance{
+		"outside": week(10, now.Add(5*24*time.Hour)),
+		"soon":    week(99, now.Add(time.Hour)),
+		"later":   week(10, now.Add(2*time.Hour)),
+	})
+	var up keyed
+	serveOn(t, "priority", "outside", []string{"m"}, &up, "soon", "later")
+	p, err := provider.Find("priority")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Routing = provider.Rotate
+	p.ResetPriority = &provider.ResetPriority{Hours: 4, Window: "week", Order: "soonest"}
+	s := New()
+	first, firstPlan := s.plan(*p, "m", provider.Chat)
+	first, _, releaseFirst := burstSpread(p.Routing, nil, false, true, first, firstPlan)
+	defer releaseFirst()
+	if first[0].p.Key != "soon" {
+		t.Fatalf("first request went to %s", first[0].p.Key)
+	}
+	second, secondPlan := s.plan(*p, "m", provider.Chat)
+	second, _, releaseSecond := burstSpread(p.Routing, nil, false, true, second, secondPlan)
+	defer releaseSecond()
+	if second[0].p.Key != "soon" {
+		t.Fatalf("concurrent request went to %s while the earliest reset still had quota", second[0].p.Key)
+	}
+}
+
 // Exercise the gateway's actual pool, affinity and request path, with quota
 // supplied locally and a fake vendor that tells which key answered.
 func TestResetPriorityRequests(t *testing.T) {
@@ -198,7 +284,7 @@ func TestResetPriorityNewTurnAndExplicitAffinity(t *testing.T) {
 			var got []string
 			for i := range 3 {
 				if i == 1 {
-					windows["b"] = week(20, now.Add(time.Hour))
+					windows["b"] = week(99, now.Add(time.Hour))
 				}
 				body := `{"model":"priority/m","max_tokens":100,"tools":[{"name":"read","input_schema":{"type":"object"}}],"messages":[` + conv + `]}`
 				r := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))

@@ -18,7 +18,7 @@ func resetPriorityOrder(p provider.Provider, st routes.Strategy, cs []candidate,
 	}
 	var preferred, ordinary []int
 	for i, c := range cs {
-		if wg.lefts[c.allowanceKey()].reset.IsZero() || seats[i].Resting || seats[i].Used >= usedShare {
+		if wg.lefts[c.allowanceKey()].reset.IsZero() || seats[i].Resting {
 			ordinary = append(ordinary, i)
 		} else {
 			preferred = append(preferred, i)
@@ -80,7 +80,10 @@ func resetPriorityBehind(order []Weighed, i int) bool {
 }
 
 func resetDue(p provider.Provider, a provider.Allowance, model string, now time.Time, used float64) time.Time {
-	if p.ResetPriority == nil || used >= usedShare {
+	// Use the remaining quota until reset. The ordinary routing buffer
+	// would leave the final 2% unused. A full window still blocks priority,
+	// including when a different window is the one about to reset.
+	if p.ResetPriority == nil || used >= 100 {
 		return time.Time{}
 	}
 	return p.ResetPriority.Due(a, model, now)

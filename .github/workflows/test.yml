@@ -168,6 +168,8 @@ jobs:
           run_exact ./internal/gateway \
             TestResetPriorityTiesAndSink \
             TestResetPriorityRespectsAccountCaps \
+            TestResetPriorityUsesRemainingCodexQuota \
+            TestResetPriorityBurstStaysInTier \
             TestResetPriorityRequests \
             TestResetPriorityFailoverAndNoCandidate \
             TestResetPriorityNewTurnAndExplicitAffinity \

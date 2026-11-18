@@ -85,6 +85,9 @@ func burstAlike(routing string, g *provider.Group, sameMember bool, cs []candida
 	if b.Rest != nil || b.Aside || b.Reserve > 0 || b.Barred || b.Held || standsIn(order, i) || lastBehind(order, i) || busyBehind(order, i) {
 		return false
 	}
+	if resetPriorityBehind(order, i) {
+		return false
+	}
 	if a.Fallback != b.Fallback || a.Fit != b.Fit || a.Speaks != b.Speaks || c0.noURL != ci.noURL || !slices.Equal(a.Via, b.Via) {
 		return false
 	}

@@ -78,15 +78,19 @@ accounts and quota-bearing keys whose selected quota resets within that many
 hours, including the boundary. It is off by default; enabling it defaults to
 weekly quota. `window` selects `week` (7 days), `month` (28–31 days), `day`
 (24 hours), `short` (a known span below 24 hours), or `any` (any span with a
-known reset). Unknown or passed resets, windows for another model and spent
-quota never create a preferred candidate. Without a qualifying available
-candidate, the original routing applies. Requests still respect usage caps,
-disabled accounts, model restrictions and rests.
+known reset). An eligible account can use its last 2% before the reset.
+Any active window at 100% that applies to the requested model rules the
+account out of reset priority, even if another window still has quota.
+Unknown or passed resets and windows for other models do not qualify.
+Without a qualifying available candidate, the original routing applies.
+Requests still respect usage caps, disabled accounts, model restrictions
+and rests.
 
 The preferred candidates are routed as a pool of their own using the provider's
 current strategy, including rotation and weights. `order: "soonest"` puts the
-earliest matching reset first, with the current strategy breaking ties. Other
-candidates remain available for failover. A provider keeps this policy inside
+earliest matching reset first, with the current strategy breaking ties.
+Concurrent requests respect the same priority. Other candidates remain
+available for failover. A provider keeps this policy inside
 a routing group, whose member order still decides between providers. Automatic
 affinity follows the priority at a new turn; an ongoing tool loop and explicit
 Session or Strict affinity retain their account. The routing trace carries

@@ -696,7 +696,7 @@ func affine(scope, mode string, rotate, spread, inOrder, hoursOver bool, in http
 		// A new turn spends the selected quota before its reset, even
 		// while another account's prompt cache would otherwise keep it.
 		a.Why = "reset-priority"
-	case at > 0 && pl.order[at].Known && pl.order[at].Used >= provider.SpentShareOf(cs[at].p.Routing) && !pl.order[at].CreditsFirst:
+	case at > 0 && pl.order[at].spentForRouting(cs[at].p.Routing):
 		// all but used up, and put behind another: first still — the
 		// one key or account it has (#1016), or every one used up — it
 		// doesn't move
@@ -824,7 +824,7 @@ func standsInFor(c candidate, cs []candidate, order []Weighed) bool {
 		}
 		for _, w := range order {
 			if w.ID == o.rest && w.Model == o.model && w.Fixed == o.effort {
-				if w.Rest != nil || w.Known && w.Used >= provider.SpentShareOf(o.p.Routing) && !w.CreditsFirst {
+				if w.Rest != nil || w.spentForRouting(o.p.Routing) {
 					return true
 				}
 				break
@@ -912,15 +912,24 @@ func leastHeld(scope, key string, cs []candidate, pl planned, ready bool) ([]can
 	return cs, pl
 }
 
+// spentForRouting says whether ordinary routing would keep this candidate
+// for last. Reset priority keeps a candidate eligible while it has quota.
+func (w Weighed) spentForRouting(routing string) bool {
+	return w.Known && w.ResetPriority == nil && !w.CreditsFirst && w.Used >= provider.SpentShareOf(routing)
+}
+
 // readyForNew says whether order[i], behind order[0], is one routing would
 // put a new conversation on: not resting, nor a key for another protocol,
 // nor a fallback while the provider's own model leads, nor used past
-// lowShare unless it spends its credits first (Weighed.CreditsFirst) or
-// is that low on its week alone, which Smart and Use before expiry keep
-// with those that have room (Weighed.WeekLow).
+// lowShare unless it has reset priority, spends its credits first, or is
+// that low on its week alone, which Smart and Use before expiry keep with
+// those that have room (Weighed.WeekLow).
 func readyForNew(order []Weighed, i int) bool {
 	w := order[i]
-	return w.Rest == nil && !w.Aside && !standsIn(order, i) && !resetPriorityBehind(order, i) && !(w.Known && w.Used >= lowShare && !w.CreditsFirst && !((w.WeekLow || w.ResetPriority != nil) && w.Used < usedShare)) && !lastBehind(order, i) && !busyBehind(order, i)
+	if w.Rest != nil || w.Aside || standsIn(order, i) || resetPriorityBehind(order, i) || lastBehind(order, i) || busyBehind(order, i) {
+		return false
+	}
+	return !w.Known || w.Used < lowShare || w.ResetPriority != nil || w.CreditsFirst || w.WeekLow && w.Used < usedShare
 }
 
 // standsIn says whether order[i] is a provider's fallback while one of the
