@@ -29,6 +29,7 @@ func TestAccountSettingsKept(t *testing.T) {
 		q.RestCap = 20
 		q.LimitRestOff = true
 		q.Patience = 30
+		q.ResetPriority = &ResetPriority{Hours: 24, Window: "week", Order: "soonest"}
 		if err := Save(q); err != nil {
 			t.Fatal(err)
 		}
@@ -38,6 +39,9 @@ func TestAccountSettingsKept(t *testing.T) {
 		}
 		if got.Account == nil {
 			t.Fatalf("%s: no longer the signed-in account: %+v", id, got)
+		}
+		if got.ResetPriority == nil || *got.ResetPriority != *q.ResetPriority {
+			t.Errorf("%s: reset priority not kept: %+v", id, got.ResetPriority)
 		}
 		if !got.AdditionalTools {
 			t.Errorf("%s: additional-tools not kept", id)
@@ -55,11 +59,15 @@ func TestAccountSettingsKept(t *testing.T) {
 		r := *got
 		r.AdditionalTools, r.ExtraBody, r.ReplyHeaders = false, nil, nil
 		r.QuotaRest, r.RestCap, r.LimitRestOff, r.Patience = 0, 0, false, 0
+		r.ResetPriority = &ResetPriority{}
 		if err := Save(r); err != nil {
 			t.Fatal(err)
 		}
 		if got, _ := Find(id); got.AdditionalTools || len(got.ExtraBody) > 0 || len(got.ReplyHeaders) > 0 || got.QuotaRest != 0 || got.RestCap != 0 || got.LimitRestOff || got.Patience != 0 {
 			t.Errorf("%s: left after clearing: %+v", id, got)
+		}
+		if got, _ := Find(id); got.ResetPriority != nil {
+			t.Errorf("%s: reset priority left after clearing: %+v", id, got.ResetPriority)
 		}
 	}
 }

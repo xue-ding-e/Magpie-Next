@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,56 @@ import (
 
 	"github.com/yetone/magpie/internal/provider"
 )
+
+func TestProviderSaveResetPriority(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	mux := http.NewServeMux()
+	providerRoutes(mux, nil)
+	const form = `"id":"priority","name":"Priority","key":"test-key","chat":"http://127.0.0.1:1/v1","models":["m"]`
+	post := func(fields string, valid bool) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest("POST", "/api/provider/save", strings.NewReader(`{`+form+fields+`}`)))
+		if (w.Code == 200) != valid {
+			t.Fatalf("%s: %d %s", fields, w.Code, w.Body)
+		}
+	}
+	post(`,"new":true,"resetPriority":{"hours":24}`, true)
+	check := func(hours float64, window, order string) {
+		t.Helper()
+		p, err := provider.Find("priority")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hours == 0 {
+			if p.ResetPriority != nil {
+				t.Fatal("disabled priority was kept")
+			}
+			return
+		}
+		if p.ResetPriority == nil || p.ResetPriority.Hours != hours || p.ResetPriority.Window != window || p.ResetPriority.Order != order {
+			t.Fatalf("saved priority: %+v", p.ResetPriority)
+		}
+		b, err := json.Marshal(providerInfo(*p, nil))
+		if err != nil || !strings.Contains(string(b), `"resetPriority":`) {
+			t.Fatalf("priority missing from editor's provider view: %s, %v", b, err)
+		}
+	}
+	check(24, "week", "")
+	post(`,"from":"priority"`, true)
+	check(24, "week", "")
+	post(`,"from":"priority","resetPriority":{"hours":0.5,"window":"short","order":"soonest"}`, true)
+	check(0.5, "short", "soonest")
+	for _, bad := range []string{`{"hours":-1}`, `{"hours":8761}`, `{"hours":1,"window":"bad"}`, `{"hours":1,"order":"bad"}`} {
+		post(`,"from":"priority","resetPriority":`+bad, false)
+		check(0.5, "short", "soonest")
+	}
+	post(`,"from":"priority","resetPriority":{"hours":0}`, true)
+	check(0, "", "")
+}
 
 // A provider's Routing and Stays are picked in its editor and made with its
 // Save (01huadalang on Discord: each click saved at once); a Save that

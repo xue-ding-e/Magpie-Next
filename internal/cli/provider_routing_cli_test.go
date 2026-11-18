@@ -23,3 +23,16 @@ func TestProviderRoutingPair(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderResetPriorityPair(t *testing.T) {
+	var p provider.Provider
+	if err := applyPairs(&p, []string{"reset-priority=24h,week,soonest"}); err != nil || p.ResetPriority == nil || p.ResetPriority.Hours != 24 || p.ResetPriority.Order != "soonest" {
+		t.Fatalf("priority not applied: %+v %v", p.ResetPriority, err)
+	}
+	if err := applyPairs(&p, []string{"reset-priority=bad"}); err == nil || p.ResetPriority == nil || p.ResetPriority.Hours != 24 {
+		t.Fatal("invalid priority changed the saved choice")
+	}
+	if err := applyPairs(&p, []string{"reset-priority=off"}); err != nil || p.ResetPriority != nil {
+		t.Fatalf("priority not cleared: %+v %v", p.ResetPriority, err)
+	}
+}

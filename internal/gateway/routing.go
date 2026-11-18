@@ -2428,6 +2428,7 @@ type left struct {
 	fullest time.Time
 	// fullestName: that window's name, when more than one counts the model
 	fullestName string
+	reset       time.Time   // the selected quota window resets inside ResetPriority
 	soon        []time.Time // renews as Smart ranks them (Allowance.Renewal)
 	// unreached: how many of soon's windows Smart passes over, as they
 	// can't be used up before they renew any more (Allowance.Unreached)
@@ -2487,6 +2488,7 @@ func weigh(p provider.Provider, cs []candidate, model string, from provider.Prot
 	cs, wg := weighRouted(p, cs, model, from)
 	if sinks(p.Sink, p.Routing) {
 		cs = sinkLast(cs)
+		cs = resetFirst(p, cs, wg)
 	}
 	return cs, wg
 }
@@ -2556,6 +2558,7 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 				restarts: rs, dueRestart: !rs.IsZero() && due.Equal(rs), credits: spendsCredits(c.p, a)} // one not known counts as unused
 			l.dueExpiry = !l.dueRestart && !l.lapse.IsZero() && due.Equal(l.lapse)
 			l.weekLow = u >= lowShare && u < usedShare && a.CapUsed(c.model, now) < lowShare
+			l.reset = resetDue(p, a, c.model, now, u)
 			l.first = l.credits && provider.CodexCreditsFirst(c.p.Account.User)
 			if b, bu, has := a.Left(c.model); has {
 				// a wallet's figure is weighed only against the same
@@ -2572,7 +2575,10 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 	// a plugin registered; one not registered leaves them in their order
 	st, ok := routes.Find(p.Routing)
 	if !ok {
-		return cs, wg
+		if p.ResetPriority == nil || p.ResetPriority.Hours <= 0 {
+			return cs, wg
+		}
+		st = routes.Ordered
 	}
 	seats := make([]routes.Seat, len(cs))
 	routed.Lock()
@@ -2647,7 +2653,7 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 			wg.price[c.restID()] = seatPrice{in: pr.Input, out: pr.Output, cache: pr.CacheRead, peak: peak}
 		}
 	}
-	order := routes.Apply(st, p.ID, seats)
+	order := resetPriorityOrder(p, st, cs, seats, wg)
 	out := make([]candidate, 0, len(cs))
 	for _, i := range order {
 		out = append(out, cs[i])
@@ -2658,6 +2664,7 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 	}
 	if p.Account == nil {
 		sort.SliceStable(cs, func(i, j int) bool { return keyFit(cs[i].p, cs[i].model, from) < keyFit(cs[j].p, cs[j].model, from) })
+		cs = resetFirst(p, cs, wg)
 	}
 	return cs, wg
 }

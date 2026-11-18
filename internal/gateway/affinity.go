@@ -692,6 +692,10 @@ func affine(scope, mode string, rotate, spread, inOrder, hoursOver bool, in http
 		// Within a turn it stays; Stays: Session and Strict, the user's
 		// own, keep it where it is
 		a.Why = "hours"
+	case !a.Within && mode == "" && resetPriorityBehind(pl.order, at):
+		// A new turn spends the selected quota before its reset, even
+		// while another account's prompt cache would otherwise keep it.
+		a.Why = "reset-priority"
 	case at > 0 && pl.order[at].Known && pl.order[at].Used >= provider.SpentShareOf(cs[at].p.Routing) && !pl.order[at].CreditsFirst:
 		// all but used up, and put behind another: first still — the
 		// one key or account it has (#1016), or every one used up — it
@@ -888,7 +892,7 @@ func leastHeld(scope, key string, cs []candidate, pl planned, ready bool) ([]can
 	seat := func(c candidate) string { return c.who() + "/" + provider.WithMemberEffort(c.model, c.effort) }
 	best := -1
 	for i, c := range cs {
-		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) || ready && i > 0 && !readyForNew(pl.order, i) {
+		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || resetPriorityBehind(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) || ready && i > 0 && !readyForNew(pl.order, i) {
 			continue
 		}
 		if best < 0 || held[seat(c)] < held[seat(cs[best])] {
@@ -916,7 +920,7 @@ func leastHeld(scope, key string, cs []candidate, pl planned, ready bool) ([]can
 // with those that have room (Weighed.WeekLow).
 func readyForNew(order []Weighed, i int) bool {
 	w := order[i]
-	return w.Rest == nil && !w.Aside && !standsIn(order, i) && !(w.Known && w.Used >= lowShare && !w.CreditsFirst && !(w.WeekLow && w.Used < usedShare)) && !lastBehind(order, i) && !busyBehind(order, i)
+	return w.Rest == nil && !w.Aside && !standsIn(order, i) && !resetPriorityBehind(order, i) && !(w.Known && w.Used >= lowShare && !w.CreditsFirst && !((w.WeekLow || w.ResetPriority != nil) && w.Used < usedShare)) && !lastBehind(order, i) && !busyBehind(order, i)
 }
 
 // standsIn says whether order[i] is a provider's fallback while one of the
@@ -1094,7 +1098,7 @@ func spreadsSessions(mode, routing string) bool {
 func after(cs []candidate, pl planned, at int) ([]candidate, planned) {
 	for d := 1; d < len(cs); d++ {
 		i := (at + d) % len(cs)
-		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) {
+		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || resetPriorityBehind(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) {
 			continue // a turn goes round the keys routed over only
 		}
 		if i > 0 {

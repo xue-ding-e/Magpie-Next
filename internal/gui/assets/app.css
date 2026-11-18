@@ -3736,6 +3736,9 @@ body:not(.side-nav) #addSheet > .row-head.stuck::before { box-shadow: 0 1px 0 va
 /* a provider's Routing and Stays, with "unsaved" beside a pick not saved yet */
 .route-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .route-pick > .hint { margin: 0; }
+.editor .reset-priority-options { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; margin-top: 10px; }
+.editor .reset-priority-options > label { justify-self: start; align-self: center; text-align: left; padding: 0; margin: 0; }
+@media (max-width: 600px) { .editor .reset-priority-options { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
 /* In turn, drawn (app.js rotateFigure): quiet greys from the theme's own
    tokens, an account told by its letter and its shade */
 .rot-wrap { margin-top: 8px; max-width: 100%; overflow-x: auto; }

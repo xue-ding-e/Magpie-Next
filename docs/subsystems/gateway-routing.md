@@ -73,6 +73,37 @@ The test sandbox clears the variable through `agentenv.Vars`.
 
 ## Next additions over upstream routing
 
+A provider's optional `resetPriority` (`hours`, `window`, `order`) prefers
+accounts and quota-bearing keys whose selected quota resets within that many
+hours, including the boundary. It is off by default; enabling it defaults to
+weekly quota. `window` selects `week` (7 days), `month` (28–31 days), `day`
+(24 hours), `short` (a known span below 24 hours), or `any` (any span with a
+known reset). Unknown or passed resets, windows for another model and spent
+quota never create a preferred candidate. Without a qualifying available
+candidate, the original routing applies. Requests still respect usage caps,
+disabled accounts, model restrictions and rests.
+
+The preferred candidates are routed as a pool of their own using the provider's
+current strategy, including rotation and weights. `order: "soonest"` puts the
+earliest matching reset first, with the current strategy breaking ties. Other
+candidates remain available for failover. A provider keeps this policy inside
+a routing group, whose member order still decides between providers. Automatic
+affinity follows the priority at a new turn; an ongoing tool loop and explicit
+Session or Strict affinity retain their account. The routing trace carries
+the selected reset and explains a new turn leaving its previous account.
+See [`provider/reset_priority.go`](../../internal/provider/reset_priority.go),
+[`gateway/reset_priority.go`](../../internal/gateway/reset_priority.go), and
+`TestResetPriority*` in the provider and gateway packages.
+
+The provider editor's Advanced section, beside Routing, stages the policy and
+applies it with Save; Cancel drops it. A Save omitting `resetPriority` preserves
+the existing value, while `{ "hours": 0 }` clears it. `hours` is finite and
+between 0 and 8760; a positive fractional hour is allowed. The CLI equivalent
+is `magpie provider set <id> reset-priority=24h,week,soonest`, or
+`reset-priority=off`. Browser coverage is in
+[`routing-save.test.cjs`](../../internal/gui/tests/routing-save.test.cjs), in
+all five languages and both engines.
+
 An empty `settings.allowedModels` keeps upstream's unrestricted routing. A
 nonempty list restricts outbound requests to exact model names as sent to the API;
 the chosen candidate and the model actually sent must both be allowed. A local

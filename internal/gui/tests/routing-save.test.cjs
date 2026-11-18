@@ -17,6 +17,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
+const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const base = { icon: "generic", catalog: "", models: [{ id: "glm-5", name: "GLM-5", on: true }], agents: [], fallback: [], headers: {}, routing: "", affinity: "", ready: true };
@@ -52,6 +53,104 @@ function serve(lang, posts, off = []) {
     const file = path.join(assets, url.pathname === "/" ? "index.html" : url.pathname);
     await route.fulfill({ body: await fs.readFile(file), contentType: { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" }[path.extname(file)] });
   };
+}
+
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+  for (const lang of ["en", "zh", "zh-TW", "ja", "de"]) {
+    test(`${engine} ${lang}: reset priority defaults to weekly, stages, validates, saves, reloads and clears`, async (t) => {
+      const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || "chromium" }));
+      t.after(() => browser.close());
+      for (const width of [980, 420]) for (const source of [sub, relay]) {
+        const p = structuredClone(source), posts = [], errors = [];
+        const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: "reduce" });
+        page.setDefaultTimeout(8000);
+        page.setDefaultNavigationTimeout(60000);
+        page.on("pageerror", (e) => errors.push(e.message));
+        const data = () => ({ providers: [p], presets: [], excluded: [], gateway: { running: true, window: true } });
+        const fallback = serve(lang, posts);
+        await page.route("**/*", async (route) => {
+          const url = new URL(route.request().url());
+          if (url.pathname === "/api/providers") return route.fulfill({ json: data() });
+          if (url.pathname === "/api/provider/save") {
+            const body = route.request().postDataJSON();
+            posts.push({ path: url.pathname, body });
+            if (body.resetPriority?.hours) p.resetPriority = body.resetPriority;
+            else if (body.resetPriority) delete p.resetPriority;
+            return route.fulfill({ json: data() });
+          }
+          return fallback(route);
+        });
+        await page.goto("http://magpie.test/?view=providers");
+        const word = (key) => page.evaluate((k) => t(k), key);
+        const click = async (control) => { await reach(page, control); await control.click(); };
+        const open = async () => {
+          await click(page.locator(".row.provider", { hasText: p.name }).first());
+          await page.locator(".editor .accts").first().waitFor();
+          const advanced = page.locator(".editor details.advanced");
+          if (!await advanced.evaluate((e) => e.open)) await click(advanced.locator(":scope > summary"));
+          await page.locator(".reset-priority input[type=checkbox]").waitFor({ state: "attached" });
+        };
+        const box = page.locator(".reset-priority"), options = box.locator(".reset-priority-options");
+        const choose = async (value, index = 0) => {
+          const control = options.locator(".segs").nth(index).locator(`.opt[data-seg="${value}"]`);
+          await reach(page, control);
+          const y = await page.locator("#view-providers").evaluate((e) => e.scrollTop);
+          await control.click();
+          assert.equal(await page.locator("#view-providers").evaluate((e) => e.scrollTop), y, "a choice never scrolls the page");
+        };
+        const save = async () => {
+          await click(page.getByRole("button", { name: await word("Save"), exact: true }));
+          await page.waitForFunction(() => !document.querySelector(".editor"));
+        };
+        await open();
+        assert.equal(await box.locator("input[type=checkbox]").isChecked(), false, "priority starts off");
+        await click(box.locator("label").first());
+        assert.equal(await options.locator('.segs .opt[data-seg="week"]').getAttribute("aria-pressed"), "true", "weekly is the default");
+        assert.equal(await options.locator('.segs').nth(1).locator('.opt[data-seg=""]').getAttribute("aria-pressed"), "true", "current routing is the default");
+        const keys = await page.evaluate(() => {
+          const keys = ["Before quota resets", "Prefer accounts near reset", "Quota cycle", "Weekly quota", "Monthly quota", "Daily quota", "Short quota window", "Any quota window", "Hours before reset", "Preferred accounts", "Current routing", "Soonest reset first", "Reset priority hours: enter a number above 0 up to 8760"];
+          return Object.entries(I18N).flatMap(([locale, entries]) => keys.filter((k) => !entries[k]).map((k) => locale + ": " + k));
+        });
+        assert.deepEqual(keys, [], "every label is translated in all four dictionaries");
+        const hours = options.locator("input");
+        for (const cycle of ["month", "day", "short", "any", "week"]) await choose(cycle);
+        await reach(page, hours);
+        await hours.fill("0");
+        await click(page.getByRole("button", { name: await word("Save"), exact: true }));
+        assert.equal(posts.length, 0, "invalid hours never save");
+        assert.equal(await page.locator(".editor").count(), 1);
+        await reach(page, hours);
+        await hours.fill("6.5");
+        await choose("month");
+        await choose("soonest", 1);
+        if (process.env.ARTIFACT_DIR && engine === "chromium" && lang === "zh" && width === 980 && source.id === sub.id) {
+          await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
+          await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, "reset-priority-zh.png") });
+        }
+        assert.equal(posts.length, 0, "choices stay staged until Save");
+        assert.equal(await page.locator(".editor select").count(), 0, "no native select");
+        assert.ok(await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1), "fits the window");
+        await save();
+        assert.deepEqual(posts[0].body.resetPriority, { hours: 6.5, window: "month", order: "soonest" });
+        await open();
+        assert.equal(await options.locator('.segs .opt[data-seg="month"]').getAttribute("aria-pressed"), "true");
+        assert.equal(await hours.inputValue(), "6.5");
+        assert.equal(await options.locator('.segs').nth(1).locator('.opt[data-seg="soonest"]').getAttribute("aria-pressed"), "true");
+        await choose("day");
+        await click(page.getByRole("button", { name: await word("Cancel"), exact: true }));
+        await page.getByRole("alertdialog").locator("button").last().click();
+        await open();
+        assert.equal(await options.locator('.segs .opt[data-seg="month"]').getAttribute("aria-pressed"), "true", "Cancel drops the staged cycle");
+        await click(box.locator("label").first());
+        await save();
+        assert.equal(posts.at(-1).body.resetPriority.hours, 0, "switching off explicitly clears the policy");
+        await open();
+        assert.equal(await box.locator("input[type=checkbox]").isChecked(), false, "off survives reopening");
+        assert.deepEqual(errors, [], `${width}px ${source.name}: no page errors`);
+        await page.close();
+      }
+    });
+  }
 }
 
 const ROUTINGS = [

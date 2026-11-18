@@ -9629,7 +9629,7 @@ function drawEditor(p, presetID) {
   // Routing, Rate limited and Stays: changed by few, so under Advanced, at
   // its top, and opening it when one isn't its default (the owner, 11-12)
   const routingAdvanced = (p) => {
-    if (!(advanced && advanced.of === editing) && ((draft.routing ?? p.routing) || (draft.affinity ?? p.affinity) || (draft.sink ?? p.sink))) adv.open = true;
+    if (!(advanced && advanced.of === editing) && ((draft.routing ?? p.routing) || (draft.affinity ?? p.affinity) || (draft.sink ?? p.sink) || (draft.resetPriority ?? p.resetPriority)?.hours)) adv.open = true;
     return renderRouting(p);
   };
 
@@ -9700,6 +9700,7 @@ function drawEditor(p, presetID) {
     cancel.onclick = cancelEdit;
     const saveBtn = el("button", "text primary", t("Save"));
     saveBtn.onclick = () => {
+      if (self.resetPriorityValid && !self.resetPriorityValid(ed)) return;
       if (pickingNone()) return editorError(t("Pick a model first."), "warn");
       const cx = parseContexts(draft.contexts || "");
       if (cx.error) return contextError(ed, cx.error);
@@ -10362,6 +10363,7 @@ function drawEditor(p, presetID) {
   const saveBtn = el("button", "text primary", t(isNew ? "Add" : "Save"));
   const save = () => {
     if (p && pickingNone()) return editorError(t("Pick a model first."), "warn");
+    if (self.resetPriorityValid && !self.resetPriorityValid(ed)) return;
     // a typed icon address first; one that fails stays (hoobnn)
     const waiting = custom && ed.iconFlush?.();
     if (waiting) return waiting.then((ok) => ok && save());
@@ -12349,6 +12351,7 @@ function routingOfDraft(p) {
   if (draft?.routing !== undefined && draft.routing !== (p.routing || "")) out.routing = draft.routing;
   if (draft?.affinity !== undefined && draft.affinity !== (p.affinity || "")) out.affinity = draft.affinity;
   if (draft?.sink !== undefined && draft.sink !== !!p.sink) out.sink = draft.sink;
+  if (draft?.resetPriority !== undefined) out.resetPriority = draft.resetPriority;
   return out;
 }
 // how magpie moves the agent's sign-in (provider.SignInMovesOf)
@@ -12438,7 +12441,9 @@ function renderRouting(p) {
   drawRouting();
   drawSink();
   drawStays();
-  return [el("label", "", t("Routing")), rWrap, kLabel, kWrap, el("label", "", t("Stays")), sWrap];
+  const reset = el("div", "fld reset-priority");
+  import("./resetpriority.js").then(() => reset.isConnected && self.resetPriorityField(p, reset));
+  return [el("label", "", t("Routing")), rWrap, el("label", "", t("Before quota resets")), reset, kLabel, kWrap, el("label", "", t("Stays")), sWrap];
 }
 
 // renderFallback: where requests go when this provider can't take them —

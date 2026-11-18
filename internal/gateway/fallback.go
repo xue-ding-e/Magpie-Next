@@ -989,7 +989,7 @@ func firstAwake(cs []candidate) candidate {
 // goes first whichever provider it is of; one set another way keeps it,
 // as the user set it, whatever g's routing.
 func ownRouting(p provider.Provider, g provider.Group) bool {
-	return p.Routing != "" && p.Routing != g.Routing
+	return p.ResetPriority != nil && p.ResetPriority.Hours > 0 || p.Routing != "" && p.Routing != g.Routing
 }
 
 // capHeld is how the account acct of p is held at its usage cap for

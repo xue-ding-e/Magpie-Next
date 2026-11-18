@@ -48,6 +48,8 @@ const providerUsage = `usage:
                                           routing=smart|order|rotate|usage|pace|weight|free|fast|drain spreads requests
                                           over its keys or accounts (fast: the one that answered fastest lately first;
                                           drain: one until it is used up, then the next, never back to an earlier one);
+                                          reset-priority=24h[,week|month|day|short|any[,routing|soonest]] prefers
+                                          quota resetting within that time (default: week, current routing); off clears it;
                                           prompt=as-written sends Antigravity the system prompt exactly as written;
                                           prompt=default, the default, breaks up the lines Google answers with a
                                           false 429 (Codex's, Claude Code's, Hermes' old persona) with a zero-width space
@@ -1475,6 +1477,12 @@ func applyPairs(p *provider.Provider, pairs []string) error {
 				return fmt.Errorf("routing=%s is a group's: a provider's keys or accounts are routed smart, order, rotate, usage, pace, weight, free, fast or drain", r)
 			}
 			p.Routing = r
+		case "reset-priority":
+			r, err := provider.ParseResetPriority(v)
+			if err != nil {
+				return err
+			}
+			p.ResetPriority = r
 		case "icon":
 			// a picture on disk is kept by magpie; anything else is one of
 			// the built-in icons' names

@@ -338,6 +338,11 @@ type Weighed struct {
 	// before expiry keep it with those that have room rather than for
 	// last (routes.Seat.WeekLow); false under another routing
 	WeekLow bool `json:"weekLow,omitempty"`
+	// ResetPriority is the selected window's imminent reset, used to keep
+	// automatic affinity and rounds in the preferred pool. ResetSoonest
+	// additionally keeps a later-resetting candidate behind its first.
+	ResetPriority *time.Time `json:"resetPriority,omitempty"`
+	ResetSoonest  bool       `json:"resetSoonest,omitempty"`
 	// Amount of Limit in Unit: the count that share is of, when the
 	// vendor counts it so (WorkBuddy's credits, #659)
 	Amount float64 `json:"amount,omitempty"`
@@ -636,6 +641,11 @@ func weighed(c candidate, p provider.Provider, wg weighing, fallback bool, from 
 	if l, ok := wg.lefts[c.allowanceKey()]; ok {
 		w.Known, w.Used, w.Renews, w.Pace, w.Credits, w.CreditsFirst = true, l.used, l.renews, l.pace, l.credits, l.first
 		w.Unreached, w.Soon = l.unreached, l.soon
+		if !l.reset.IsZero() && !resting(c) {
+			at := l.reset
+			w.ResetPriority = &at
+			w.ResetSoonest = p.ResetPriority != nil && p.ResetPriority.Order == "soonest"
+		}
 		if !l.lapse.IsZero() {
 			lp := l.lapse
 			w.Lapse = &lp

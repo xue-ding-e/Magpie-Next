@@ -137,6 +137,10 @@ type Provider struct {
 	// as long as that lasts.
 	Routing string `json:"routing,omitempty"`
 
+	// ResetPriority first routes among accounts or quota-bearing keys whose
+	// selected window resets soon. The others remain available for failover.
+	ResetPriority *ResetPriority `json:"resetPriority,omitempty"`
+
 	// Sink sends a key or account that a 429 rate limited while it still
 	// had quota to the back of the order Routing gives (01huadalang): it
 	// is tried again only after every one not rate limited since — so the
@@ -1116,6 +1120,7 @@ func accountSettings(a, pk Provider) Provider {
 	a.Models, a.Unlisted, a.Off, a.Fallback, a.Routing, a.Affinity, a.KeepLogin, a.KeepLoginAs, a.Contexts, a.Family = pk.Models, pk.Unlisted, pk.Off, pk.Fallback, pk.Routing, pk.Affinity, pk.KeepLogin, pk.KeepLoginAs, pk.Contexts, pk.Family
 	a.SwitchOnly, a.RestartApp = pk.SwitchOnly, pk.RestartApp
 	a.Sink, a.NoModels, a.BestInFamily = pk.Sink, pk.NoModels, pk.BestInFamily
+	a.ResetPriority = pk.ResetPriority
 	a.NativeCompaction = pk.NativeCompaction
 	a.PromptAsWritten = pk.PromptAsWritten
 	// a deferred tool a tool search loaded goes where it was loaded, set
@@ -1256,6 +1261,19 @@ func Slug(name string) string {
 
 // Save adds or replaces a provider.
 func Save(p Provider) error {
+	if p.ResetPriority != nil {
+		r := *p.ResetPriority
+		if err := r.Check(); err != nil {
+			return err
+		}
+		p.ResetPriority = nil
+		if r.Hours > 0 {
+			if r.Window == "" {
+				r.Window = "week"
+			}
+			p.ResetPriority = &r
+		}
+	}
 	// a key given a Vertex AI provider is refused here, before normalize
 	// drops it: it would never be sent
 	if p.IsVertex() && len(p.Keys) > 0 {
@@ -1570,6 +1588,7 @@ func AddCopy(p Provider, from string) (string, error) {
 		p.Key, p.KeyName, p.KeyProtocol, p.KeyWeight, p.KeyPlan = src.Key, src.KeyName, src.KeyProtocol, src.KeyWeight, src.KeyPlan
 		p.Keys = slices.Clone(src.Keys)
 		p.Routing, p.Sink, p.Affinity = src.Routing, src.Sink, src.Affinity
+		p.ResetPriority = src.ResetPriority
 	}
 	if p.BalanceToken == "" {
 		p.BalanceToken = src.BalanceToken

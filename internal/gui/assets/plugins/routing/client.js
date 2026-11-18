@@ -923,6 +923,9 @@ function routingPage(part) {
         ? t("In order: with {rested} resting after a failure, {who} is the first that can answer.", { rested: ahead.join(", "), who: w })
         : t("In order: {who} is first, and answers everything while it can.", { who: w });
     }
+    if (f.resetPriority) return t(f.resetSoonest
+      ? "{who} goes first: its selected quota resets in {d}, earliest among the preferred accounts."
+      : "{who} goes first: its selected quota resets in {d}; current routing chooses among the preferred accounts.", { who: w, d: dur(at(f.resetPriority) - at(r.time)) });
     const peers = r.order.filter((x) => x !== f && !x.fallback && !x.rest);
     const someKnown = r.order.some((x) => x.known);
     const rested = r.order.filter((x) => x !== f && !x.fallback && x.rest).map(who);
@@ -1203,6 +1206,7 @@ function routingPage(part) {
       case "main": return t("{who}, a fallback, answered this conversation last, but the provider's own {first} is ready again, so turn {n} goes back to it.", { who: last, first: who(r.order[0]), n: a.turn });
       case "back": return t("{who} took this conversation while {first}, listed ahead of it in the group, couldn't; {first} is ready again, so turn {n} goes back to it.", { who: last, first: who(r.order[0]), n: a.turn });
       case "hours": return t("{who} answered this conversation last, by rule {rule}, but the rule's hours are over, so turn {n} goes where the group routes it.", { who: last, rule: r.rule?.ended, n: a.turn });
+      case "reset-priority": return t("{first} has quota about to reset, so this new turn uses its reset priority instead of staying on {who}.", { first: who(r.order[0]), who: last });
       case "no-cache": return t("{who} answered this conversation last, but the vendor then read only {r} tokens of it from its cache and wrote {w} — not worth staying for.", { who: last, r: tokens(a.cacheRead || 0), w: tokens(a.cacheWrite || 0) });
       case "cold": return t("{who} answered this conversation {d} ago, longer than the 5 minutes a vendor keeps a prompt cached — so routing decides afresh.", { who: last, d: ago });
       case "off": return t("Affinity is off: each request is routed afresh, whoever answered its conversation before.");
