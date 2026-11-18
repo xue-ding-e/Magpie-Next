@@ -137,17 +137,25 @@ with tempfile.TemporaryDirectory(prefix='impact-embed-git.') as d:
 with tempfile.TemporaryDirectory(prefix='impact-main.') as d:
  oldenv=dict(os.environ);realgit=m.git;head='b'*40
  try:
-  os.environ.update(GITHUB_REPOSITORY='xue-ding-e/Magpie-Next',GITHUB_SHA=head,GITHUB_REF='refs/heads/main',BEFORE_SHA='a'*40,MANUAL_PUBLISH='false')
+  released='a'*40
+  before='c'*40  # An earlier push contains the unpublished product change.
+  os.environ.update(GITHUB_REPOSITORY='xue-ding-e/Magpie-Next',GITHUB_SHA=head,GITHUB_REF='refs/heads/main',RELEASED_SHA=released,BEFORE_SHA=before,MANUAL_PUBLISH='false')
   def mockgit(*args):
    if args[0]=='rev-parse':return (head+'\n').encode()
    if args[0] in ('status','cat-file'):return b''
-   if args[0]=='diff':return ci+test
+   if args[0]=='diff':
+    if args[-3]==released:return raw(b'internal/gui/assets/app.js')+test
+    if args[-3]==before:return test
+    if args[-3]==head:return b''
    raise AssertionError('Unexpected Git call')
   m.git=mockgit
-  for event,manual,published in [('push','false','false'),('workflow_dispatch','false','false'),('workflow_dispatch','true','true')]:
+  for event,manual,published in [('push','false','true'),('workflow_dispatch','false','false'),('workflow_dispatch','true','true')]:
    out=Path(d)/f'{event}-{manual}';os.environ.update(GITHUB_EVENT_NAME=event,MANUAL_PUBLISH=manual,GITHUB_OUTPUT=str(out));m.main();assert out.read_text()==f'package=true\npublish={published}\n';checks+=1
-  for before in ['', '0'*40,'not-a-sha']:
-   out=Path(d)/'rejected';os.environ.update(GITHUB_EVENT_NAME='push',BEFORE_SHA=before,GITHUB_OUTPUT=str(out))
+  out=Path(d)/'already-released'
+  os.environ.update(GITHUB_EVENT_NAME='push',RELEASED_SHA=head,GITHUB_OUTPUT=str(out))
+  m.main();assert out.read_text()=='package=false\npublish=false\n';checks+=1
+  for bad in ['', '0'*40,'not-a-sha']:
+   out=Path(d)/'rejected';os.environ.update(GITHUB_EVENT_NAME='push',RELEASED_SHA=bad,GITHUB_OUTPUT=str(out))
    try:m.main()
    except AssertionError:assert not out.exists();checks+=1
    else:raise AssertionError('Invalid before accepted')

@@ -22,6 +22,7 @@ CI={b'.github/workflows/next-windows-package.yml',b'build/next-package-impact.py
     b'.github/workflows/test.yml',b'.github/workflows/docker.yml',b'.github/workflows/docker-daily.yml',
     b'.github/workflows/docker-stable.yml',b'.github/workflows/notes-mirror.yml',
     b'.github/workflows/privacy-filter.yml',b'.github/workflows/release.yml',b'.github/workflows/ui-preview.yml',
+    b'.github/workflows/upstream-alignment.yml',
     b'build/ci-step.sh',b'build/ci-step_test.sh',b'build/ci_home.py',b'build/ci_home_test.py',b'build/race-shards.sh',
     b'Makefile',b'Dockerfile',b'build/assetpack/main.go',b'build/icon/gen.go',
     b'build/darwin/AppIcon.icon/icon.json',b'build/darwin/Assets.car',b'build/darwin/Info.plist',
@@ -119,9 +120,10 @@ def main():
  assert git('rev-parse','HEAD').decode().strip()==head,'Wrong checkout'
  assert not git('status','--porcelain','--untracked-files=no'),'Dirty checkout'
  if os.environ['GITHUB_EVENT_NAME']=='push' and os.environ['GITHUB_REF']=='refs/heads/main':
-  before=os.environ['BEFORE_SHA'];assert SHA.fullmatch(before) and before!='0'*40,'Missing previous source'
-  for sha in (before,head):git('cat-file','-e',sha+'^{commit}')
-  package,publish,reason=classify(git('diff','--raw','--no-abbrev','-z','--no-renames',before,head,'--'))
+  released=os.environ['RELEASED_SHA']
+  assert SHA.fullmatch(released) and released!='0'*40,'Missing published source'
+  for sha in (released,head):git('cat-file','-e',sha+'^{commit}')
+  package,publish,reason=classify(git('diff','--raw','--no-abbrev','-z','--no-renames',released,head,'--'))
  else:
   manual=os.environ.get('MANUAL_PUBLISH','false');assert manual in ('true','false'),'Invalid explicit publication input'
   package=True;publish=os.environ['GITHUB_EVENT_NAME']=='workflow_dispatch' and os.environ['GITHUB_REF']=='refs/heads/main' and manual=='true';reason='explicit-manual-publish' if publish else 'build-without-publication'

@@ -11,10 +11,12 @@ native test assets on every test platform while production retains its Windows
 x64-only native installation guard. `Feed` and `NotesFeed` continue to report the
 fixed repository in tests.
 
-The Next UI workflow discovers 1,520 test files and validates twelve complete shards,
-source identity and unchanged inputs before packaging. This count describes the
-current integrated inventory. At most four jobs run at once. Each job reserves
-time after its test step for the report upload.
+The Windows release workflow requires the native Windows checks and
+Chromium and WebKit fixtures for account settings, routing, dictionary
+editing and update controls. The full UI workflow runs on main separately
+and validates its 1,520-file inventory across twelve shards, with at most
+four jobs at once. It checks source identity and unchanged inputs and
+reserves time for report upload. See the [Next release runbook](../upstream-tracking.md).
 
 The upstream signed-feed verifier and fallback are retained for isolated
 transport fixtures. They do not change Next's publisher or make Next's existing

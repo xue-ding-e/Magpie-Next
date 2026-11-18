@@ -1,6 +1,8 @@
 name: UI fixtures
 
 on:
+  push:
+    branches: [main]
   workflow_call:
   workflow_dispatch:
 
@@ -13,6 +15,7 @@ concurrency:
 
 jobs:
   baseline:
+    if: github.event_name != 'push' || github.repository == 'xue-ding-e/Magpie-Next'
     name: Pin the desktop comparison baseline
     runs-on: windows-latest
     timeout-minutes: 10
@@ -128,7 +131,7 @@ jobs:
 
   coverage:
     name: All 12 UI shards and all 1520 files
-    if: always()
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.repository == 'xue-ding-e/Magpie-Next') }}
     needs: [baseline, shards]
     runs-on: ubuntu-latest
     timeout-minutes: 10

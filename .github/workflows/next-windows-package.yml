@@ -23,7 +23,7 @@ jobs:
   impact:
     if: github.repository == 'xue-ding-e/Magpie-Next'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       package: ${{ steps.classify.outputs.package }}
       publish: ${{ steps.classify.outputs.publish }}
@@ -34,38 +34,88 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: false
-      - name: Verify previous tree for main push
+      - name: Resolve the latest published source
+        id: released
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        timeout-minutes: 1
+        timeout-minutes: 5
         shell: bash
         env:
-          BEFORE_SHA: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          [[ "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ && "$BEFORE_SHA" != 0000000000000000000000000000000000000000 ]]
-          if ! git cat-file -e "$BEFORE_SHA^{commit}"; then
-            git fetch --no-tags --depth=1 origin "$BEFORE_SHA"
-          fi
-      - name: Classify package inputs without skipping validation
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          [[ "$tag" =~ ^next-[a-f0-9]{12}$ ]]
+          git fetch --no-tags --depth=1 origin "refs/tags/$tag"
+          sha=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+          [[ "${sha:0:12}" == "${tag#next-}" ]]
+          relation=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...$GITHUB_SHA?per_page=1" --jq '.status')
+          [[ "$relation" == ahead || "$relation" == identical ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Comparing $GITHUB_SHA with published $tag ($sha)"
+      - name: Classify changes since the public release
         id: classify
         timeout-minutes: 1
         shell: bash
         env:
-          BEFORE_SHA: ${{ github.event.before }}
+          RELEASED_SHA: ${{ steps.released.outputs.sha }}
           MANUAL_PUBLISH: ${{ inputs.publish || false }}
         run: |
           python3 -I -B build/next-package-impact_test.py
           python3 -I -B build/next-package-impact.py
-  validation:
-    if: github.repository == 'xue-ding-e/Magpie-Next'
+  windows-validation:
+    needs: impact
+    if: needs.impact.outputs.package == 'true' && github.repository == 'xue-ding-e/Magpie-Next'
     uses: ./.github/workflows/test.yml
     with:
       next_validation: true
-  ui-validation:
-    if: github.repository == 'xue-ding-e/Magpie-Next'
-    uses: ./.github/workflows/test-ui.yml
+  windows-ui:
+    name: Windows release UI (Chromium and WebKit)
+    needs: impact
+    if: needs.impact.outputs.package == 'true' && github.repository == 'xue-ding-e/Magpie-Next'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - name: Install the pinned browser fixtures
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Get-Content .github/ui-preview/package.json -Raw | ConvertFrom-Json
+          if ($package.dependencies.playwright -cne '1.65.0') { throw 'Unexpected Playwright version' }
+          npm install --prefix .github/ui-preview --ignore-scripts --no-audit --no-fund --package-lock=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:RUNNER_TEMP 'magpie-ui-browsers'
+          & .github/ui-preview/node_modules/.bin/playwright.cmd install chromium webkit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH" >> $env:GITHUB_ENV
+      - name: Test account routing, editors and update controls
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD) -cne $env:GITHUB_SHA) { throw 'Source SHA mismatch' }
+          $env:NODE_PATH = Join-Path $env:GITHUB_WORKSPACE '.github/ui-preview/node_modules'
+          $tests = @(
+            'account-models.test.cjs',
+            'local-dictionary.test.cjs',
+            'routing-save.test.cjs',
+            'routing-signin.test.cjs',
+            'routing-subagent-used-model.test.cjs',
+            'settings-update-proxy.test.cjs',
+            'surface-resize.test.cjs',
+            'update-check.test.cjs'
+          ) | ForEach-Object { Join-Path 'internal/gui/tests' $_ }
+          node --test --test-concurrency=1 $tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   package:
-    needs: [validation, ui-validation, impact]
+    needs: [impact, windows-validation, windows-ui]
     if: needs.impact.outputs.package == 'true' && github.repository == 'xue-ding-e/Magpie-Next'
     runs-on: windows-latest
     timeout-minutes: 60
@@ -198,7 +248,7 @@ jobs:
           foreach ($name in @('Magpie-Next.exe','magpie-next-cli.exe','manifest.json')) {
             if ((Get-FileHash (Join-Path unpacked $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hashes[$name]) { throw 'Portable and native assets differ' }
           }
-          $notes = "Magpie Next $($manifest.version), Windows x64. Source: $env:GITHUB_SHA. Independently maintained Next build; unsigned. Close the upstream app before use and back up its configuration. Shared data locations are retained; simultaneous use is not validated. Native CLI and GUI updates use this repository's source-bound manifest. Old ZIP-only builds require one manual installation. Validation: native Next update integration tests, release contract tests and CLI version smoke; GUI launch not validated."
+          $notes = "Magpie Next $($manifest.version) for Windows x64 (unsigned). Source commit $env:GITHUB_SHA. Windows native tests, Chromium and WebKit release fixtures, updater integration, and CLI version checks passed in [GitHub Actions]($env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID). Close the upstream app before use and back up shared configuration. The executables use this repository's update manifest. Upgrading from an old ZIP-only build requires one manual installation."
           $notes += ' Extract the ZIP and run Magpie-Next.exe. WebView2 is required. The CLI executable is included.'
           $refsJson = gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/$tag"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect release tag refs' }

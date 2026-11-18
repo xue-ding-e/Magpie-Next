@@ -7,7 +7,7 @@ Magpie Next 的发布仓库是 [xue-ding-e/Magpie-Next](https://github.com/xue-d
 - 当前批次先固定一个上游标签和完整 SHA。完成这批的验证和发版，再处理后来出现的上游版本。
 - 持续值守由维护者安排。同一时间只维护一个待发布批次。发现新标签时记录 SHA 和变更摘要。没有待处理差异时，结束本轮并等待下一次调度。
 - 本机只验证当前操作系统。Windows 跑 Windows 编译和原生检查，Linux 跑 Linux 检查，macOS 跑 macOS 检查。运行代理无需模拟、跨编译或手工复测另外两个平台。Windows 发布包由 GitHub 的 Windows runner 产出。
-- 本机验证与仓库发布门禁各自生效。当前 [发布工作流](../.github/workflows/next-windows-package.yml) 依赖既有 [Go 平台矩阵](../.github/workflows/test.yml) 和 [完整 Windows 双浏览器分片](../.github/workflows/test-ui.yml)。由 GitHub Actions 执行这些作业；如果将来调整发布门禁，应让工作流和本手册同步更新。
+- GitHub Actions 的 [Windows 发布工作流](../.github/workflows/next-windows-package.yml) 要求同一提交的 Windows 原生验证、关键界面的 Chromium 和 WebKit 用例、更新安装验证及产物校验全部通过。[Go 平台验证](../.github/workflows/test.yml) 的 Linux、macOS 和 CLI 作业与 [完整 UI 分片](../.github/workflows/test-ui.yml) 在 main 上各自运行并报告结果。调整门禁时同步更新本手册。
 - 在独立 worktree 操作，保留别人的分支、暂存区和测试记录。Git 历史保持线性，禁止 git merge、会隐式合并的 git pull、改写远端历史和强推。
 
 ## 仓库与分支的归属
@@ -163,8 +163,8 @@ gh run watch "$RUN_ID" -R "$NEXT_REPO" --exit-status
 
 记录 run ID、head SHA 和截图基准 SHA。工作流可能先排队，再按配置并行或串行跑分片。轮询同一个 run ID；超时、没有新日志或 pending 本身不能证明失败。通过的依据是当前 SHA 的作业结论和产物，其中包括：
 
-- impact 识别本批次的改动类别。
-- validation 执行仓库 Go 检查。UI 工作流校验每个分片和完整清单，截图使用已固定的独立基准。
+- impact 根据公开最新版的标签解析源码提交，并检查当前提交包含该基线。它比较两棵树的差异，包含前次打包失败后尚未发布的产品改动。
+- windows-validation 执行 Windows 原生 Go 检查，windows-ui 在 Chromium 和 WebKit 中验证账号设置、路由、词库和更新界面。完整 UI 工作流单独校验每个分片和完整清单，截图使用已固定的独立基准。
 - package 校验 Next 原生更新和发布契约，构建 Windows x64 桌面程序及 CLI，上传同一 SHA 的制品。
 - 失败时下载同一 run 的日志和分片报告，修正原因后用新 SHA 重验。保留原断言、文件清单、签名及来源检查。
 
@@ -180,7 +180,7 @@ test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$CANDIDATE_SHA"
 gh run list -R "$NEXT_REPO" --workflow next-windows-package.yml --branch main --commit "$CANDIDATE_SHA"
 ~~~
 
-main 的 push 自动触发正式工作流。产品输入发生变更时，impact 允许打包和发布；纯文档及已归类的界面测试改动仍验证，但通常不会发布新包。同一 SHA 如果需要获授权的手动发版，可选 main 并传 publish=true。此入口同样经过验证和打包。
+main 的 push 自动触发正式工作流。相比公开最新版存在产品输入变更时，impact 允许打包和发布。产品内容已发布的情况下，单独提交文档、已归类的界面测试或发布控制改动不会产生新版本。前次没有公开发布的改动会随下次 main 的 push 重新进入发布流程。同一 SHA 若需手动发版，可选 main 并传 publish=true，仍经过同样的 Windows 验证和打包。
 
 ~~~sh
 gh workflow run next-windows-package.yml -R xue-ding-e/Magpie-Next --ref main -f publish=true
