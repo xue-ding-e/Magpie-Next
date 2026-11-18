@@ -9,6 +9,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
+const { reach } = require("./reader.cjs");
 
 const assets = path.resolve(__dirname, "../assets");
 const claude = {
@@ -57,8 +58,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       t.after(() => browser.close());
       await page.goto("http://magpie.test/?view=providers");
       await page.locator(".row.provider", { hasText: "Claude" }).click();
-      const hint = page.locator(".editor .hint", { hasText: "98%" });
-      await hint.waitFor();
+      const advanced = page.locator(".editor details.advanced");
+      if (!(await advanced.evaluate((section) => section.open))) {
+        const summary = advanced.locator(":scope > summary");
+        await reach(page, summary);
+        await summary.click();
+      }
+      const routing = advanced.getByText(lang === "zh" ? "路由" : "Routing", { exact: true }).and(advanced.locator("label"));
+      // The editor keeps the explanation here for its on-demand hint.
+      // editor-hints.test.cjs covers how the hover card exposes such text.
+      const hint = routing.locator("xpath=following-sibling::div[1]").locator(":scope > .hint.expl");
+      await hint.waitFor({ state: "attached" });
       assert.match(await hint.textContent(), want[lang]);
       assert.deepEqual(errors, []);
     });

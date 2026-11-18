@@ -83,7 +83,8 @@ func TestWalletSpendCounted(t *testing.T) {
 // and the cap holds it.
 func TestWalletCapHolds(t *testing.T) {
 	signIn(t)
-	now := time.Now()
+	// Every reading in this test belongs to the same wallet day.
+	now := time.Date(2026, time.November, 9, 10, 0, 0, 0, time.UTC)
 	if err := SetAccountCap("codex", "me@example.com", 4); err != nil {
 		t.Fatal(err)
 	}
