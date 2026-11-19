@@ -892,7 +892,7 @@ func leastHeld(scope, key string, cs []candidate, pl planned, ready bool) ([]can
 	seat := func(c candidate) string { return c.who() + "/" + provider.WithMemberEffort(c.model, c.effort) }
 	best := -1
 	for i, c := range cs {
-		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || resetPriorityBehind(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) || ready && i > 0 && !readyForNew(pl.order, i) {
+		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || resetPreventsPromotion(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) || ready && i > 0 && !readyForNew(pl.order, i) {
 			continue
 		}
 		if best < 0 || held[seat(c)] < held[seat(cs[best])] {
@@ -926,7 +926,7 @@ func (w Weighed) spentForRouting(routing string) bool {
 // those that have room (Weighed.WeekLow).
 func readyForNew(order []Weighed, i int) bool {
 	w := order[i]
-	if w.Rest != nil || w.Aside || standsIn(order, i) || resetPriorityBehind(order, i) || lastBehind(order, i) || busyBehind(order, i) {
+	if w.Rest != nil || w.Aside || standsIn(order, i) || resetPreventsPromotion(order, i) || lastBehind(order, i) || busyBehind(order, i) {
 		return false
 	}
 	return !w.Known || w.Used < lowShare || w.ResetPriority != nil || w.CreditsFirst || w.WeekLow && w.Used < usedShare
@@ -1107,7 +1107,7 @@ func spreadsSessions(mode, routing string) bool {
 func after(cs []candidate, pl planned, at int) ([]candidate, planned) {
 	for d := 1; d < len(cs); d++ {
 		i := (at + d) % len(cs)
-		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || resetPriorityBehind(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) {
+		if pl.order[i].Rest != nil || pl.order[i].Aside || standsIn(pl.order, i) || resetPreventsPromotion(pl.order, i) || lastBehind(pl.order, i) || busyBehind(pl.order, i) {
 			continue // a turn goes round the keys routed over only
 		}
 		if i > 0 {

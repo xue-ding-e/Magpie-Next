@@ -173,7 +173,9 @@ jobs:
             TestResetPriorityRequests \
             TestResetPriorityFailoverAndNoCandidate \
             TestResetPriorityNewTurnAndExplicitAffinity \
-            TestResetPrioritySurvivesGroupRouting
+            TestResetPrioritySurvivesGroupRouting \
+            TestResetPriorityPreservesGroupOrderOutsideQueue \
+            TestResetPriorityGroupBurstHonorsMemberQueue
           run_exact ./internal/gui TestProviderSaveResetPriority
           run_exact ./internal/cli TestProviderResetPriorityPair
 

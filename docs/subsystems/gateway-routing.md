@@ -90,8 +90,11 @@ The preferred candidates are routed as a pool of their own using the provider's
 current strategy, including rotation and weights. `order: "soonest"` puts the
 earliest matching reset first, with the current strategy breaking ties.
 Concurrent requests respect the same priority. Other candidates remain
-available for failover. A provider keeps this policy inside
-a routing group, whose member order still decides between providers. Automatic
+available for failover. A routing group keeps its ordinary ordering across
+providers. When it pools a provider's accounts with other members, the
+preferred accounts advance to that provider's first position in the
+group's order. The other accounts keep their relative order. An empty
+priority queue leaves the group's ordering intact. Automatic
 affinity follows the priority at a new turn; an ongoing tool loop and explicit
 Session or Strict affinity retain their account. The routing trace carries
 the selected reset and explains a new turn leaving its previous account.

@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -72,10 +73,32 @@ func resetPriorityOrder(p provider.Provider, st routes.Strategy, cs []candidate,
 // the leading provider's preferred pool. An explicit Session or Strict and a
 // turn already under way still keep the account the user chose to stay on.
 func resetPriorityBehind(order []Weighed, i int) bool {
-	if len(order) == 0 || i <= 0 || i >= len(order) || order[0].ResetPriority == nil || order[0].Rest != nil || order[0].Provider != order[i].Provider || order[0].Model != order[i].Model {
+	return i > 0 && i < len(order) && resetPrecedes(order[0], order[i])
+}
+
+// resetPreventsPromotion protects a member's reset queue when affinity or
+// load sharing considers bringing one of its accounts to the front.
+// The first seat in the group may belong to a different provider.
+func resetPreventsPromotion(order []Weighed, i int) bool {
+	if i <= 0 || i >= len(order) {
 		return false
 	}
-	first, other := order[0], order[i]
+	other := order[i]
+	if resetPrecedes(order[0], other) {
+		return true
+	}
+	return other.resetPolicy && slices.ContainsFunc(order[1:i], func(first Weighed) bool {
+		return resetPrecedes(first, other)
+	})
+}
+
+func resetPrecedes(first, other Weighed) bool {
+	if first.ResetPriority == nil || first.Rest != nil || first.Aside ||
+		first.Busy > 0 && other.Busy == 0 || first.CreditsLast && !other.CreditsLast ||
+		first.Provider != other.Provider || first.Model != other.Model || first.Fixed != other.Fixed ||
+		first.Fast != other.Fast || first.Fallback != other.Fallback || !slices.Equal(first.Via, other.Via) {
+		return false
+	}
 	return other.ResetPriority == nil || first.ResetSoonest && other.ResetPriority.After(*first.ResetPriority)
 }
 

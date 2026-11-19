@@ -343,6 +343,7 @@ type Weighed struct {
 	// additionally keeps a later-resetting candidate behind its first.
 	ResetPriority *time.Time `json:"resetPriority,omitempty"`
 	ResetSoonest  bool       `json:"resetSoonest,omitempty"`
+	resetPolicy   bool       // this provider can have a reset queue in the current group
 	// Amount of Limit in Unit: the count that share is of, when the
 	// vendor counts it so (WorkBuddy's credits, #659)
 	Amount float64 `json:"amount,omitempty"`
@@ -620,7 +621,8 @@ type planned struct {
 
 func weighed(c candidate, p provider.Provider, wg weighing, fallback bool, from provider.Protocol) Weighed {
 	w := Weighed{ID: c.rest, Provider: p.ID, Name: p.Name, Icon: p.Icon, Preset: p.Preset, Model: c.model, Fixed: c.effort, Fast: c.fast,
-		Routing: p.Routing, Fallback: fallback, Shared: c.rest != p.ID, Rank: c.rank, NoURL: c.noURL, Reserve: c.reserve, UseFirst: c.p.UseFirst}
+		Routing: p.Routing, Fallback: fallback, Shared: c.rest != p.ID, Rank: c.rank, NoURL: c.noURL, Reserve: c.reserve, UseFirst: c.p.UseFirst,
+		resetPolicy: p.ResetPriority != nil && p.ResetPriority.Hours > 0}
 	switch {
 	case c.p.Account != nil:
 		w.Kind, w.Who, w.Agent, w.Plan = "account", c.p.Account.User, c.p.Account.Agent, c.p.Account.Plan

@@ -820,10 +820,12 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 		// and each group in it as one — planned by its own routing, put
 		// where the one it would try first is, the rest of it after
 		type unit struct {
-			m      provider.Member // the model, for one of its keys
-			cs     []candidate     // a group in g, or a provider routed its own way: its own order
-			order  []Weighed
-			member string // as g spells it, for a unit of a group routed by weight
+			m         provider.Member // the model, for one of its keys
+			cs        []candidate     // a group in g, or a provider routed its own way: its own order
+			order     []Weighed
+			member    string // as g spells it, for a unit of a group routed by weight
+			memberAt  int    // the member of a pooled seat, as indexed in ms
+			preferred bool   // emitted with its member's reset queue
 		}
 		// a group routed by weight weighs its members, each whole: a
 		// model's keys in its provider's order, a group in it in its own
@@ -875,7 +877,7 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 				continue
 			}
 			for _, c := range keys(m) {
-				add(unit{m: m}, c)
+				add(unit{m: m, memberAt: i}, c)
 			}
 			i++
 		}
@@ -905,6 +907,22 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 			routing = "" // the member picked, its keys or accounts weighed smartly
 		}
 		weighedHeads, wg := weigh(provider.Provider{ID: provider.GroupPrefix + g.ID, Routing: routing}, heads, "", from)
+		// Pooled members keep their positions under the group's routing.
+		// Emit only the accounts in the reset queue at their member's
+		// first position, leaving the ordinary seats in group order.
+		var queues map[int][]candidate
+		for i := range units {
+			u, c := &units[i], heads[i]
+			if u.cs != nil || wg.lefts[c.allowanceKey()].reset.IsZero() || resting(c) {
+				continue
+			}
+			if queues == nil {
+				queues = make(map[int][]candidate)
+			}
+			queues[u.memberAt] = append(queues[u.memberAt], c)
+			u.preferred = true
+		}
+		now := time.Now()
 		var out []candidate
 		for i, c := range weighedHeads {
 			k := at[c.seat()][0]
@@ -915,10 +933,29 @@ func planLevel(g provider.Group, ms []provider.Member, depth int, from provider.
 				pl.order = append(pl.order, u.order...)
 				continue
 			}
+			if queue := queues[u.memberAt]; len(queue) > 0 {
+				delete(queues, u.memberAt)
+				p := u.m.Provider
+				p.ID += "/group-reset-priority"
+				queue, priority := weighSeats(p, queue, weighing{lefts: wg.lefts}, now, from)
+				if sinks(p.Sink, p.Routing) {
+					queue = resetFirst(p, sinkLast(queue), priority)
+				}
+				for j, seat := range queue {
+					w := weighed(seat, u.m.Provider, priority, false, from)
+					w.Via = u.m.Groups()
+					w.Turn = j == 0 && (goesRound(p.Routing) && len(queue) > 1 ||
+						i == 0 && routingOf(g.Routing) == provider.Rotate && len(weighedHeads) > 1)
+					out, pl.order = append(out, seat), append(pl.order, w)
+				}
+			}
+			if u.preferred {
+				continue
+			}
 			w := weighed(c, u.m.Provider, wg, false, from)
 			w.Routing, w.Via = g.Routing, u.m.Groups()
 			w.Sunk = nil // weighed as the group's, whose own Sink tells
-			w.Turn = i == 0 && routingOf(g.Routing) == provider.Rotate && len(weighedHeads) > 1
+			w.Turn = len(out) == 0 && routingOf(g.Routing) == provider.Rotate && len(weighedHeads) > 1
 			pl.order = append(pl.order, w)
 			out = append(out, c)
 		}
@@ -989,7 +1026,7 @@ func firstAwake(cs []candidate) candidate {
 // goes first whichever provider it is of; one set another way keeps it,
 // as the user set it, whatever g's routing.
 func ownRouting(p provider.Provider, g provider.Group) bool {
-	return p.ResetPriority != nil && p.ResetPriority.Hours > 0 || p.Routing != "" && p.Routing != g.Routing
+	return p.Routing != "" && p.Routing != g.Routing
 }
 
 // capHeld is how the account acct of p is held at its usage cap for

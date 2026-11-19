@@ -2532,6 +2532,7 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 	// told: the Routing page shows it (#1016)
 	known := map[string]map[string]provider.Allowance{}
 	now := time.Now()
+	group := strings.HasPrefix(p.ID, provider.GroupPrefix)
 	wg.lefts = map[allowanceKey]left{}
 	for _, c := range cs {
 		var a provider.Allowance
@@ -2558,7 +2559,13 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 				restarts: rs, dueRestart: !rs.IsZero() && due.Equal(rs), credits: spendsCredits(c.p, a)} // one not known counts as unused
 			l.dueExpiry = !l.dueRestart && !l.lapse.IsZero() && due.Equal(l.lapse)
 			l.weekLow = u >= lowShare && u < usedShare && a.CapUsed(c.model, now) < lowShare
+			// A group first weighs its pooled members as usual. Keep
+			// each provider's reset window for the subsequent promotion
+			// of its eligible accounts, using the same quota reading.
 			l.reset = resetDue(p, a, c.model, now, u)
+			if group {
+				l.reset = resetDue(c.p, a, c.model, now, u)
+			}
 			l.first = l.credits && provider.CodexCreditsFirst(c.p.Account.User)
 			if b, bu, has := a.Left(c.model); has {
 				// a wallet's figure is weighed only against the same
@@ -2568,6 +2575,11 @@ func weighRouted(p provider.Provider, cs []candidate, model string, from provide
 			wg.lefts[c.allowanceKey()] = l
 		}
 	}
+	return weighSeats(p, cs, wg, now, from)
+}
+
+// weighSeats sorts candidates using quota readings already gathered for them.
+func weighSeats(p provider.Provider, cs []candidate, wg weighing, now time.Time, from provider.Protocol) ([]candidate, weighing) {
 	if len(cs) < 2 {
 		return cs, wg
 	}

@@ -344,3 +344,97 @@ func TestResetPrioritySurvivesGroupRouting(t *testing.T) {
 		})
 	}
 }
+
+func TestResetPriorityPreservesGroupOrderOutsideQueue(t *testing.T) {
+	fresh(t)
+	now := time.Now()
+	limits := map[string]provider.Allowance{
+		"a": week(10, now.Add(5*24*time.Hour)),
+		"b": week(40, now.Add(6*24*time.Hour)),
+		"c": week(20, now.Add(4*24*time.Hour)),
+	}
+	keyWindows(t, limits)
+	var up keyed
+	serveOn(t, "priority", "a", []string{"m"}, &up, "b")
+	serveOn(t, "other", "c", []string{"m"}, &up)
+	p, err := provider.Find("priority")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.ResetPriority = &provider.ResetPriority{Hours: 48, Window: "week", Order: "soonest"}
+	if err := provider.Save(*p); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SaveGroup(provider.Group{ID: "pool", Name: "Pool", Members: []string{"priority/m", "other/m"}, Routing: provider.LeastUsed}); err != nil {
+		t.Fatal(err)
+	}
+	s := New()
+	g, ms, ok := provider.FindGroup("group/pool")
+	if !ok {
+		t.Fatal("group not found")
+	}
+	for _, tc := range []struct {
+		name, want string
+		reset      time.Duration
+		otherUsed  float64
+	}{
+		{"empty queue", "a c b", 6 * 24 * time.Hour, 20},
+		{"active queue", "b a c", time.Hour, 20},
+		{"other provider first", "c b a", time.Hour, 5},
+		{"after reset", "a c b", 7 * 24 * time.Hour, 20},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits["b"] = week(40, now.Add(tc.reset))
+			limits["c"] = week(tc.otherUsed, now.Add(4*24*time.Hour))
+			cs, _ := s.planGroup(g, ms, provider.Chat)
+			var got []string
+			for _, c := range cs {
+				got = append(got, c.p.Key)
+			}
+			if strings.Join(got, " ") != tc.want {
+				t.Fatalf("routing order = %v, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResetPriorityGroupBurstHonorsMemberQueue(t *testing.T) {
+	fresh(t)
+	now := time.Now()
+	keyWindows(t, map[string]provider.Allowance{
+		"a": week(10, now.Add(5*24*time.Hour)),
+		"b": week(40, now.Add(time.Hour)),
+		"c": week(20, now.Add(4*24*time.Hour)),
+	})
+	var up keyed
+	serveOn(t, "priority", "a", []string{"m"}, &up, "b")
+	serveOn(t, "other", "c", []string{"m"}, &up)
+	p, err := provider.Find("priority")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.ResetPriority = &provider.ResetPriority{Hours: 48, Window: "week", Order: "soonest"}
+	if err := provider.Save(*p); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.SaveGroup(provider.Group{ID: "pool", Name: "Pool", Members: []string{"other/m", "priority/m"}, Routing: provider.Rotate}); err != nil {
+		t.Fatal(err)
+	}
+	g, ms, ok := provider.FindGroup("group/pool")
+	if !ok {
+		t.Fatal("group not found")
+	}
+	cs, pl := New().planGroup(g, ms, provider.Chat)
+	if len(cs) != 3 || cs[0].p.Key != "c" || cs[1].p.Key != "b" || cs[2].p.Key != "a" {
+		t.Fatalf("group should start on another provider with the preferred account next, got %v", pl.order)
+	}
+	for _, c := range cs[:2] {
+		_, _, done := burstSpread(g.Routing, &g, false, false, []candidate{c}, planned{})
+		defer done()
+	}
+	cs, _, done := burstSpread(g.Routing, &g, false, true, cs, pl)
+	defer done()
+	if cs[0].p.Key == "a" {
+		t.Fatal("load sharing went around another member's preferred account")
+	}
+}
